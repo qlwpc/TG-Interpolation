@@ -2,6 +2,8 @@
 *.npy
 *.pyc
 *.so
+*.log
+*.wandb
 __pycache__/
 
 some_note.md
@@ -15,3 +17,4 @@ build_*/
 *.pt
 *.safetensors
 train_logs/
+saved_models/
