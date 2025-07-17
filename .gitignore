@@ -1,0 +1,17 @@
+*.out
+*.npy
+*.pyc
+*.so
+__pycache__/
+
+some_note.md
+some_note_new.md
+*.txt
+
+build/
+build_*/
+*/build/
+
+*.pt
+*.safetensors
+train_logs/
