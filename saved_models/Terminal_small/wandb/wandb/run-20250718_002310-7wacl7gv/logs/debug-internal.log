@@ -1,7 +1,0 @@
-{"time":"2025-07-18T00:23:10.4221092+08:00","level":"INFO","msg":"using version","core version":"0.18.6"}
-{"time":"2025-07-18T00:23:10.422128797+08:00","level":"INFO","msg":"created symlink","path":"/home/wangpch/TG-Interpolation/saved_models/Terminal_small/wandb/wandb/run-20250718_002310-7wacl7gv/logs/debug-core.log"}
-{"time":"2025-07-18T00:23:10.649904477+08:00","level":"INFO","msg":"created new stream","id":"7wacl7gv"}
-{"time":"2025-07-18T00:23:10.649949807+08:00","level":"INFO","msg":"stream: started","id":"7wacl7gv"}
-{"time":"2025-07-18T00:23:10.650408092+08:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"7wacl7gv"}}
-{"time":"2025-07-18T00:23:10.650692491+08:00","level":"INFO","msg":"handler: started","stream_id":{"value":"7wacl7gv"}}
-{"time":"2025-07-18T00:23:10.650710635+08:00","level":"INFO","msg":"sender: started","stream_id":"7wacl7gv"}
