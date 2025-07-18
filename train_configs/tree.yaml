@@ -108,8 +108,7 @@ evaluators:
       pin_memory: true
       drop_last: false
       datasets:
-        BBC-small:
-          - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2015-18-dev.npy
+        - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2015-18-dev.npy
 data:
   pad_direction: right
   num_workers: 1
@@ -119,10 +118,9 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    BBC-small:
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-20.npy
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-48.npy
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-10.npy
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-15.npy
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-23.npy
-      - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-35.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-20.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-48.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-10.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-15.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-23.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-35.npy
