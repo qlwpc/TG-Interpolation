@@ -1,0 +1,2843 @@
+{
+  "formula": [
+    "[ (8;%neg_pos%) < (8;%pos_pos%) ] & [ (8;%neg_neg%) < (8;%pos_neg%) ] & [ (8;%neg_pos%) < (8;%pos_neg%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No author that the senators liked has had any success",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No author that no senators liked has had any success",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The author that the senators liked has had any success",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The author that no senators liked has had any success",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No pilot that the consultants praised has shown any courage",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No pilot that no consultants praised has shown any courage",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The pilot that the consultants praised has shown any courage",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The pilot that no consultants praised has shown any courage",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No surgeon that the guards hated has known any setback",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No surgeon that no guards hated has known any setback",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The surgeon that the guards hated has known any setback",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The surgeon that no guards hated has known any setback",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No farmer that the clerks discussed has had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No farmer that no clerks discussed has had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The farmer that the clerks discussed has had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The farmer that no clerks discussed has had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No manager that the architects loved has completed any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No manager that no architects loved has completed any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The manager that the architects loved has completed any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The manager that no architects loved has completed any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No customer that the managers liked has spent any money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No customer that no managers liked has spent any money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The customer that the managers liked has spent any money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The customer that no managers liked has spent any money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No officer that the journalists praised has had any violations",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No officer that no journalists praised has had any violations",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The officer that the journalists praised has had any violations",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The officer that no journalists praised has had any violations",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No teacher that the ministers hated has failed any student",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No teacher that no ministers hated has failed any student",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The teacher that the ministers hated has failed any student",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The teacher that no ministers hated has failed any student",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No senator that the taxi drivers admired has passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No senator that no taxi drivers admired has passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The senator that the taxi drivers admired has passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The senator that no taxi drivers admired has passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No consultant that the secretaries loved has passed up any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No consultant that no secretaries loved has passed up any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The consultant that the secretaries loved has passed up any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The consultant that no secretaries loved has passed up any project",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No guard that the executives liked has seen any crimes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No guard that no executives liked has seen any crimes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The guard that the executives liked has seen any crimes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The guard that no executives liked has seen any crimes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No clerk that the authors praised has burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No clerk that no authors praised has burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The clerk that the authors praised has burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The clerk that no authors praised has burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No architect that the pilots hated has had any fame",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No architect that no pilots hated has had any fame",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The architect that the pilots hated has had any fame",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The architect that no pilots hated has had any fame",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No athlete that the doctors helped has broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No athlete that no doctors helped has broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The athlete that the doctors helped has broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The athlete that no doctors helped has broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No dancer that the farmers loved has broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No dancer that no farmers loved has broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The dancer that the farmers loved has broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The dancer that no farmers loved has broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No minister that the managers liked has missed any services",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No minister that no managers liked has missed any services",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The minister that the managers liked has missed any services",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The minister that no managers liked has missed any services",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No taxi driver that the customers praised has crashed any car",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No taxi driver that no customers praised has crashed any car",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The taxi driver that the customers praised has crashed any car",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The taxi driver that no customers praised has crashed any car",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No secretary that the officers hated has missed any phone calls",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No secretary that no officers hated has missed any phone calls",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The secretary that the officers hated has missed any phone calls",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The secretary that no officers hated has missed any phone calls",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No executive that the teachers knew has fired any worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No executive that no teachers knew has fired any worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The executive that the teachers knew has fired any worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The executive that no teachers knew has fired any worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No authors that the officer loved have read any poetry",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No authors that no officer loved have read any poetry",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The authors that the officer loved have read any poetry",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The authors that no officer loved have read any poetry",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No pilots that the teacher liked have landed any plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No pilots that no teacher liked have landed any plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The pilots that the teacher liked have landed any plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The pilots that no teacher liked have landed any plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No doctors that the senator praised have failed any surgery",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No doctors that no senator praised have failed any surgery",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The doctors that the senator praised have failed any surgery",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The doctors that no senator praised have failed any surgery",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No farmers that the consultant hated have planted any beans",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No farmers that no consultant hated have planted any beans",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The farmers that the consultant hated have planted any beans",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The farmers that no consultant hated have planted any beans",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No managers that the guard respected have had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No managers that no guard respected have had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The managers that the guard respected have had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The managers that no guard respected have had any luck",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No customers that the clerk loved have purchased any apparel",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No customers that no clerk loved have purchased any apparel",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The customers that the clerk loved have purchased any apparel",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The customers that no clerk loved have purchased any apparel",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No officers that the architect liked have arrested any criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No officers that no architect liked have arrested any criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The officers that the architect liked have arrested any criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The officers that no architect liked have arrested any criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No teachers that the athlete praised have failed any students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No teachers that no athlete praised have failed any students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The teachers that the athlete praised have failed any students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The teachers that no athlete praised have failed any students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No senators that the dancer hated have passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No senators that no dancer hated have passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The senators that the dancer hated have passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The senators that no dancer hated have passed any bills",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No consultants that the minister impressed have missed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No consultants that no minister impressed have missed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The consultants that the minister impressed have missed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The consultants that no minister impressed have missed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No guards that the taxi driver loved have caught any thieves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No guards that no taxi driver loved have caught any thieves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The guards that the taxi driver loved have caught any thieves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The guards that no taxi driver loved have caught any thieves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No clerks that the secretary liked have burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No clerks that no secretary liked have burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The clerks that the secretary liked have burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The clerks that no secretary liked have burned any dishes",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No architects that the executive praised have passed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No architects that no executive praised have passed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The architects that the executive praised have passed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The architects that no executive praised have passed any projects",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No athletes that the pilot hated have broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No athletes that no pilot hated have broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The athletes that the pilot hated have broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The athletes that no pilot hated have broken any equipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No journalists that the surgeon contacted have broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No journalists that no surgeon contacted have broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The journalists that the surgeon contacted have broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The journalists that no surgeon contacted have broken any bones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No ministers that the farmer loved have advocated any evil",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No ministers that no farmer loved have advocated any evil",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The ministers that the farmer loved have advocated any evil",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The ministers that no farmer loved have advocated any evil",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No taxi drivers that the manager liked have crashed any cars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No taxi drivers that no manager liked have crashed any cars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The taxi drivers that the manager liked have crashed any cars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The taxi drivers that no manager liked have crashed any cars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No secretaries that the customer praised have missed any appointments",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No secretaries that no customer praised have missed any appointments",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The secretaries that the customer praised have missed any appointments",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The secretaries that no customer praised have missed any appointments",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "neg_pos",
+        "input": "No executives that the officer hated have refused any compensation",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "neg_neg",
+        "input": "No executives that no officer hated have refused any compensation",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_pos",
+        "input": "The executives that the officer hated have refused any compensation",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "pos_neg",
+        "input": "The executives that no officer hated have refused any compensation",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

@@ -1,0 +1,3841 @@
+{
+  "formula": [
+    "[(7;%np_mismatch%)-(7;%np_match%)]+[[(6;%vp_mismatch%)+(7;%vp_mismatch%)]-[(6;%vp_match%)+(7;%vp_match%)]]>0"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did after the ingredients had been bought from the store was the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he ate after the ingredients had been bought from the store was the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did after the ingredients had been bought from the store was prepare the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he ate after the ingredients had been bought from the store was prepare the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the young man did when the weather turned warm in the spring was the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the young man planted when the weather turned warm in the spring was the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the young man did when the weather turned warm in the spring was plant the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the young man planted when the weather turned warm in the spring was plant the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the worker did after the gate agent made the final announcement about the flight was the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the worker repaired after the gate agent made the final announcement about the flight was the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the worker did after the gate agent made the final announcement about the flight was board the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the worker repaired after the gate agent made the final announcement about the flight was board the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the fan did when his favorite team made it to the championship was the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the fan sold when his favorite team made it to the championship was the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the fan did when his favorite team made it to the championship was buy the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the fan sold when his favorite team made it to the championship was buy the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the young woman did when she was finished cleaning the sink was the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the young woman wiped when she was finished cleaning the sink was the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the young woman did when she was finished cleaning the sink was flush the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the young woman wiped when she was finished cleaning the sink was flush the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the fans did when their team played against the rival team was the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the fans watched when their team played against the rival team was the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the fans did when their team played against the rival team was lose the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the fans watched when their team played against the rival team was lose the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the gardener did before the other vegetables had been planted was the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the gardener trimmed before the other vegetables had been planted was the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the gardener did before the other vegetables had been planted was plant the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the gardener trimmed before the other vegetables had been planted was plant the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old man did every morning before leaving for work was the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old man bought every morning before leaving for work was the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old man did every morning before leaving for work was raise the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old man bought every morning before leaving for work was raise the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old man did after he had walked across the field and the forest was the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old man cooked after he had walked across the field and the forest was the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old man did after he had walked across the field and the forest was hunt the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old man cooked after he had walked across the field and the forest was hunt the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the workers did after they signed a contract with the city government was the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the workers walked down after they signed a contract with the city government was the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the workers did after they signed a contract with the city government was pave the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the workers walked down after they signed a contract with the city government was pave the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the mother did after she got home from a long journey was the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the mother fed after she got home from a long journey was the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the mother did after she got home from a long journey was hug the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the mother fed after she got home from a long journey was hug the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old woman did after she received the letter at the end of the month was the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old woman bought after she received the letter at the end of the month was the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old woman did after she received the letter at the end of the month was furnish the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old woman bought after she received the letter at the end of the month was furnish the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the guards did after they discovered the evidence hidden behind the wall was the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the guards concocted after they discovered the evidence hidden behind the wall was the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the guards did after they discovered the evidence hidden behind the wall was thwart the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the guards concocted after they discovered the evidence hidden behind the wall was thwart the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the senator did after she talked with her colleague from the opposition party was the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the senator sponsored after she talked with her colleague from the opposition party was the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the senator did after she talked with her colleague from the opposition party was veto the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the senator sponsored after she talked with her colleague from the opposition party was veto the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the representatives did before talking to the journalists was the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the representatives wrote before talking to the journalists was the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the representatives did before talking to the journalists was repeal the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the representatives wrote before talking to the journalists was repeal the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old woman did after she got home from having dinner with a friend was the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old woman fed after she got home from having dinner with a friend was the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old woman did after she got home from having dinner with a friend was stroke the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old woman fed after she got home from having dinner with a friend was stroke the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the army did after going through basic training and listening to propaganda was the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the army loved after going through basic training and listening to propaganda was the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the army did after going through basic training and listening to propaganda was invade the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the army loved after going through basic training and listening to propaganda was invade the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the soldier did when he discovered that he was the only fighter left alive was the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the soldier battled when he discovered that he was the only fighter left alive was the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the soldier did when he discovered that he was the only fighter left alive was attack the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the soldier battled when he discovered that he was the only fighter left alive was attack the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the novelist did before she received the big prize was the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the novelist wrote before she received the big prize was the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the novelist did before she received the big prize was borrow the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the novelist wrote before she received the big prize was borrow the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the worker did after entering the job site was the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the worker installed after entering the job site was the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the worker did after entering the job site was lock the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the worker installed after entering the job site was lock the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the workers did two weeks ago when the job had only just begun was the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the workers painted two weeks ago when the job had only just begun was the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the workers did two weeks ago when the job had only just begun was reinforce the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the workers painted two weeks ago when the job had only just begun was reinforce the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the actor did when he found himself out of money was the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the actor wrote when he found himself out of money was the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the actor did when he found himself out of money was tell the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the actor wrote when he found himself out of money was tell the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the tourists did after finally landing in the foreign country was the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the tourists traveled towards after finally landing in the foreign country was the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the tourists did after finally landing in the foreign country was reach the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the tourists traveled towards after finally landing in the foreign country was reach the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the men did after they received shipments of supplies from their allies was the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the men repaired after they received shipments of supplies from their allies was the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the men did after they received shipments of supplies from their allies was defend the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the men repaired after they received shipments of supplies from their allies was defend the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did before driving to the next town was the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he sent before driving to the next town was the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did before driving to the next town was deliver the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he sent before driving to the next town was deliver the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What she did after talking to her lawyers about the situation was the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What she wrote after talking to her lawyers about the situation was the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What she did after talking to her lawyers about the situation was renew the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What she wrote after talking to her lawyers about the situation was renew the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did when he found out that many people were asking similar questions was the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he spread when he found out that many people were asking similar questions was the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did when he found out that many people were asking similar questions was confirm the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he spread when he found out that many people were asking similar questions was confirm the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who they did when they felt that no other options were available to them was the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who they rebuked when they felt that no other options were available to them was the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who they did when they felt that no other options were available to them was murder the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who they rebuked when they felt that no other options were available to them was murder the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the police did between the trial and the sentencing was the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the police caught between the trial and the sentencing was the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the police did between the trial and the sentencing was monitor the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the police caught between the trial and the sentencing was monitor the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the people did every Thursday morning before work was the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the people collected every Thursday morning before work was the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the people did every Thursday morning before work was remove the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the people collected every Thursday morning before work was remove the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the teacher did after school during the summer was the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the teacher taught after school during the summer was the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the teacher did after school during the summer was write about the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the teacher taught after school during the summer was write about the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What they did in the middle of the night was the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What they bought in the middle of the night was the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What they did in the middle of the night was transport the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What they bought in the middle of the night was transport the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who he did after he found out the horrible news was his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who he called after he found out the horrible news was his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who he did after he found out the horrible news was hug his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who he called after he found out the horrible news was hug his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What she did when she received the contract that had been signed by all the parties was the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What she bought when she received the contract that had been signed by all the parties was the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What she did when she received the contract that had been signed by all the parties was transport the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What she bought when she received the contract that had been signed by all the parties was transport the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What we did after we graduated from law school was the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What we won after we graduated from law school was the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What we did after we graduated from law school was make the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What we won after we graduated from law school was make the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who you did when you heard that the building was going to be destroyed was the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who you contracted when you heard that the building was going to be destroyed was the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who you did when you heard that the building was going to be destroyed was hire the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who you contracted when you heard that the building was going to be destroyed was hire the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did in his spare time was a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he created in his spare time was a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did in his spare time was paint a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he created in his spare time was paint a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the woman did after hearing the troubling news was the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the woman wrote after hearing the troubling news was the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the woman did after hearing the troubling news was mail the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the woman wrote after hearing the troubling news was mail the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the maid did after he cleared the table was the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the maid broke after he cleared the table was the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the maid did after he cleared the table was empty the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the maid broke after he cleared the table was empty the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the judge did after he heard all the arguments from both legal teams was the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the judge accused after he heard all the arguments from both legal teams was the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the judge did after he heard all the arguments from both legal teams was sentence the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the judge accused after he heard all the arguments from both legal teams was sentence the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

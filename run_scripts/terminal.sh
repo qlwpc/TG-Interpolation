@@ -6,6 +6,7 @@
 
 workspace=${HOME}/TG-Interpolation
 export HF_ENDPOINT=https://hf-mirror.com
+export PYTHONPATH=${PYTHONPATH}:${workspace}
 nvidia-smi
 wandb offline
 cd ${workspace}

@@ -1,0 +1,2531 @@
+{
+  "formula": [
+    "[(6;%what_no-gap%)>(6;%that_no-gap%)] & [(7;%what_gap%)<(7;%that_gap%)]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "I know what our mother said her friend remarked that the park attendant reported your friend threw into the trash can",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that our mother said her friend remarked that the park attendant reported your friend threw into the trash can",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "I know what our mother said her friend remarked that the park attendant reported your friend threw the plastic into the trash can",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "I know that our mother said her friend remarked that the park attendant reported your friend threw the plastic into the trash can",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The accountant knew who the security guard believed his friend knew the assistant reported the secretary introduced to her friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The accountant knew that the security guard believed his friend knew the assistant reported the secretary introduced to her friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The accountant knew who the security guard believed his friend knew the assistant reported the secretary introduced the new woman to her friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The accountant knew that the security guard believed his friend knew the assistant reported the secretary introduced the new woman to her friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The assistant told me what the man knew his friend recalled the woman said the pilot sent to his family",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The assistant told me that the man knew his friend recalled the woman said the pilot sent to his family",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The assistant told me what the man knew his friend recalled the woman said the pilot sent the package to his family",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The assistant told me that the man knew his friend recalled the woman said the pilot sent the package to his family",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "We discovered what the delivery boy remarked that the worker said that the gardener knew the funny actor told about the woman",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We discovered that the delivery boy remarked that the worker said that the gardener knew the funny actor told about the woman",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "We discovered what the delivery boy remarked that the worker said that the gardener knew the funny actor told a story about the woman",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "We discovered that the delivery boy remarked that the worker said that the gardener knew the funny actor told a story about the woman",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The neighbors found out what her mother heard the newspaper reported the mayor said the young woman bought for her parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The neighbors found out that her mother heard the newspaper reported the mayor said the young woman bought for her parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The neighbors found out what her mother heard the newspaper reported the mayor said the young woman bought a gift for her parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The neighbors found out that her mother heard the newspaper reported the mayor said the young woman bought a gift for her parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "My friend knows what the judge thought the cop said the man testified the successful architect handed for her mother",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My friend knows that the judge thought the cop said the man testified the successful architect handed for her mother",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "My friend knows what the judge thought the cop said the man testified the successful architect handed an award for her mother",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "My friend knows that the judge thought the cop said the man testified the successful architect handed an award for her mother",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The commissioner discovered what the report stated the television host thought the man reported the police detective lent to the man",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The commissioner discovered that the report stated the television host thought the man reported the police detective lent to the man",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The commissioner discovered what the report stated the television host thought the man reported the police detective lent some money to the man",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The commissioner discovered that the report stated the television host thought the man reported the police detective lent some money to the man",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "We all know what the accountant said his colleague recalled the partners knew the investor repaid to the criminal kingpin",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We all know that the accountant said his colleague recalled the partners knew the investor repaid to the criminal kingpin",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "We all know what the accountant said his colleague recalled the partners knew the investor repaid his debt to the criminal kingpin",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "We all know that the accountant said his colleague recalled the partners knew the investor repaid his debt to the criminal kingpin",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "I know what the secretary said the journalist remarked that the workers decided the business man promised to the factory workers",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that the secretary said the journalist remarked that the workers decided the business man promised to the factory workers",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "I know what the secretary said the journalist remarked that the workers decided the business man promised a raise to the factory workers",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "I know that the secretary said the journalist remarked that the workers decided the business man promised a raise to the factory workers",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The newspaper reported what the investigator thought the businessman believed the banker said the boss sold to his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The newspaper reported that the investigator thought the businessman believed the banker said the boss sold to his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The newspaper reported what the investigator thought the businessman believed the banker said the boss sold a car to his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The newspaper reported that the investigator thought the businessman believed the banker said the boss sold a car to his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "Her friend found out what my friend believes the professor said his colleague noticed the visitor told to the guests",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "Her friend found out that my friend believes the professor said his colleague noticed the visitor told to the guests",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "Her friend found out what my friend believes the professor said his colleague noticed the visitor told a story to the guests",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "Her friend found out that my friend believes the professor said his colleague noticed the visitor told a story to the guests",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "I realized what the painter believed his rival suspected the colonel said the suffering artist saw at the museum",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I realized that the painter believed his rival suspected the colonel said the suffering artist saw at the museum",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "I realized what the painter believed his rival suspected the colonel said the suffering artist saw a painting at the museum",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "I realized that the painter believed his rival suspected the colonel said the suffering artist saw a painting at the museum",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The novel revealed what our friend thought the reporter knows her contact said the young politician said to his donors",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The novel revealed that our friend thought the reporter knows her contact said the young politician said to his donors",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The novel revealed what our friend thought the reporter knows her contact said the young politician said something to his donors",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The novel revealed that our friend thought the reporter knows her contact said the young politician said something to his donors",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "We all know what my neighbor said her associate knew a mutual friend stated the young professional assembled for his parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We all know that my neighbor said her associate knew a mutual friend stated the young professional assembled for his parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "We all know what my neighbor said her associate knew a mutual friend stated the young professional assembled the bed for his parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "We all know that my neighbor said her associate knew a mutual friend stated the young professional assembled the bed for his parents",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "I know what their friend said the secretary believed the worker thinks the elderly lady found on the bus",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that their friend said the secretary believed the worker thinks the elderly lady found on the bus",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "I know what their friend said the secretary believed the worker thinks the elderly lady found a quarter on the bus",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "I know that their friend said the secretary believed the worker thinks the elderly lady found a quarter on the bus",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "My friends all know what her friend knew the delivery man believed the cop believes the single mother described to her friends",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My friends all know that her friend knew the delivery man believed the cop believes the single mother described to her friends",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "My friends all know what her friend knew the delivery man believed the cop believes the single mother described her woes to her friends",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "My friends all know that her friend knew the delivery man believed the cop believes the single mother described her woes to her friends",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The visitor said who my friend said her mother knew the minister stated the human resources officer talked with in her office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The visitor said that my friend said her mother knew the minister stated the human resources officer talked with in her office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The visitor said who my friend said her mother knew the minister stated the human resources officer talked with the new manager in her office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The visitor said that my friend said her mother knew the minister stated the human resources officer talked with the new manager in her office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "I know what the woman believed the secretary said her friend recalled the five star general found in the office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that the woman believed the secretary said her friend recalled the five star general found in the office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "I know what the woman believed the secretary said her friend recalled the five star general found a gun in the office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "I know that the woman believed the secretary said her friend recalled the five star general found a gun in the office",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "The colleagues realized what her mother stated a friend said her husband knew the journalist discovered two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The colleagues realized that her mother stated a friend said her husband knew the journalist discovered two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "The colleagues realized what her mother stated a friend said her husband knew the journalist discovered the bribery two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "The colleagues realized that her mother stated a friend said her husband knew the journalist discovered the bribery two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "She said what the politician stated his press secretary said the chief of staff thought the reporter put on the table",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "She said that the politician stated his press secretary said the chief of staff thought the reporter put on the table",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "She said what the politician stated his press secretary said the chief of staff thought the reporter put the microphone on the table",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "She said that the politician stated his press secretary said the chief of staff thought the reporter put the microphone on the table",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_gap",
+        "input": "We all know what the old man thinks the woman knows the young boy said the teacher gave to her students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We all know that the old man thinks the woman knows the young boy said the teacher gave to her students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_no-gap",
+        "input": "We all know what the old man thinks the woman knows the young boy said the teacher gave a test to her students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_no-gap",
+        "input": "We all know that the old man thinks the woman knows the young boy said the teacher gave a test to her students",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

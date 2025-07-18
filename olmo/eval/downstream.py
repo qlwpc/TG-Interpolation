@@ -2140,7 +2140,6 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
 
 TG_path = "./TG-LLaMA/OLMoData/TG"
 TXLTREE_path = "./TG-LLaMA/OLMoData/txltree"
-SG_path = "./TG-LLaMA/evaluation/SG_tokenized"
 label_to_task_map = {
     "tg_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
     "tg_approx_sent_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "smallppl.json", "metric_type": "sent"}),
@@ -2150,7 +2149,7 @@ label_to_task_map = {
     "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "docsmallppl.json", "metric_type": "doc"}),
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "docppl.json", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "docsmallppl.json", "metric_type": "doc"}),
-    "syntactic_generalization": (SGDataset, {"dataset_path": SG_path}),
+    "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
     "piqa": PIQA,
     "hellaswag": HellaSwag,
     "winogrande": WinoGrande,

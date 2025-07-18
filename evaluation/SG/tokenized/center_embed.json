@@ -1,0 +1,915 @@
+{
+  "formula": [
+    "[ (6;%plaus%) + (7;%plaus%) ] < [ (6;%implaus%) + (7;%implaus%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The painting that the artist painted deteriorated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The painting that the artist deteriorated painted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The storm that the captain feared subsided",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The storm that the captain subsided feared",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The girl that the bug frightened shouted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The girl that the bug shouted frightened",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The baby that the woman held yelled",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The baby that the woman yelled held",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The soldier that the bullet wounded died",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The soldier that the bullet died wounded",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The storm that the scientist predicted intensified",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The storm that the scientist intensified predicted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The convict that the cop arrested escaped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The convict that the cop escaped arrested",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The computer that the secretary bought crashed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The computer that the secretary crashed bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The floor that the maid swept cracked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The floor that the maid cracked swept",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The yacht that the millionaires bought sank",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The yacht that the millionaires sank bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The shirt that the man bought ripped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The shirt that the man ripped bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The water that the maid poured evaporated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The water that the maid evaporated poured",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The building that the workers built collapsed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The building that the workers collapsed built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The bones that the doctor examined broke",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The bones that the doctor broke examined",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The building that the workers repaired deteriorated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The building that the workers deteriorated repaired",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The ship that the workers built sank",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The ship that the workers sank built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The horse that the boy rode bucked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The horse that the boy bucked rode",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The water that the chef needed evaporated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The water that the chef evaporated needed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The tree that the old man cut fell",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The tree that the old man fell cut",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The letter that the author wrote arrived",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The letter that the author arrived wrote",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The glass that the athlete hit cracked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The glass that the athlete cracked hit",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The bomb that the terrorist built exploded",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The bomb that the terrorist exploded built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The meat that the man cooked burned",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The meat that the man burned cooked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The sugar that the visitor bought dissolved",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The sugar that the visitor dissolved bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The pants that the woman bought ripped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The pants that the woman ripped bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The toilet that the worker fixed clogged",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The toilet that the worker clogged fixed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The window that the boy wiped shattered",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The window that the boy shattered wiped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The child that the shadow frightened yelled",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The child that the shadow yelled frightened",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

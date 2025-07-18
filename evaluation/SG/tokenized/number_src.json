@@ -1,0 +1,1297 @@
+{
+  "formula": [
+    "[(7;%match_sing%) < (7;%mismatch_sing%)] & [(7;%match_plural%) < (7;%mismatch_plural%)]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The author that hurt the senators is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The author that hurt the senators are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The authors that hurt the senator are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The authors that hurt the senator is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The pilot that injured the teachers brings love to people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The pilot that injured the teachers bring love to people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The pilots that injured the teacher brings love to people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The pilots that injured the teacher bring love to people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The doctor that ignored the guards interests people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The doctor that ignored the guards interest people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The doctors that ignored the guard interests people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The doctors that ignored the guard interest people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The farmer that embarrassed the clerks knows many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The farmer that embarrassed the clerks know many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The farmers that embarrassed the clerk knows many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The farmers that embarrassed the clerk know many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The manager that disguised the architects likes to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The manager that disguised the architects like to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The managers that disguised the architect likes to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The managers that disguised the architect like to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The customer that hated the athletes enjoys playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The customer that hated the athletes enjoy playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The customers that hated the athlete enjoys playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The customers that hated the athlete enjoy playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The officer that liked the actors is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The officer that liked the actors are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The officers that liked the actor is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The officers that liked the actor are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The teacher that hurt the ministers is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The teacher that hurt the ministers are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The teachers that hurt the minister is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The teachers that hurt the minister are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The senator that injured the actors is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The senator that injured the actors are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The senators that injured the actor is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The senators that injured the actor are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The consultant that ignored the secretaries is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The consultant that ignored the secretaries are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The consultants that ignored the secretary is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The consultants that ignored the secretary are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The guard that embarrassed the executives is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The guard that embarrassed the executives are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The guards that embarrassed the executive is playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The guards that embarrassed the executive are playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The clerk that disguised the authors is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The clerk that disguised the authors are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The clerks that disguised the author is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The clerks that disguised the author are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The architect that hated the pilots is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The architect that hated the pilots are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The architects that hated the pilot is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The architects that hated the pilot are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The athlete that admired the doctors brings good feelings",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The athlete that admired the doctors bring good feelings",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The athletes that admired the doctor brings good feelings",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The athletes that admired the doctor bring good feelings",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The actor that hurt the farmers interests people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The actor that hurt the farmers interest people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The actors that hurt the farmer interests people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The actors that hurt the farmer interest people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The minister that injured the managers knows many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The minister that injured the managers know many people",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The ministers that injured the manager knows tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The ministers that injured the manager know tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The taxi driver that ignored the customers likes to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The taxi driver that ignored the customers like to gamble",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The taxi drivers that ignored the customer likes tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The taxi drivers that ignored the customer like tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The secretary that embarrassed the officers enjoys playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The secretary that embarrassed the officers enjoy playing tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The secretaries that embarrassed the officer enjoys tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The secretaries that embarrassed the officer enjoy tennis",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The executive that disguised the teachers is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The executive that disguised the teachers are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The executives that disguised the teacher is good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The executives that disguised the teacher are good",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

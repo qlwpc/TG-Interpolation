@@ -1,0 +1,2309 @@
+{
+  "formula": [
+    "[(5;%reduced_ambig%) > (5;%unreduced_ambig%)] & [(5;%reduced_ambig%) > (5;%reduced_unambig%)] & [[(5;%reduced_ambig%) - (5;%unreduced_ambig%)] > [(5;%reduced_unambig%) - (5;%unreduced_unambig%)]]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The woman brought the sandwich from the kitchen fell in the dining room",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The woman who was brought the sandwich from the kitchen fell in the dining room",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The woman given the sandwich from the kitchen fell in the dining room",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The woman who was given the sandwich from the kitchen fell in the dining room",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The convict walked into the dark cell tried to escape but failed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The convict who was walked into the dark cell tried to escape but failed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The convict taken into the dark cell tried to escape but failed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The convict who was taken into the dark cell tried to escape but failed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The prisoners hit for hours and hours confessed to crimes they never committed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The prisoners who were hit for hours and hours confessed to crimes they never committed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The prisoners beaten for hours and hours confessed to crimes they never committed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The prisoners who were beaten for hours and hours confessed to crimes they never committed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The business expanded into an empire was sold for billions of dollars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The business that was expanded into an empire was sold for billions of dollars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The business grown into an empire was sold for billions of dollars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The business that was grown into an empire was sold for billions of dollars",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The mice consumed rapidly and entirely were carrying a rare bacteria",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The mice that were consumed rapidly and entirely were carrying a rare bacteria",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The mice consumed rapidly and entirely were carrying a rare bacteria",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The mice that were consumed rapidly and entirely were carrying a rare bacteria",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The lawyer pledged to keep silent was discovered to have broken his promise",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The lawyer that was pledged to keep silent was discovered to have broken his promise",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The lawyer committed to keep silent was discovered to have broken his promise",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The lawyer who was committed to keep silent was discovered to have broken his promise",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The child kicked in the chaos found her way back home",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The child who was kicked in the chaos found her way back home",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The child forgotten in the chaos found her way back home",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The child who was forgotten in the chaos found her way back home",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The horses raced past the barn fell into a swamp",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The horses that were raced past the barn fell into a swamp",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The horses taken past the barn fell into a swamp",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The horses that were taken past the barn fell into a swamp",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The artist painted a impressionist portrait was impressed with the work",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The artist who was painted a impressionist portrait was impressed with the work",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The artist drawn a impressionist portrait was impressed with the work",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The artist who was drawn a impressionist portrait was impressed with the work",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The car steered into the parking lot crashed into a concrete wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The car that was steered into the parking lot crashed into a concrete wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The car driven into the parking lot crashed into a concrete wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The car that was driven into the parking lot crashed into a concrete wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The campaign intended to be very popular was still unsuccessful",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The campaign that was intended to be very popular was still unsuccessful",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The campaign known to be very popular was still unsuccessful",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The campaign that was known to be very popular was still unsuccessful",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The student composed a carefully worded excuse forgot to give it to the teacher",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The student who was composed a carefully worded excuse forgot to give it to the teacher",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The student written a carefully worded excuse forgot to give it to the teacher",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The student who was written a carefully worded excuse forgot to give it to the teacher",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The television show started three weeks ago was canceled immediately",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The television show that was started three weeks ago was canceled immediately",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The television show begun three weeks ago was canceled immediately",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The television show that was begun three weeks ago was canceled immediately",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The boys performed an unsolicited favor appreciated the person who helped them",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The boys who were performed an unsolicited favor appreciated the person who helped them",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The boys done an unsolicited favor appreciated the person who helped them",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The boys who were done an unsolicited favor appreciated the person who helped them",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The player tossed the baseball dropped it on the ground",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The player who was tossed the baseball dropped it on the ground",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The player thrown the baseball dropped it on the ground",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The player who was thrown the baseball dropped it on the ground",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The men discussed in the neighborhood died from cancer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The men who were discussed in the neighborhood died from cancer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The man known in the neighborhood died from cancer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The man who was known in the neighborhood died from cancer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The child jumped past the swings was upset about it",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The child who was jumped past the swings was upset about it",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The child led past the swings was upset about it",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The child who was led past the swings was upset about it",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The students prepared a fancy dinner ate the meal quickly",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The students who were prepared a fancy dinner ate the meal quickly",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The students gotten a fancy dinner ate the meal quickly",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The students who were gotten a fancy dinner ate the meal quickly",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The infant fed during the night yelled intensely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The infant that was fed during the night yelled intensely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The infant aroused during the night yelled intensely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The infant that was aroused during the night yelled intensely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The refugee sheltered in the basement departed during the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The refugee who was sheltered in the basement departed during the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The refugee hidden in the basement departed during the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The refugee who was hidden in the basement departed during the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The dog walked on the beach chased after a bird",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The dog that was walked on the beach chased after a bird",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The dog seen on the beach chased after a bird",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The dog that was seen on the beach chased after a bird",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The ship steered off course sank in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The ship that was steered off course sank in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The ship blown off course sank in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The ship that was blown off course sank in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The fans cheered at the concert took photos with their phones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The fans that were cheered at the concert took photos with their phones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The fans emboldened at the concert took photos with their phones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The fans that were emboldened at the concert took photos with their phones",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The boat steered to the sea disappeared in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The boat that was steered in the sea disappeared in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The boat sunk in the sea disappeared in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The boat that was sunk in the sea disappeared in the storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The couple bought the apartment moved to a different city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The couple that was bought the apartment moved to a different city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The couple shown the apartment moved to a different city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The couple that was shown the apartment moved to a different city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The girl made a new blanket lost it during the trip",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The girl who was made a new blanket lost it during the trip",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The girl given a new blanket lost it during the trip",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The girl who was given a new blanket lost it during the trip",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The airplane landed in the mountains broke down during the ice storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The airplane that was landed in the mountains broke down",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The airplane flown in the mountains broke down during the ice storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The airplane that was flown in the mountains broke down during the ice storm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "reduced_ambig",
+        "input": "The child carried down the hall yelled at the top of his lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_ambig",
+        "input": "The child that was carried down the hall yelled at the top of his lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "reduced_unambig",
+        "input": "The child borne down the hall yelled at the top of his lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "unreduced_unambig",
+        "input": "The child that was borne down the hall yelled at the top of his lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

@@ -1,0 +1,1277 @@
+{
+  "formula": [
+    "[ (7;%match_sing%) < (7;%mismatch_sing%) ] & [ (7;%match_plural%) < (7;%mismatch_plural%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The author next to the senators hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The author next to the senators hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The authors next to the senator hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The authors next to the senator hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The pilot behind the teachers injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The pilot behind the teachers injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The pilots behind the teacher injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The pilots behind the teacher injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The doctor in front of the guards trusted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The doctor in front of the guards trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The doctors in front of the guard trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The doctors in front of the guard trusted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The farmer near the clerks embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The farmer near the clerks embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The farmers near the clerk embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The farmers near the clerk embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The manager to the side of the architects disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The manager to the side of the architects disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The managers to the side of the architect disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The managers to the side of the architect disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The customer across from the athletes hated herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The customer across from the athletes hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The customers across from the athlete hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The customers across from the athlete hated herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The officer next to the actors doubted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The officer next to the actors doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The officers next to the actor doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The officers next to the actor doubted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The teacher behind the ministers hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The teacher behind the ministers hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The teachers behind the minister hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The teachers behind the minister hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The senator in front of the actors injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The senator in front of the actors injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The senators in front of the actor injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The senators in front of the actor injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The consultant near the secretaries suspected herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The consultant near the secretaries suspected themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The consultants near the secretary suspected themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The consultants near the secretary suspected herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The guard to the side of the executives embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The guard to the side of the executives embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The guards to the side of the executive embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The guards to the side of the executive embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The clerk across from the authors disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The clerk across from the authors disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The clerks across from the author disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The clerks across from the author disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The architect next to the pilots hated herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The architect next to the pilots hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The architects next to the pilot hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The architects next to the pilot hated herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The athlete behind the doctors doubted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The athlete behind the doctors doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The athletes behind the doctor doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The athletes behind the doctor doubted herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The actor in front of the farmers hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The actor in front of the farmers hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The actors in front of the farmer hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The actors in front of the farmer hurt herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The minister near the managers injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The minister near the managers injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The ministers near the manager injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The ministers near the manager injured herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The taxi driver to the side of the customers suspected herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The taxi driver to the side of the customers suspected themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The taxi drivers to the side of the customer suspected themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The taxi drivers to the side of the customer suspected herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The secretary across from the officers embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The secretary across from the officers embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The secretaries across from the officer embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The secretaries across from the officer embarrassed herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The executive next to the teachers disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The executive next to the teachers disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The executives next to the teacher disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The executives next to the teacher disguised herself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

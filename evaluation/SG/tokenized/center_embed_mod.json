@@ -1,0 +1,1149 @@
+{
+  "formula": [
+    "[ (7;%plaus%) + (8;%plaus%) ] < [ (7;%implaus%) + (8;%implaus%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The painting that the artist who lived long ago painted deteriorated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The painting that the artist who lived long ago deteriorated painted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The storm that the captain with the black hair feared subsided",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The storm that the captain with the black hair subsided feared",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The girl that the bug with the green wings frightened shouted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The girl that the bug with the green wings shouted frightened",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The baby that the woman waiting in the street held yelled",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The baby that the woman waiting in the street yelled held",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The soldier that the bullet with the exploding tip wounded died",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The soldier that the bullet with the exploding tip died wounded",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The storm that the scientist from the famous university predicted intensified",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The storm that the scientist from the famous university intensified predicted",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The convict that the cop from the neighboring city arrested escaped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The convict that the cop from the neighboring city escaped arrested",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The computer that the secretary with the blue dress bought crashed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The computer that the secretary with the blue dress crashed bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The floor that the maid with the strong arms swept cracked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The floor that the maid with the strong arms cracked swept",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The yacht that the millionaires who everyone dislikes bought sank",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The yacht that the millionaires who everyone dislikes sank bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The shirt that the man who lives down the block bought ripped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The shirt that the man who lives down the block ripped bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The water that the maid in the white uniform poured evaporated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The water that the maid in the white uniform evaporated poured",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The building that the workers from the local union built collapsed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The building that the workers from the local union collapsed built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The bones that the doctor in the white jacket examined broke",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The bones that the doctor in the white jacket broke examined",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The building that the workers in the green pants repaired deteriorated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The building that the workers in the green pants deteriorated repaired",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The ship that the workers in the blue uniforms built sank",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The ship that the workers in the blue uniforms sank built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The horse that the boy from the local town rode bucked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The horse that the boy from the local town bucked rode",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The water that the chef in the tall white hat needed evaporated",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The water that the chef in the tall white hat evaporated needed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The tree that the old man from the small town cut fell",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The tree that the old man from the small town fell cut",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The letter that the author from the big city wrote arrived",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The letter that the author from the big city arrived wrote",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The glass that the athlete in the red shirt hit cracked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The glass that the athlete in the red shirt cracked hit",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The bomb that the terrorist from the foreign country built exploded",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The bomb that the terrorist from the foreign country exploded built",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The meat that the man in the green jacket cooked burned",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The meat that the man in the green jacket burned cooked",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The sugar that the visitor from the south of France bought dissolved",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The sugar that the visitor from the south of France dissolved bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The pants that the woman in the green dress bought ripped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The pants that the woman in the green dress ripped bought",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The toilet that the worker who we all respect fixed clogged",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The toilet that the worker who we all respect clogged fixed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The window that the boy in the blue shirt wiped shattered",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The window that the boy in the blue shirt shattered wiped",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "plaus",
+        "input": "The child that the shadow in the corner of the room frightened yelled",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "implaus",
+        "input": "The child that the shadow in the corner of the room yelled frightened",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

@@ -1,0 +1,2321 @@
+{
+  "formula": [
+    "[(5;%what_nogap%) > (5;%that_nogap%) ] & [(6;%what_gap%) < (6;%that_gap%) ] "
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "I know what our uncle grabbed the food in front of the guests at the holiday party",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "I know that our uncle grabbed the food in front of the guests at the holiday party",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "I know what our uncle grabbed in front of the guests at the holiday party",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that our uncle grabbed in front of the guests at the holiday party",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "My neighbor told me what the dog caught the mouse in full view of the neighbors yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "My neighbor told me that the dog caught the mouse in full view of the neighbors yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "My neighbor told me what the dog caught in full view of the neighbors yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My neighbor told me that the dog caught in full view of the neighbors yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "I know what the committee delivered the report to the president by the deadline",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "I know that the committee delivered the report to the president by the deadline",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "I know what the committee delivered to the president by the deadline",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I know that the committee delivered to the president by the deadline",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "You remember what the businessman showed the presentation to the visitors after lunch",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "You remember that the businessman showed the presentation to the visitors after lunch",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "You remember what the businessman showed to the visitors after lunch",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "You remember that the businessman showed to the visitors after lunch",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "She told me what the star student stole answers to the test from the history teacher last year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "She told me that the star student stole answers to the test from the history teacher last year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "She told me what the star student stole from the history teacher last year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "She told me that the star student stole from the history teacher last year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "She knows what the collector forged the painting with the help of a new technology a short while ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "She knows that the collector forged the painting with the help of a new technology a short while ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "She knows what the collector forged with the help of a new technology a short while ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "She knows that the collector forged with the help of a new technology a short while ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "We all remember what the convict brought a gun into the prison two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "We all remember that the convict brought a gun into the prison two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "We all remember what the convict brought into the prison two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We all remember that the convict brought into the prison two weeks ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "My friend reported what the company will sell multiple assets to benefit stock holders over the subsequent quarter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "My friend reported that the company will sell multiple assets to benefit stock holders over the subsequent quarter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "My friend reported what the company will sell to benefit stock holders over the subsequent quarter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My friend reported that the company will sell to benefit stock holders over the subsequent quarter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "I do not know what her rival derailed the performance with a cruel plan last week",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "I do not know that her rival derailed the performance with a cruel plan last week",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "I do not know what her rival derailed with a cruel plan last week",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I do not know that her rival derailed with a cruel plan last week",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "She can guess what the movie star will be awarded a prize for her hard work during the award ceremony",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "She can guess that the movie star will be awarded a prize for her hard work during the award ceremony",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "She can guess what the movie star will get for her hard work during the award ceremony",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "She can guess that the movie star will get for her hard work during the award ceremony",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "The newspaper reported who the suspect killed the witness with a gun in the middle of the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "The newspaper reported that the suspect killed the witness with a gun in the middle of the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "The newspaper reported who the suspect killed with a gun in the middle of the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The newspaper reported that the suspect killed with a gun in the middle of the night",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "We recall what the man placed a delicate plate next to the open fire over an hour ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "We recall that the man placed a delicate plate next to the open fire over an hour ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "We recall what the man placed next to the open fire over an hour ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We recall that the man placed next to the open fire over an hour ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "I remember what the nurse should administer the new medicine to the sick patient without any delay",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "I remember that the nurse should administer the new medicine to the sick patient without any delay",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "I remember what the nurse should administer to the sick patient without any delay",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "I remember that the nurse should administer to the sick patient without any delay",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "Our friend knew what the gossip column revealed family secrets to the whole town yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "Our friend knew that the gossip column revealed family secrets to the whole town yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "Our friend knew what the gossip column revealed to the whole town yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "Our friend knew that the gossip column revealed to the whole town yesterday",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "The mayor told me what the authorities repaired the golf course for a wealthy businessman over the summer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "The mayor told me that the authorities repaired the golf course for a wealthy businessman over the summer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "The mayor told me what the authorities repaired for a wealthy businessman over the summer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The mayor told me that the authorities repaired for a wealthy businessman over the summer",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "My friend remembers what the government collected sensitive data about foreign threats using illegal methods",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "My friend remembers that the government collected sensitive data about foreign threats using illegal methods",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "My friend remembers what the government collected about foreign threats using illegal methods",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My friend remembers that the government collected about foreign threats using illegal methods",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "The newspaper said what the neighbors sold a convertible to the new couple last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "The newspaper said that the neighbors sold a convertible to the new couple last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "The newspaper said what the neighbors sold to the new couple last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The newspaper said that the neighbors sold to the new couple last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "Our neighbor said what the student sent a package to her mother over a week ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "Our neighbor said that the student sent a package to her mother over a week ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "Our neighbor said what the student sent to her mother over a week ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "Our neighbor said that the student sent to her mother over a week ago",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "My friend told me who the university hired a new administrator to help with increased enrollment for the following year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "My friend told me that the university hired a new administrator to help with increased enrollment for the following year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "My friend told me who the university hired to help with increased enrollment for the following year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My friend told me that the university hired to help with increased enrollment for the following year",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "She can not believe what my good friend stole a candy bar from the store when he was young",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "She can not believe that my good friend stole a candy bar from the store when he was young",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "She can not believe what my good friend stole from the store when he was young",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "She can not believe that my good friend stole from the store when he was young",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "Our neighbor reminded us what the truck dragged the car out of the swamp last spring",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "Our neighbor reminded us that the truck dragged the car out of the swamp last spring",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "Our neighbor reminded us what the truck dragged out of the swamp last spring",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "Our neighbor reminded us that the truck dragged out of the swamp last spring",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "The shop owner told me what the restaurant prepared a great meal for their favorite guests yesterday evening",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "The shop owner told me that the restaurant prepared a great meal for their favorite guests yesterday evening",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "The shop owner told me what the restaurant prepared for their favorite guests yesterday evening",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "The shop owner told me that the restaurant prepared for their favorite guests yesterday evening",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "My sister told me what the newspaper published a long story about the mayor last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "My sister told me that the newspaper published a long story about the mayor last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "My sister told me what the newspaper published about the mayor last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "My sister told me that the newspaper published about the mayor last month",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "what_nogap",
+        "input": "We remember what our new friend brought a large present to the birthday party last weekend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_nogap",
+        "input": "We remember that our new friend brought a large present to the birthday party last weekend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "what_gap",
+        "input": "We remember what our new friend brought to the birthday party last weekend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "that_gap",
+        "input": "We remember that our new friend brought to the birthday party last weekend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

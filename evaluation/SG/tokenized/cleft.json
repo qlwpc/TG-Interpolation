@@ -1,0 +1,2561 @@
+{
+  "formula": [
+    "[(6;%np_mismatch%)-(6;%np_match%)]+[[(5;%vp_mismatch%)+(6;%vp_mismatch%)]-[(5;%vp_match%)+(6;%vp_match%)]]>0"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did was the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he ate was the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did was prepare the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he ate was prepare the meal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the young man did was the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the young man planted was the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the young man did was plant the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the young man planted was plant the crops",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the worker did was the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the worker repaired was the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the worker did was board the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the worker repaired was board the plane",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the fan did was the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the fan sold was the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the fan did was buy the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the fan sold was buy the tickets",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the young woman did was the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the young woman wiped was the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the young woman did was flush the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the young woman wiped was flush the toilet",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the fans did was the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the fans watched was the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the fans did was lose the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the fans watched was lose the game",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the gardener did was the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the gardener trimmed was the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the gardener did was plant the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the gardener trimmed was plant the tree",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old man did was the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old man bought was the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old man did was raise the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old man bought was raise the flag",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old man did was the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old man cooked was the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old man did was hunt the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old man cooked was hunt the chicken",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the workers did was the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the workers walked down was the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the workers did was pave the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the workers walked down was pave the sidewalk",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the mother did was the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the mother fed was the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the mother did was hug the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the mother fed was hug the baby",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old woman did was the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old woman bought was the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old woman did was furnish the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old woman bought was furnish the apartment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the guards did was the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the guards concocted was the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the guards did was thwart the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the guards concocted was thwart the plot",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the senator did was the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the senator sponsored was the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the senator did was veto the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the senator sponsored was veto the bill",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the representatives did was the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the representatives wrote was the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the representatives did was repeal the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the representatives wrote was repeal the law",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the old woman did was the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the old woman fed was the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the old woman did was stroke the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the old woman fed was stroke the cats",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the army did was the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the army loved was the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the army did was invade the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the army loved was invade the country",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the soldier did was the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the soldier battled was the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the soldier did was attack the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the soldier battled was attack the enemy",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the novelist did was the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the novelist wrote was the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the novelist did was borrow the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the novelist wrote was borrow the book",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the worker did was the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the worker installed was the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the worker did was lock the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the worker installed was lock the door",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the workers did was the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the workers painted was the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the workers did was reinforce the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the workers painted was reinforce the wall",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the actor did was the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the actor wrote was the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the actor did was tell the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the actor wrote was tell the story",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the tourists did was the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the tourists traveled towards was the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the tourists did was reach the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the tourists traveled towards was reach the destination",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the men did was the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the men repaired was the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the men did was defend the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the men repaired was defend the city",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did was the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he sent was the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did was deliver the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he sent was deliver the package",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What she did was the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What she wrote was the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What she did was renew the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What she wrote was renew the contract",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did was the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he spread was the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did was confirm the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he spread was confirm the rumor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who they did was the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who they rebuked was the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who they did was murder the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who they rebuked was murder the politician",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the police did was the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the police caught was the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the police did was monitor the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the police caught was monitor the suspect",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the people did was the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the people collected was the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the people did was remove the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the people collected was remove the trash",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the teacher did was the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the teacher taught was the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the teacher did was write about the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the teacher taught was write about the subject",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What they did was the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What they bought was the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What they did was transport the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What they bought was transport the drugs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who he did was his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who he called was his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who he did was hug his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who he called was hug his friend",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What she did was the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What she bought was the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What she did was transport the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What she bought was transport the shipment",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What we did was the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What we won was the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What we did was make the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What we won was make the argument",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who you did was the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who you contracted was the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who you did was hire the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who you contracted was hire the worker",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What he did was a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What he created was a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What he did was paint a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What he created was paint a painting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the woman did was the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the woman wrote was the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the woman did was mail the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the woman wrote was mail the letter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "What the maid did was the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "What the maid broke was the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "What the maid did was empty the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "What the maid broke was empty the glass",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "np_mismatch",
+        "input": "Who the judge did was the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "np_match",
+        "input": "Who the judge accused was the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_match",
+        "input": "Who the judge did was sentence the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "vp_mismatch",
+        "input": "Who the judge accused was sentence the criminal",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

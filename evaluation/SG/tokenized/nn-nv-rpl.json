@@ -1,0 +1,104 @@
+{
+  "formula": [
+    "(5;%nn_ambig%)>(5;%nn_unambig%)",
+    "(5;%nv_ambig%)>(5;%nv_unambig%)"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "nn_ambig",
+        "input": "The company supplies were all gone",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "nn_unambig",
+        "input": "The company's supplies were all gone",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "nv_ambig",
+        "input": "The company supplies the services we need",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "nv_unambig",
+        "input": "The company supplied the services we need",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

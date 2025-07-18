@@ -1,0 +1,2755 @@
+{
+  "formula": [
+    "[(5;%sub_no-matrix%) > (5;%no-sub_no-matrix%) ] & [(5;%sub_matrix%) < (5;%no-sub_matrix%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "As the doctor who the administrator had recently hired studied the book that colleagues had written on cancer therapy .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The doctor who the administrator had recently hired studied the book that colleagues had written on cancer therapy .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "As the doctor who the administrator had recently hired studied the book that colleagues had written on cancer therapy , the nurse walked into the room .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The doctor who the administrator had recently hired studied the book that colleagues had written on cancer therapy , the nurse walked into the room .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the man who a friend had helped shot the bird that he had been tracking secretly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The man who a friend had helped shot the bird that he had been tracking secretly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the man who a friend had helped shot the bird that he had been tracking secretly , he loaded his gun .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The man who a friend had helped shot the bird that he had been tracking secretly , he loaded his gun .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the students who the teacher had in her class did not like the material that the teacher used to cover evolution .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students who the teacher had in her class did not like the material that the teacher used to cover evolution .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the students who the teacher had in her class did not like the material that the teacher used to cover evolution , they complained to the principal .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students who the teacher had in her class did not like the material that the teacher used to cover evolution , they complained to the principal .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the general who the officer had given a uniform entered the camp that the colonel constructed two years ago .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The general who the officer had given a uniform entered the camp that the colonel constructed two years ago .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the general who the officer had given a uniform entered the camp that the colonel constructed two years ago , the soldiers cheered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The general who the officer had given a uniform entered the camp that the colonel constructed two years ago , the soldiers cheered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the trainer who the dog feared delivered the newspaper that the resident had ordered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The trainer who the dog feared delivered the newspaper that the resident had ordered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the trainer who the dog feared delivered the newspaper that the resident had ordered , the dog looked at the door .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The trainer who the dog feared delivered the newspaper that the resident had ordered , the dog looked at the door .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the lawyers who the client had hired printed the documents that the client never requested .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The lawyers who the client had hired printed the documents that the client never requested .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the lawyers who the client had hired printed the documents that the client never requested , the aids made coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The lawyers who the client had hired printed the documents that the client never requested , the aids made coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the editor who the author knew well liked the draft that the celebrity had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The editor who the author knew well liked the draft that the celebrity had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the editor who the author knew well liked the draft that the celebrity had written , he published it the next month .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The editor who the author knew well liked the draft that the celebrity had written , he published it the next month .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Since the nurse who the doctor had met only once lost her documents that she had bought from an expensive store .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The nurse who the doctor had met only once lost her documents that she had bought from an expensive store .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Since the nurse who the doctor had met only once lost her documents that she had bought from an expensive store , she administered the wrong medicine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The nurse who the doctor had met only once lost her documents that she had bought from an expensive store , she administered the wrong medicine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the scientist who the contractor had recommended broke the computer that the administrator moved to the basement .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The scientist who the contractor had recommended broke the computer that the administrator moved to the basement .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the scientist who the contractor had recommended broke the computer that the administrator moved to the basement , the administrator wrote everything by hand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The scientist who the contractor had recommended broke the computer that the administrator moved to the basement , the administrator wrote everything by hand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the minister who the mayor had invited praised the new building that the businessman had built downtown .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The minister who the mayor had invited praised the new building that the businessman had built downtown .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the minister who the mayor had invited praised the new building that the businessman had built downtown , it started to rain .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The minister who the mayor had invited praised the new building that the businessman had built downtown , it started to rain .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the architect who the mayor respected very much read the proposal that the housing authority drafted .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The architect who the mayor respected very much read the proposal that the housing authority drafted .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the architect who the mayor respected very much read the proposal that the housing authority drafted , the house was built correctly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The architect who the mayor respected very much read the proposal that the housing authority drafted , the house was built correctly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the actor who the director praised openly delivered the speech that the author had written yesterday .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The actor who the director praised openly delivered the speech that the author had written yesterday .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the actor who the director praised openly delivered the speech that the author had written yesterday , she took a deep breath .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The actor who the director praised openly delivered the speech that the author had written yesterday , she took a deep breath .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the pianist who the critic did not like practiced the music that the composer had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The pianist who the critic did not like practiced the music that the composer had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the pianist who the critic did not like practiced the music that the composer had written , the conductor stretched his arms .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The pianist who the critic did not like practiced the music that the composer had written , the conductor stretched his arms .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Although the students who the principle had disciplined enjoyed the novel that the school administrator had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students who the principle had disciplined enjoyed the novel that the school administrator had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Although the students who the principle had disciplined enjoyed the novel that the school administrator had written , the teacher considered it poorly written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students who the principle had disciplined enjoyed the novel that the school administrator had written , the teacher considered it poorly written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the maid who the chef had yelled at read the magazine that the shift manager left behind .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The maid who the chef had yelled at read the magazine that the shift manager left behind .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the maid who the chef had yelled at read the magazine that the shift manager left behind , the customer waited at her table .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The maid who the chef had yelled at read the magazine that the shift manager left behind , the customer waited at her table .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the assistant who the boss moved down the hall wrote the letter that the lawyer threw away .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The assistant who the boss moved down the hall wrote the letter that the lawyer threw away .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the assistant who the boss moved down the hall wrote the letter that the lawyer threw away , she had a cup of coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The assistant who the boss moved down the hall wrote the letter that the lawyer threw away , she had a cup of coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the diplomat who the spy had contacted repeatedly presented the file that the assistant had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The diplomat who the spy had contacted repeatedly presented the file that the assistant had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the diplomat who the spy had contacted repeatedly presented the file that the assistant had written , the ambassador gave a speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The diplomat who the spy had contacted repeatedly presented the file that the assistant had written , the ambassador gave a speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the officials who the coaches had bribed handsomely reviewed the contract that the lawyers had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The officials who the coaches had bribed handsomely reviewed the contract that the lawyers had written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the officials who the coaches had bribed handsomely reviewed the contract that the lawyers had written , the players waited nervously .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The officials who the coaches had bribed handsomely reviewed the contract that the lawyers had written , the players waited nervously .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the clerk who the citizens liked greatly lost the plans that the city planners had drafted .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The clerk who the citizens liked greatly lost the plans that the city planners had drafted .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the clerk who the citizens liked greatly lost the plans that the city planners had drafted , the detective looked elsewhere .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The clerk who the citizens liked greatly lost the plans that the city planners had drafted , the detective looked elsewhere .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the tourists who the locals found strange read the guide that the maid had given them .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The tourists who the locals found strange read the guide that the maid had given them .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the tourists who the locals found strange read the guide that the maid had given them , the children played in the sand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The tourists who the locals found strange read the guide that the maid had given them , the children played in the sand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the politicians who the lobbyists trusted passed the new law that all the shop owners strongly opposed .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The politicians who the lobbyists trusted passed the new law that all the shop owners strongly opposed .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the politicians who the lobbyists trusted passed the new law that all the shop owners strongly opposed , the protestors walked down the street .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The politicians who the lobbyists trusted passed the new law that all the shop owners strongly opposed , the protestors walked down the street .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the police who the officer had given pistols found new evidence that the suspect had hidden .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The police who the officer had given pistols found new evidence that the suspect had hidden .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the police who the officer had given pistols found new evidence that the suspect had hidden , the judge declared a mistrial .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The police who the officer had given pistols found new evidence that the suspect had hidden , the judge declared a mistrial .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the students who the committee had praised handed in their papers that the teacher assigned them .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students who the committee had praised handed in their papers that the teacher assigned them .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the students who the committee had praised handed in their papers that the teacher assigned them , they revised them all night long .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students who the committee had praised handed in their papers that the teacher assigned them , they revised them all night long .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}
