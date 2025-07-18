@@ -1,0 +1,1909 @@
+{
+  "formula": [
+    "[(5;%no-obj_no-comma%) > (5;%no-obj_comma%) ] &  [(5;%no-obj_no-comma%) > (5;%obj_no-comma%) ] & [[(5;%no-obj_no-comma%) - (5;%no-obj_comma%) ] > [(5;%obj_no-comma%) - (5;%obj_comma%) ]]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As the criminal shot the woman yelled at the top of her lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As the criminal shot his gun the woman yelled at the top of her lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As the criminal shot , the woman yelled at the top of her lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As the criminal shot his gun , the woman yelled at the top of her lungs",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "When the dog bit the doctor took off the restraint",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "When the dog bit his owner the doctor took off the restraint",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "When the dog bit , the doctor took off the restraint",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "When the dog bit his owner , the doctor took off the restraint",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As the ship crossed the waters remained blue and calm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As the ship crossed the sea the waters remained blue and calm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As the ship crossed , the waters remained blue and calm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As the ship crossed the sea , the waters remained blue and calm",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the newcomers discussed the soldiers shared a cigarette",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the newcomers discussed the situation the soldiers shared a cigarette",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the newcomers discussed , the soldiers shared a cigarette",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the newcomers discussed the situation , the soldiers shared a cigarette",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "Though the athlete telephoned the coach refused to praise him",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "Though the athlete telephoned his manager the coach refused to praise him",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "Though the athlete telephoned , the coach refused to praise him",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "Though the athlete telephoned his manager , the coach refused to praise him",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "While the crowd applauded the actor relaxed on a chair",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "While the crowd applauded the cast the actor relaxed on a chair",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "While the crowd applauded , the actor relaxed on a chair",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "While the crowd applauded the cast , the actor relaxed on a chair",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "While the audience cheered the actor delivered his speech",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "While the audience cheered the show the actor delivered his speech",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "While the audience cheered , the actor delivered his speech",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "While the audience cheered the show , the actor delivered his speech",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "While the students ate the coffee was removed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "While the students ate the food the coffee was removed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "While the students ate , the coffee was removed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "While the students ate the food , the coffee was removed",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "When the professor taught the visitors lost interest",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "When the professor taught the students the visitors lost interest",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "When the professor taught , the visitors lost interest",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "When the professor taught the students , the visitors lost interest",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "Because the baby grabbed the woman stayed until the end",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "Because the baby grabbed the blanket the woman stayed until the end",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "Because the baby grabbed , the woman stayed until the end",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "Because the baby grabbed the blanket , the woman stayed until the end",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "Because the manager cheered the comedian began his act",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "Because the manager cheered the first act the comedian began his act",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "Because the manager cheered , the comedian began his act",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "Because the manager cheered the first act , the comedian began his act",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the patient asked the nurse told her the news",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the patient asked for medicine the nurse told her the news",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the patient asked , the nurse told her the news",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the patient asked for medicine , the nurse told her the news",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the guard visited the children jumped into the pool",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the guard visited the children the children jumped into the pool",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the guard visited , the children jumped into the pool",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the guard visited the children , the children jumped into the pool",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the dog signaled the farmer went into the field",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the dog signaled the family the farmer went into the field",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the dog signaled , the farmer went into the field",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the dog signaled the family , the farmer went into the field",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As the class considered the teacher asked a question",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As the class considered the problem the teacher asked a question",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As the class considered , the teacher asked a question",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As the class considered the problem , the teacher asked a question",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "While the woman decorated the pot sat on the counter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "While the woman decorated the kitchen the pot sat on the counter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "While the woman decorated , the pot sat on the counter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "While the woman decorated the kitchen , the pot sat on the counter",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "When the customer interrupted the manager changed the advertisement",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "When the customer interrupted the clerk the manager changed the advertisement",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "When the customer interrupted , the manager changed the advertisement",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "When the customer interrupted the clerk , the manager changed the advertisement",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As the young man wiped the pipe fell to the floor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As the young man wiped the windows the pipe fell to the floor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As the young man wiped , the pipe fell to the floor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As the young man wiped the windows , the pipe fell to the floor",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "While the prisoners attacked the guards refused to negotiate",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "While the prisoners attacked the manager the guards refused to negotiate",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "While the prisoners attacked , the guards refused to negotiate",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "While the prisoners attacked the manager , the guards refused to negotiate",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As long as the king governed his subjects feared his anger",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As long as the king governed his lands his subjects feared his anger",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As long as the king governed , his subjects feared his anger",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As long as the king governed his lands , his subjects feared his anger",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the host interrupted the discussion became more interesting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the host interrupted the speaker the discussion became more interesting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the host interrupted , the discussion became more interesting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the host interrupted the speaker , the discussion became more interesting",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the woman dressed her children thought she looked lovely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the woman dressed herself her children thought she looked lovely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the woman dressed , her children thought she looked lovely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the woman dressed herself , her children thought she looked lovely",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "After the soldier signaled the doctor ordered it to stop",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "After the soldier signaled to the general the doctor ordered it to stop",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "After the soldier signaled , the doctor ordered it to stop",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "After the soldier signaled to the general , the doctor ordered it to stop",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "no-obj_no-comma",
+        "input": "As the guard stopped the thieves grabbed the money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_no-comma",
+        "input": "As the guard stopped the alarm the thieves grabbed the money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-obj_comma",
+        "input": "As the guard stopped , the thieves grabbed the money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      {
+        "condition_name": "obj_comma",
+        "input": "As the guard stopped the alarm , the thieves grabbed the money",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        ]
+      }
+    ]
+  ]
+}

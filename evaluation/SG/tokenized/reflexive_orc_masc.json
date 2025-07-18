@@ -1,0 +1,1265 @@
+{
+  "formula": [
+    "[ (8;%match_sing%) < (8;%mismatch_sing%) ] & [ (8;%match_plural%) < (8;%mismatch_plural%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The author that the senators liked hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The author that the senators liked hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The authors that the senator liked hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The authors that the senator liked hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The pilot that the teachers met injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The pilot that the teachers met injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The pilots that the teacher met injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The pilots that the teacher met injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The doctor that the guards hated trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The doctor that the guards hated trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The doctors that the guard hated trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The doctors that the guard hated trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The farmer that the clerks discussed embarrassed himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The farmer that the clerks discussed embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The farmers that the clerk discussed injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The farmers that the clerk discussed injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The manager that the architects loved disguised himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The manager that the architects loved disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The managers that the architect loved trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The managers that the architect loved trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The customer that the athletes liked hated himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The customer that the athletes liked hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The customers that the athlete liked embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The customers that the athlete liked embarrassed himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The officer that the actors met doubted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The officer that the actors met doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The officers that the actor met disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The officers that the actor met disguised himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The teacher that the ministers hated hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The teacher that the ministers hated hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The teachers that the minister hated hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The teachers that the minister hated hated himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The senator that the actors discussed injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The senator that the actors discussed injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The senators that the actor discussed doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The senators that the actor discussed doubted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The consultant that the secretaries loved trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The consultant that the secretaries loved trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The consultants that the secretary loved hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The consultants that the secretary loved hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The guard that the executives liked embarrassed himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The guard that the executives liked embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The guards that the executive liked injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The guards that the executive liked injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The clerk that the authors met disguised himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The clerk that the authors met disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The clerks that the author met trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The clerks that the author met trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The architect that the pilots hated hated himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The architect that the pilots hated hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The architects that the pilot hated embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The architects that the pilot hated embarrassed himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The athlete that the doctors discussed doubted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The athlete that the doctors discussed doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The athletes that the doctor discussed disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The athletes that the doctor discussed disguised himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The actor that the farmers loved hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The actor that the farmers loved hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The actors that the farmer loved hated themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The actors that the farmer loved hated himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The minister that the managers liked injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The minister that the managers liked injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The ministers that the manager liked doubted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The ministers that the manager liked doubted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The taxi driver that the customers met trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The taxi driver that the customers met trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The taxi drivers that the customer met hurt themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The taxi drivers that the customer met hurt himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The secretary that the officers hated embarrassed himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The secretary that the officers hated embarrassed themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The secretaries that the officer hated injured themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The secretaries that the officer hated injured himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "match_sing",
+        "input": "The executive that the teachers discussed disguised himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_sing",
+        "input": "The executive that the teachers discussed disguised themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "match_plural",
+        "input": "The executives that the teacher discussed trusted themselves",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "mismatch_plural",
+        "input": "The executives that the teacher discussed trusted himself",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

@@ -1,0 +1,1697 @@
+{
+  "formula": [
+    "[(3;%sub_no-matrix%) > (3;%no-sub_no-matrix%) ] & [(3;%sub_matrix%) < (3;%no-sub_matrix%) ]"
+  ],
+  "data": [
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "As the doctor studied the book .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The doctor studied the book .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "As the doctor studied the book , the nurse walked into the room .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The doctor studied the book , the nurse walked into the room .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the man shot the bird .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The man shot the bird .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the man shot the bird , he loaded his gun .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The man shot the bird , he loaded his gun .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the students did not like the material .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students did not like the material .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the students did not like the material , they complained to the principal .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students did not like the material , they complained to the principal .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the general entered the camp .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The general entered the camp .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the general entered the camp , the soldiers cheered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The general entered the camp , the soldiers cheered .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the delivery man delivered the newspaper .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The delivery man delivered the newspaper .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the delivery man delivered the newspaper , the dog looked at the door .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The delivery man delivered the newspaper , the dog looked at the door .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the lawyers printed the documents .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The lawyers printed the documents .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the lawyers printed the documents , the aids made coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The lawyers printed the documents , the aids made coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the editor liked the draft .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The editor liked the draft .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the editor liked the draft , he published it the next month .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The editor liked the draft , he published it the next month .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Since the nurse lost her documents .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The nurse lost her documents .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Since the nurse lost her documents , she administered the wrong medicine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The nurse lost her documents , she administered the wrong medicine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the scientist broke the computer .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The scientist broke the computer .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the scientist broke the computer , the administrator wrote everything by hand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The scientist broke the computer , the administrator wrote everything by hand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the minister praised the new building .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The minister praised the new building .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the minister praised the new building , it started to rain .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The minister praised the new building , it started to rain .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the architect read the plans .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The architect read the plans .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the architect read the plans , the house was built correctly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The architect read the plans , the house was built correctly .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the actor delivered the speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The actor delivered the speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the actor delivered the speech , she took a deep breath .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The actor delivered the speech , she took a deep breath .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the pianist practiced the music .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The pianist practiced the music .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the pianist practiced the music , the conductor stretched his arms .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The pianist practiced the music , the conductor stretched his arms .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Although the students enjoyed the novel .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students enjoyed the novel .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Although the students enjoyed the novel , the teacher considered it poorly written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students enjoyed the novel , the teacher considered it poorly written .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the maid read the magazine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The maid read the magazine .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the maid read the magazine , the customer waited at her table .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The maid read the magazine , the customer waited at her table .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the assistant wrote the letter .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The assistant wrote the letter .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the assistant wrote the letter , she had a cup of coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The assistant wrote the letter , she had a cup of coffee .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "After the diplomat presented the file .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The diplomat presented the file .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "After the diplomat presented the file , the ambassador gave a speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The diplomat presented the file , the ambassador gave a speech .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the officials reviewed the contract .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The officials reviewed the contract .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the officials reviewed the contract , the players waited nervously .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The officials reviewed the contract , the players waited nervously .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Because the clerk lost the plans .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The clerk lost the plans .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Because the clerk lost the plans , the detective looked elsewhere .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The clerk lost the plans , the detective looked elsewhere .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "While the tourists read the guide .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The tourists read the guide .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "While the tourists read the guide , the children played in the sand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The tourists read the guide , the children played in the sand .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the politicians passed the new law .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The politicians passed the new law .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the politicians passed the new law , the protestors blocked traffic outside .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The politicians passed the new law , the protestors blocked traffic outside .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "When the police found new evidence .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The police found new evidence .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "When the police found new evidence , the judge declared a mistrial .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The police found new evidence , the judge declared a mistrial .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "condition_name": "sub_no-matrix",
+        "input": "Before the students handed in their papers .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_no-matrix",
+        "input": "The students handed in their papers .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "sub_matrix",
+        "input": "Before the students handed in their papers , they revised them all night long .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "condition_name": "no-sub_matrix",
+        "input": "The students handed in their papers , they revised them all night long .",
+        "tag": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ]
+}

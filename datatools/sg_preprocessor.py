@@ -114,9 +114,6 @@ if __name__ == "__main__":
     tokenizer = Tokenizer.from_file(args.tokenizer_config_path)
     
     sent = tokenizer.encode("The painting that the artist deteriorated painted")
-    # print(sent.tokens)
-    # print(sent.ids)
-    # exit(0)
     for task_name in task_list:
         json_path = os.path.join(args.sg_dir, f"{task_name}.json")
         output_path = os.path.join(args.output_dir, f"{task_name}.json")
