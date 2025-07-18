@@ -76,7 +76,7 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 50000
+save_interval_unsharded: 4000
 save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
