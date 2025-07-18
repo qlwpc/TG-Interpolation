@@ -107,7 +107,7 @@ evaluators:
       prefetch_factor : 1
       pin_memory: true
       drop_last: false
-      datasets:
+      paths:
         - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2015-18-dev.npy
 data:
   pad_direction: right

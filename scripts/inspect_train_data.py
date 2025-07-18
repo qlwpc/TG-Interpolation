@@ -66,7 +66,7 @@ def inspect_data_without_device_data_indices(
     mounts: Optional[List[Tuple[str, str]]] = None,
 ):
     cfg = TrainConfig.load(
-        cached_path(os.path.join(run_path, f"step{reference_step}/config.yaml")),
+        cached_path(os.path.join(run_path, f"step{reference_step}-unsharded/config.yaml")),
         overrides=[clean_opt("--evaluators=[]"), clean_opt("--save_overwrite")],
     )
     cfg.data.num_workers = 1
@@ -83,7 +83,7 @@ def inspect_data_without_device_data_indices(
     except FileNotFoundError:
         try:
             # Unsharded checkpointing
-            trainer_state = load_state_dict(run_path, f"step{reference_step}/train.pt", map_location="cpu")
+            trainer_state = load_state_dict(run_path, f"step{reference_step}-unsharded/train.pt", map_location="cpu")
         except FileNotFoundError:
             # Legacy checkpointing
             trainer_state = load_state_dict(run_path, f"step{reference_step}/rank0.pt", map_location="cpu")
