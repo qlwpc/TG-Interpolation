@@ -5,7 +5,6 @@
 #SBATCH --gres=gpu:2
 
 workspace=${HOME}/TG-Interpolation
-export PYTHONPATH=$PYTHONPATH:${workspace}/OLMo
 export HF_ENDPOINT=https://hf-mirror.com
 nvidia-smi
 wandb offline
