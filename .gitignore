@@ -1,7 +1,6 @@
 *.out
 *.npy
 *.pyc
-*.so
 *.log
 *.wandb
 __pycache__/
