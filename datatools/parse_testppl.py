@@ -132,6 +132,7 @@ if __name__=="__main__":
 
     with open(args.input_dir + "test_tree.txt", "w+") as input:
         doc_id = 0
+        sent_id = 0
         doc_list = []
         for line in tqdm(test_docs):
             doc_id += 1  # count from 1
@@ -145,9 +146,10 @@ if __name__=="__main__":
                     sents.append(sent)
                     end.append(False)
             # print(sents)
-            sent_id = 0
+            cur_cnt = 0
             for sent, if_endline in zip(sents, end):
                 sent_id += 1
+                cut_cnt += 1
                 # print(sent.text)
                 # text = " ".join(sent)
                 # doc = nlp(text)
@@ -166,9 +168,9 @@ if __name__=="__main__":
                     TG_string = convert_TG_format(parsed_string)
                     input.write(TG_string + "\n")
                     input_ids = tokenizer.encode(TG_string).ids
-                    if sent_id == 1:
+                    if cur_cnt == 1:
                         input_ids = [args.bos] + input_ids
-                    elif sent_id == len(split_sents):
+                    elif cur_cnt == len(split_sents):
                         input_ids += [args.eos]
                     doc_list.append({
                         "doc_id": doc_id,

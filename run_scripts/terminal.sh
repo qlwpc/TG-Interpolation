@@ -2,6 +2,7 @@
 #SBATCH -N 1
 #SBATCH -n 2
 #SBATCH -c 1
+#SBATCH --mem=1M
 #SBATCH --gres=gpu:2
 
 workspace=${HOME}/TG-Interpolation

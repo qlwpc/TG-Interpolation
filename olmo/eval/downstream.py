@@ -468,11 +468,12 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             )
             sent_ids.append(sample["sent_id"])
             cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
-            input_ids.append(cur_input_id)
 
             attention_bias, label_mask = None, None
             if self._generate_TG_attention_bias is not None:
+                cur_input_id = self._generate_TG_attention_bias.convert_input_to_TG_format(cur_input_id)
                 attention_bias, label_mask = self._generate_TG_attention_bias(cur_input_id)
+            input_ids.append(cur_input_id)
             
             if attention_bias is not None:
                 if not isinstance(attention_bias, torch.Tensor):
