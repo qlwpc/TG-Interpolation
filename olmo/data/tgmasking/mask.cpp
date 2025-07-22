@@ -360,10 +360,6 @@ public:
             }
 
             last_token = token;
-            if (token == vocab_.eos) {
-                top = -1;
-                stk_beg = 0;
-            }
         }
 
         if (update_state) {
