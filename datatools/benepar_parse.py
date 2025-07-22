@@ -10,15 +10,6 @@ import re
 import subprocess
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--list_arg', type=str)  # 接收单个字符串
-parser.add_argument('--start_index', type=int, default=0)
-args = parser.parse_args()
-
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-beneparser = benepar.Parser("benepar_en3_large")
-print(f"parser batch size is {beneparser.batch_size}")
-
 @Language.component("set_custom_boundaries")
 def set_custom_boundaries(doc):
     for token in doc[:-1]:
@@ -70,8 +61,7 @@ def split_long_sentence(tokens, max_len=512):
         part2 = tokens[max_len:]
         return [part1] + split_long_sentence(part2, max_len)
 
-sentparser = spacy.load('en_core_web_md')
-sentparser.add_pipe("set_custom_boundaries", before="parser")
+
 def process_text(text, max_len=256):
     text = preprocess_text(text)
     doc = sentparser(text)
@@ -147,64 +137,56 @@ class batch_buffer:
                not self.is_short and len(self.batches)==long_batchsize:
                 self.parse_batch()
 
-# doc = sentparser(preprocess_text(text))
-# for sent in doc.sents:
-#     print(sent._.parse_string)
 
 #[, 'CC-MAIN-2013-48', 'CC-MAIN-2014-10', 'CC-MAIN-2014-15', 'CC-MAIN-2014-23', 'CC-MAIN-2014-35', 'CC-MAIN-2014-41', 'CC-MAIN-2014-42', 'CC-MAIN-2014-49', 'CC-MAIN-2014-52', 'CC-MAIN-2015-06', 'CC-MAIN-2015-11', 'CC-MAIN-2015-14', 'CC-MAIN-2015-18', 'CC-MAIN-2015-22', 'CC-MAIN-2015-27', 'CC-MAIN-2015-32', 'CC-MAIN-2015-35', 'CC-MAIN-2015-40', 'CC-MAIN-2015-48', 'CC-MAIN-2016-07', 'CC-MAIN-2016-18', 'CC-MAIN-2016-22', 'CC-MAIN-2016-26', 'CC-MAIN-2016-30', 'CC-MAIN-2016-36', 'CC-MAIN-2016-40', 'CC-MAIN-2016-44', 'CC-MAIN-2016-50', 'CC-MAIN-2017-04', 'CC-MAIN-2017-09', 'CC-MAIN-2017-13', 'CC-MAIN-2017-17', 'CC-MAIN-2017-22', 'CC-MAIN-2017-26', 'CC-MAIN-2017-30', 'CC-MAIN-2017-34', 'CC-MAIN-2017-39', 'CC-MAIN-2017-43', 'CC-MAIN-2017-47', 'CC-MAIN-2017-51', 'CC-MAIN-2018-05', 'CC-MAIN-2018-09', 'CC-MAIN-2018-13', 'CC-MAIN-2018-17', 'CC-MAIN-2018-22', 'CC-MAIN-2018-26', 'CC-MAIN-2018-30', 'CC-MAIN-2018-34', 'CC-MAIN-2018-39', 'CC-MAIN-2018-43', 'CC-MAIN-2018-47', 'CC-MAIN-2018-51', 'CC-MAIN-2019-04', 'CC-MAIN-2019-09', 'CC-MAIN-2019-13', 'CC-MAIN-2019-18', 'CC-MAIN-2019-22', 'CC-MAIN-2019-26', 'CC-MAIN-2019-30', 'CC-MAIN-2019-35', 'CC-MAIN-2019-39', 'CC-MAIN-2019-43', 'CC-MAIN-2019-47', 'CC-MAIN-2019-51', 'CC-MAIN-2020-05', 'CC-MAIN-2020-10', 'CC-MAIN-2020-16', 'CC-MAIN-2020-24', 'CC-MAIN-2020-29', 'CC-MAIN-2020-34', 'CC-MAIN-2020-40', 'CC-MAIN-2020-45', 'CC-MAIN-2020-50', 'CC-MAIN-2021-04', 'CC-MAIN-2021-10', 'CC-MAIN-2021-17', 'CC-MAIN-2021-21', 'CC-MAIN-2021-25', 'CC-MAIN-2021-31', 'CC-MAIN-2021-39', 'CC-MAIN-2021-43', 'CC-MAIN-2021-49', 'CC-MAIN-2022-05', 'CC-MAIN-2022-21', 'CC-MAIN-2022-27', 'CC-MAIN-2022-33', 'CC-MAIN-2022-40', 'CC-MAIN-2022-49', 'CC-MAIN-2023-06', 'CC-MAIN-2023-14', 'CC-MAIN-2023-23', 'CC-MAIN-2023-40', 'CC-MAIN-2023-50']
-print(args.list_arg)
-result_list = args.list_arg.split(',') if args.list_arg else []
-print("Received list:", result_list) # [ "CC-MAIN-2014-41"]
-config = result_list
-for split in config:
-    ds = load_dataset("permutans/fineweb-bbc-news", split)
-    ds = ds["train"]
-    totallen = len(ds)
-    print(totallen)
-    logging.info(f"start parsing {split}")
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--list_arg', type=str)  # 接收单个字符串
+    parser.add_argument('--start_index', type=int, default=0)
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    pbar = tqdm(total=totallen)
-    filename = "bbc-news/" + split + ".txt"
-    index = count_lines_linux_style(filename)
-    pbar.update(index)
-    with open(filename, "a+") as output:
-        Buffer = batch_buffer(output, pbar)
-        while index < len(ds):
-            document = ds[index]
-            text = document['text']
-            split_sents = process_text(text, max_len=256)
-            Buffer.append_batch(split_sents)
-            # for sent in split_sents:
-            #     doc = nlp(sent)
-            #     sents = list(doc.sents)
-            #     print(sents)
-            #     for parsed in sents:
-            #         parse_string = parsed._.parse_string
-            #         if parsed.text == 'Ċ':
-            #             parse_string = '(Ċ Ċ)'
-            #         if not is_first:
-            #             parse_string = " " + parse_string 
-            #         print(parse_string)
-            index += 1
-        Buffer.parse_batch()
-    index = 0
-            
-logging.info("finished")
-# (S (NP (NP (DT The) (NN time)) (PP (IN for) (NP (NN action)))) (VP (VBZ is) (ADVP (RB now))) (. .))
-# sent._.labels
-# ('S',)
-# list(sent._.children)[0]
-# The time for action
+    sentparser = spacy.load('en_core_web_md')
+    sentparser.add_pipe("set_custom_boundaries", before="parser")
 
-# John Blair & Co. is close to an agreement to sell its TV station advertising representation operation and program production unit to an investor group led by James H. Rosenfield, a former CBS Inc. executive, industry sources said.
+    beneparser = benepar.Parser("benepar_en3_large")
+    print(f"parser batch size is {beneparser.batch_size}")
 
-# parser = benepar.Parser("benepar_en3_large")
-# input_sentence = benepar.InputSentence(
-#     words=['"', 'Fly', 'safely', '.', '"'],
-#     space_after=[False, True, False, False, False],
-#     tags=['``', 'VB', 'RB', '.', "''"],
-#     escaped_words=['``', 'Fly', 'safely', '.', "''"],
-# )
-# tree = parser.parse(input_sentence)
-# print(tree)
-# (TOP (S (`` ``) (VP (VB Fly) (ADVP (RB safely))) (. .) ('' '')))
+    print(args.list_arg)
+    result_list = args.list_arg.split(',') if args.list_arg else []
+    print("Received list:", result_list) # [ "CC-MAIN-2014-41"]
+    config = result_list
+    for split in config:
+        ds = load_dataset("permutans/fineweb-bbc-news", split)
+        ds = ds["train"]
+        totallen = len(ds)
+        print(totallen)
+        logging.info(f"start parsing {split}")
+
+        pbar = tqdm(total=totallen)
+        filename = "bbc-news/" + split + ".txt"
+        index = count_lines_linux_style(filename)
+        pbar.update(index)
+        with open(filename, "a+") as output:
+            Buffer = batch_buffer(output, pbar)
+            while index < len(ds):
+                document = ds[index]
+                text = document['text']
+                split_sents = process_text(text, max_len=256)
+                Buffer.append_batch(split_sents)
+                # for sent in split_sents:
+                #     doc = nlp(sent)
+                #     sents = list(doc.sents)
+                #     print(sents)
+                #     for parsed in sents:
+                #         parse_string = parsed._.parse_string
+                #         if parsed.text == 'Ċ':
+                #             parse_string = '(Ċ Ċ)'
+                #         if not is_first:
+                #             parse_string = " " + parse_string 
+                #         print(parse_string)
+                index += 1
+            Buffer.parse_batch()
+        index = 0
+                
+    logging.info("finished")

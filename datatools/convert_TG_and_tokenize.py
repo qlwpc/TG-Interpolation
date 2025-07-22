@@ -5,7 +5,7 @@ from tokenizers import Tokenizer
 import re
 import numpy as np
 import os
-from olmo.data.tg_mask import SentencepieceVocab
+
 
 def pformat_flat(self, nodesep="", parens="()", quotes=False):
     childstrs = []
@@ -56,6 +56,8 @@ if __name__=="__main__":
     result_list = args.list_arg.split(',') if args.list_arg else []
     
     tokenizer = Tokenizer.from_file("TG_GPT2_tokenizer.json")
+    
+    from olmo.data.tg_mask import SentencepieceVocab
     vocab = SentencepieceVocab.from_vocab_file("TG_GPT2_tokenizer.json")
     
     os.makedirs("bbc_tokenized/tree", exist_ok=True)
