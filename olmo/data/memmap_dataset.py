@@ -203,7 +203,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
             out["instance_mask"] = self._validate_instance(input_ids)
 
         if self._generate_TG_attention_bias is not None:
-            input_ids = self._generate_attention_bias.convert_input_to_TG_format(input_ids)
+            input_ids = self._generate_TG_attention_bias.convert_input_to_TG_format(input_ids)
             out["input_ids"] = input_ids
             out["attention_bias"], out["label_mask"] = self._generate_TG_attention_bias(input_ids)
         
