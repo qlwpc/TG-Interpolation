@@ -924,7 +924,7 @@ class Trainer:
     def TG_doc_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         # before move to the right device, make per sent batch attention bias
         # eval must take on exactly one device
-        # make sure <bos> occur once one document, in dataset, every sent begin with bos
+        # make sure <bos> occur once one document
 
         batch_size, T = batch["input_ids"].shape[0], batch["input_ids"].shape[1]
         update_T = batch.get("add_len")
@@ -933,6 +933,8 @@ class Trainer:
             self.doc_kv_cache = None
             self.cur_doc_id = batch["doc_id"]
             self.cur_length = 0
+            self.last_logProb = None
+            self.logits_to_update = None
         
         batch = move_to_device(batch, self.device)
         self.num_evaled += batch_size
@@ -967,10 +969,12 @@ class Trainer:
                           v[0, :, :self.cur_length + update_T, :].clone().expand(batch_size,-1,-1,-1) ) 
                         for k, v in kv_cache
                     ]
+                    self.logits_to_update = torch.log_softmax(logits[0, update_T - 1, :], dim=-1)
                 elif self.num_evaled % 300 == 0:
                     # update past_key_values
                     self.doc_kv_cache = self.kv_to_update
                     self.cur_length = self.doc_kv_cache[0][0].shape[-2]
+                    self.last_logProb = self.logits_to_update
 
                 logits_for_loss = logits[..., :-1, :].contiguous()
                 # shape: (batch_size * seq_len, vocab_size)
@@ -983,6 +987,8 @@ class Trainer:
                     logits_for_loss, labels, ignore_index=self.cfg.model.pad_token_id, reduction="none"
                 )
                 ce_loss = ce_loss.view(batch_size, -1).sum(dim=1)
+                if self.last_logProb is not None:
+                    ce_loss -= torch.gather(self.last_logProb, dim=0, index=batch["input_ids"][:, 0])
 
         evaluator.update_metrics(
             batch, ce_loss, logits
@@ -1140,7 +1146,12 @@ class Trainer:
 
             del eval_batches
             if evaluator.type == EvaluatorType.tg_doc:
-                pass # del extra attribute
+                del self.kv_to_update
+                del self.doc_kv_cache
+                del self.cur_doc_id
+                del self.cur_length
+                del self.last_logProb
+                del self.logits_to_update
 
         # Eval compiles a bunch more versions, and the result is terrible. This way we get back to zero.
         if self.cfg.compile is not None:

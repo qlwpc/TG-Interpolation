@@ -273,6 +273,21 @@ public:
         cached_input_.clear();
     }
 
+    torch::Tensor convert_input_to_TG_format(const torch::Tensor& input_ids) {
+        int64_t T = input_ids.size(0), len = T;
+        auto input_acc = input_ids.accessor<int64_t, 1>();
+        for (int64_t i = 0; i < T; ++i)
+            len += vocab_.is_closing_non_terminal(input_acc[i]);
+        auto TG_ids = torch::zeros({len}, torch::kLong);
+        auto TG_acc = TG_ids.accessor<int64_t, 1>();
+        for (int64_t i = 0, j = 0; i < T; ++i) {
+            TG_acc[j++] = input_acc[i];
+            if (vocab_.is_closing_non_terminal(input_acc[i]))
+                TG_acc[j++] = input_acc[i];
+        }
+        return TG_ids;
+    }
+
     bool should_compose(int64_t token, int64_t last_token, const torch::Tensor& input_ids, int64_t idx) {
         auto input_ptr = input_ids.data_ptr<int64_t>();
         if (vocab_.is_closing_non_terminal(token)) {
@@ -827,6 +842,8 @@ PYBIND11_MODULE(tg_mask, m) {
         .def(py::init<const std::string&, int64_t>(), py::arg("vocab_path"), py::arg("max_token_length"))
         .def(py::init<const TG_attention_bias&>())
         .def("reset_state", &TG_attention_bias::reset_state)
+        .def("convert_input_to_TG_format", &TG_attention_bias::convert_input_to_TG_format,
+            py::arg("input_ids"))
         .def("__call__", &TG_attention_bias::operator(),
             py::arg("input_ids"), py::arg("update_state") = false)
         .def(py::pickle(
@@ -863,6 +880,8 @@ PYBIND11_MODULE(tg_mask, m) {
         .def(py::init<const std::string&, int64_t, int64_t>(), py::arg("vocab_path"), py::arg("max_token_length"), py::arg("Proximal_lenK"))
         .def(py::init<const KProximal_TG_attention_bias&>())
         .def("reset_state", &KProximal_TG_attention_bias::reset_state)
+        .def("convert_input_to_TG_format", &KProximal_TG_attention_bias::convert_input_to_TG_format,
+            py::arg("input_ids"))
         .def("__call__", &KProximal_TG_attention_bias::operator(), 
             py::arg("input_ids"), py::arg("update_state") = false)
         .def("get_alibi_rel_pos", &KProximal_TG_attention_bias::get_alibi_rel_pos,
@@ -905,6 +924,8 @@ PYBIND11_MODULE(tg_mask, m) {
         .def(py::init<const std::string&, int64_t, int64_t, int64_t>(), py::arg("vocab_path"), py::arg("max_token_length"), py::arg("Height_H"), py::arg("Prox_K") = 0)
         .def(py::init<const Height_TG_attention_bias&>())
         .def("reset_state", &Height_TG_attention_bias::reset_state)
+        .def("convert_input_to_TG_format", &Height_TG_attention_bias::convert_input_to_TG_format,
+            py::arg("input_ids"))
         .def("__call__", &Height_TG_attention_bias::operator(), 
             py::arg("input_ids"), py::arg("update_state") = false)
         .def("get_alibi_rel_pos", &Height_TG_attention_bias::get_alibi_rel_pos,
