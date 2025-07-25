@@ -451,9 +451,6 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             if self._generate_TG_attention_bias is not None:
                 self._generate_TG_attention_bias.reset_state()
         
-        # if self._generate_TG_attention_bias is not None:
-        #     for sample in data:
-        #         sample["input_ids"] = self._generate_TG_attention_bias.convert_input_to_TG_format(sample["input_ids"])
 
         self.num_evaled += len(data)
         max_input_len = 0
