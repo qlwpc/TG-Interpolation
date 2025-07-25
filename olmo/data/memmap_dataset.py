@@ -200,8 +200,6 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         input_ids = self._read_chunk_from_memmap(self._memmap_paths[memmap_index], memmap_local_index)
         out: Dict[str, Any] = {"input_ids": input_ids}
         if self._generate_TG_attention_bias is not None:
-            input_ids = self._generate_TG_attention_bias.convert_input_to_TG_format(input_ids)
-            out["input_ids"] = input_ids
             out["attention_bias"], out["label_mask"] = self._generate_TG_attention_bias(input_ids)
         
         if self.instance_filter_config is not None:

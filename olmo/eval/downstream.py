@@ -451,9 +451,9 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             if self._generate_TG_attention_bias is not None:
                 self._generate_TG_attention_bias.reset_state()
         
-        if self._generate_TG_attention_bias is not None:
-            for sample in data:
-                sample["input_ids"] = self._generate_TG_attention_bias.convert_input_to_TG_format(sample["input_ids"])
+        # if self._generate_TG_attention_bias is not None:
+        #     for sample in data:
+        #         sample["input_ids"] = self._generate_TG_attention_bias.convert_input_to_TG_format(sample["input_ids"])
 
         self.num_evaled += len(data)
         max_input_len = 0
@@ -2143,7 +2143,7 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
 
 
 TG_path = "./TG-LLaMA/OLMoData/TG"
-TXLTREE_path = "./TG-LLaMA/OLMoData/txltree"
+TXLTREE_path = "./dataset/bbc-news/"
 label_to_task_map = {
     "tg_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
     "tg_approx_sent_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "smallppl.json", "metric_type": "sent"}),
@@ -2151,8 +2151,8 @@ label_to_task_map = {
     "txl_approx_sent_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "smallppl.json", "metric_type": "sent"}),
     "tg_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "docppl.json", "metric_type": "doc"}),
     "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "docsmallppl.json", "metric_type": "doc"}),
-    "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "docppl.json", "metric_type": "doc"}),
-    "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "docsmallppl.json", "metric_type": "doc"}),
+    "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "test_tree.json", "metric_type": "doc"}),
+    "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "test_tree.json", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
     "piqa": PIQA,
     "hellaswag": HellaSwag,

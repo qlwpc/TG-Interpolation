@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include <fstream>
 #include <regex>
 #include <limits>
@@ -192,6 +193,79 @@ public:
 
     bool is_terminal(int64_t id) const {
         return id != pad && id != bos && id != eos && !is_non_terminal(id);
+    }
+
+    template <typename T>
+    py::array_t<T> convert_treenpy_to_TG_impl(py::array_t<T> tree) {
+        auto buf_tree = tree.template unchecked<1>();
+        size_t N = tree.size();
+
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) 
+            if (is_closing_non_terminal(buf_tree[i])) 
+                N += 1;
+
+        auto TG = py::array_t<T>(N);
+        auto buf_TG = TG.template mutable_unchecked<1>();
+        
+        size_t tg_index = 0;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            T token = buf_tree[i];
+            buf_TG[tg_index++] = token;
+            if (is_closing_non_terminal(token))
+                buf_TG[tg_index++] = token;
+        }
+        if (tg_index != N) {
+            throw std::runtime_error("Assertion failed: tg_index != T");
+        }
+        return TG;
+    }
+
+    template <typename T>
+    py::array_t<T> convert_treenpy_to_terminal_impl(py::array_t<T> tree) {
+        auto buf_tree = tree.template unchecked<1>();
+        size_t N = 0;
+
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) 
+            if (!is_non_terminal(buf_tree[i])) 
+                N += 1;
+
+        auto term = py::array_t<T>(N);
+        auto buf_term = term.template mutable_unchecked<1>();
+        
+        size_t tg_index = 0;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            T token = buf_tree[i];
+            if (!is_non_terminal(token))
+                buf_term[tg_index++] = token;
+        }
+        if (tg_index != N) {
+            throw std::runtime_error("Assertion failed: terminal_index != T");
+        }
+        return term;
+    }
+
+    py::array convert_treenpy_to_TG(py::array tree) {
+        auto dtype = tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_treenpy_to_TG_impl<uint16_t>(tree);
+        else if (dtype.is(py::dtype::of<int32_t>()))
+            return convert_treenpy_to_TG_impl<int32_t>(tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_treenpy_to_TG_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
+    py::array convert_treenpy_to_terminal(py::array tree) {
+        auto dtype = tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_treenpy_to_terminal_impl<uint16_t>(tree);
+        else if (dtype.is(py::dtype::of<int32_t>()))
+            return convert_treenpy_to_terminal_impl<int32_t>(tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_treenpy_to_terminal_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
     }
 };
 
@@ -990,6 +1064,10 @@ PYBIND11_MODULE(tg_mask, m) {
         .def_readwrite("eosent", &SentencepieceVocab::eosent)
         .def_readwrite("opening_non_terminals", &SentencepieceVocab::opening_non_terminals)
         .def_readwrite("closing_non_terminals", &SentencepieceVocab::closing_non_terminals)
+        .def("convert_treenpy_to_TG", &SentencepieceVocab::convert_treenpy_to_TG, 
+            py::arg("tree"), "Convert tree sequence to TG format")
+        .def("convert_treenpy_to_terminal", &SentencepieceVocab::convert_treenpy_to_terminal, 
+            py::arg("tree"), "Convert tree sequence to terminal format")
         // Add other property readers...
         .def(py::pickle(
             [](const SentencepieceVocab &v) { // __getstate__

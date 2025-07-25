@@ -149,7 +149,7 @@ if __name__=="__main__":
             cur_cnt = 0
             for sent, if_endline in zip(sents, end):
                 sent_id += 1
-                cut_cnt += 1
+                cur_cnt += 1
                 # print(sent.text)
                 # text = " ".join(sent)
                 # doc = nlp(text)
