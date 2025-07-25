@@ -68,11 +68,13 @@ def build_downstream_evaluator(
     )
     if eval_cfg.type == EvaluatorType.tg_sent:
         metric = TGperplexitySentenceLevelMetric(
+            vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
         )
     elif eval_cfg.type == EvaluatorType.tg_doc:
         metric = TGperplexityDocumentLevelMetric(
+            vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
         )
