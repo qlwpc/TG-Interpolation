@@ -97,7 +97,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 50
+eval_interval: 200
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
@@ -108,7 +108,7 @@ evaluators:
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2015-18-dev.npy
+        - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2023-50.npy
 data:
   pad_direction: right
   num_workers: 1
@@ -119,8 +119,8 @@ data:
   timeout: 0
   paths: 
     - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-20.npy
-    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2013-48.npy
-    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-10.npy
-    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-15.npy
-    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-23.npy
-    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2014-35.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2015-06.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2017-04.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2019-30.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2020-40.npy
+    - ${workspace}/dataset/bbc-news/tree/CC-MAIN-2022-40.npy
