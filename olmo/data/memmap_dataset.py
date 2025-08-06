@@ -217,8 +217,8 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
 
         if self._generate_attention_mask:
             assert self._pad_token_id is not None
-            attn_mask = torch.ones_like(input_ids)
-            attn_mask.masked_fill_(input_ids == self._pad_token_id, 0)
+            attn_mask = torch.ones_like(input_ids, dtype=torch.bool)
+            attn_mask.masked_fill_(input_ids == self._pad_token_id, False)
             out["attention_mask"] = attn_mask
 
         if self._generate_doc_lengths:

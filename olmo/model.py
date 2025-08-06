@@ -30,6 +30,7 @@ import torch.backends.cuda
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import einsum
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask, BlockMask
 
 from .aliases import PathOrStr
 from .beam_search import BeamSearch, Constraint, FinalSequenceScorer, Sampler
@@ -476,6 +477,9 @@ class OLMoBlock(nn.Module):
                 self.flash_attn_varlen_func = flash_attn_varlen_func
             except ModuleNotFoundError:
                 pass
+        
+        if config.flex_attention:
+            self.flex_attention = torch.compile(flex_attention, fullgraph=True)
 
     def reset_parameters(self):
         if self.k_norm is not None:
@@ -535,6 +539,7 @@ class OLMoBlock(nn.Module):
         is_causal: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        flex_block_mask: Optional[BlockMask] = None
     ) -> torch.Tensor:
         """
         Computes scaled dot product attention on query, key and value tensors, using an optional
@@ -556,11 +561,13 @@ class OLMoBlock(nn.Module):
                 causal=is_causal,
             )
             return r.view(B, T, -1, D).transpose(1, 2)
-        elif self.flash_attn_func is not None and attn_mask is None and self.attn_out.weight.is_cuda:
+        elif self.flash_attn_func is not None and attn_mask is None and self.attn_out.weight.is_cuda and flex_block_mask is None:
             r = self.flash_attn_func(
                 q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), dropout_p=dropout_p, causal=is_causal
             )
             return r.transpose(1, 2)
+        elif flex_block_mask is not None:
+            return self.flex_attention(q, k, v, block_mask=flex_block_mask)
         else:
             # torch's sdpa doesn't support GQA, so we're doing this
             assert k.size(1) == v.size(1)
@@ -1075,8 +1082,11 @@ class OLMo(nn.Module):
         self.__cache = BufferCache()
 
         # Validate config.
-        if self.config.alibi and self.config.flash_attention:
+        if self.config.alibi:
             raise OLMoConfigurationError("ALiBi is currently not supported with FlashAttention")
+    
+        if self.config.flex_attention and self.config.attention_dropout != 0.0:
+            raise OLMoConfigurationError("Flex attention is currently not supported with nonzero attention dropout")
 
         if self.config.alibi and self.config.rope:
             raise OLMoConfigurationError("ALiBi and RoPE are mutually exclusive")

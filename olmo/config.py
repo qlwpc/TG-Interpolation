@@ -325,6 +325,11 @@ class ModelConfig(BaseConfig):
     If ``True``, use ``FlashAttention``.
     """
 
+    flex_attention: bool = False
+    """
+    If ``True``, use ``FlexAttention``.
+    """
+
     attention_dropout: float = 0.1
     """
     The dropout probability within the attention modules.
