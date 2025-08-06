@@ -410,9 +410,11 @@ public:
         auto label_acc = label_mask.accessor<bool, 1>();
 
         for (int64_t i = 0; i < T; ++i) {
-            mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
-
+            mask_acc[i][pastT + i] = true;
+            if (token == vocab_.pad) 
+                continue;
+            
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
@@ -506,6 +508,8 @@ public:
         for (int64_t i = 0; i < T; ++i) {
             mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
+            if (token == vocab_.pad) 
+                continue;
 
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
@@ -705,6 +709,8 @@ public:
         for (int64_t i = 0; i < T; ++i) {
             mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
+            if (token == vocab_.pad) 
+                continue;
 
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;

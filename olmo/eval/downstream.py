@@ -468,6 +468,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
                 0, (max_input_len - len(sample["input_ids"]))
             )
             sent_ids.append(sample["sent_id"])
+            # make sure Gen TG bias have the correct length
             cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
 
             attention_bias, label_mask = None, None

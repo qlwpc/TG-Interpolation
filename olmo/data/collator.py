@@ -59,11 +59,12 @@ class DataCollator:
             if attention_mask is not None:
                 if not isinstance(attention_mask, torch.Tensor):
                     attention_mask = torch.tensor(attention_mask)
+                pad_value = False if attention_mask.dtype == torch.bool else 0.0
                 all_attention_mask.append(
                     F.pad(
-                        attention_mask.to(dtype=torch.float),
+                        attention_mask,
                         pad_shape,
-                        value=0.0,
+                        value=pad_value,
                     )
                 )
 
