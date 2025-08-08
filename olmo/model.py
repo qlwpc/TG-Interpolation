@@ -479,7 +479,7 @@ class OLMoBlock(nn.Module):
                 pass
         
         if config.flex_attention:
-            self.flex_attention = torch.compile(flex_attention, fullgraph=True)
+            self.flex_attention = torch.compile(flex_attention, mode="max-autotune")
 
     def reset_parameters(self):
         if self.k_norm is not None:
@@ -539,7 +539,7 @@ class OLMoBlock(nn.Module):
         is_causal: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
-        flex_block_mask: Optional[BlockMask] = None
+        block_mask: Optional[BlockMask] = None
     ) -> torch.Tensor:
         """
         Computes scaled dot product attention on query, key and value tensors, using an optional
@@ -561,13 +561,13 @@ class OLMoBlock(nn.Module):
                 causal=is_causal,
             )
             return r.view(B, T, -1, D).transpose(1, 2)
-        elif self.flash_attn_func is not None and attn_mask is None and self.attn_out.weight.is_cuda and flex_block_mask is None:
+        elif self.flash_attn_func is not None and attn_mask is None and self.attn_out.weight.is_cuda and block_mask is None:
             r = self.flash_attn_func(
                 q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), dropout_p=dropout_p, causal=is_causal
             )
             return r.transpose(1, 2)
-        elif flex_block_mask is not None:
-            return self.flex_attention(q, k, v, block_mask=flex_block_mask)
+        elif block_mask is not None:
+            return self.flex_attention(q, k, v, block_mask=block_mask)
         else:
             # torch's sdpa doesn't support GQA, so we're doing this
             assert k.size(1) == v.size(1)
@@ -597,6 +597,7 @@ class OLMoBlock(nn.Module):
         use_cache: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        block_mask: Optional[BlockMask] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         B, T, C = q.size()  # batch size, sequence length, d_model
         dtype = k.dtype
@@ -653,6 +654,7 @@ class OLMoBlock(nn.Module):
             is_causal=attention_bias is None,
             max_doc_len=max_doc_len,
             cu_doc_lens=cu_doc_lens,
+            block_mask=block_mask,
         )
 
         # Re-assemble all head outputs side-by-side.
@@ -741,6 +743,7 @@ class OLMoSequentialBlock(OLMoBlock):
         use_cache: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        block_mask: Optional[BlockMask] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         # Get query, key, value projections.
         # shape:
@@ -778,6 +781,7 @@ class OLMoSequentialBlock(OLMoBlock):
                 use_cache=use_cache,
                 max_doc_len=max_doc_len,
                 cu_doc_lens=cu_doc_lens,
+                block_mask=block_mask,
             )
         else:
             att, cache = self.attention(
@@ -789,6 +793,7 @@ class OLMoSequentialBlock(OLMoBlock):
                 use_cache=use_cache,
                 max_doc_len=max_doc_len,
                 cu_doc_lens=cu_doc_lens,
+                block_mask=block_mask,
             )
 
         if self.config.norm_after:
@@ -934,6 +939,7 @@ class OLMoLlamaBlock(OLMoBlock):
         use_cache: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        block_mask: Optional[BlockMask] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         # Get query, key, value projections.
         # shape:
@@ -960,6 +966,7 @@ class OLMoLlamaBlock(OLMoBlock):
             use_cache=use_cache,
             max_doc_len=max_doc_len,
             cu_doc_lens=cu_doc_lens,
+            block_mask=block_mask,
         )
 
         # Add attention scores.
@@ -1032,6 +1039,7 @@ class OLMoBlockGroup(nn.ModuleList):
         use_cache: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        block_mask: Optional[BlockMask] = None,
     ) -> Tuple[torch.Tensor, Optional[List[Tuple[torch.Tensor, torch.Tensor]]]]:
         attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = [] if use_cache else None
         for block_idx, block in enumerate(self):
@@ -1047,6 +1055,7 @@ class OLMoBlockGroup(nn.ModuleList):
                     use_cache=use_cache,
                     max_doc_len=max_doc_len,
                     cu_doc_lens=cu_doc_lens,
+                    block_mask=block_mask,
                 )
             else:
                 # shape: (batch_size, seq_len, d_model)
@@ -1057,6 +1066,7 @@ class OLMoBlockGroup(nn.ModuleList):
                     use_cache=use_cache,
                     max_doc_len=max_doc_len,
                     cu_doc_lens=cu_doc_lens,
+                    block_mask=block_mask,
                 )
             if attn_key_values is not None:
                 assert cache is not None
@@ -1344,47 +1354,67 @@ class OLMo(nn.Module):
         # shape: (batch_size, seq_len, d_model)
         x = self.transformer.emb_drop(x)  # type: ignore
 
-        # Transform the attention mask into what the blocks expect.
-        if attention_mask is not None:
-            # shape: (batch_size, 1, 1, seq_len)
-            attention_mask = attention_mask.to(dtype=torch.float).view(batch_size, -1)[:, None, None, :]
-            attention_mask = (1.0 - attention_mask) * torch.finfo(attention_mask.dtype).min
-
-        # Merge attention mask with attention bias.
-        if (
-            attention_bias is not None
-            or attention_mask is not None
-            or self.config.alibi
-            # NOTE (epwalsh): we need to initialize the attn bias in order for attn to work properly
-            # with key+value cache. Otherwise `F.scaled_dot_product_attention()` doesn't seem to compute
-            # scores correctly.
-            or past_key_values is not None
-        ):
-            if attention_bias is None and self.config.alibi:
-                attention_bias = get_causal_attention_bias(
-                    self.__cache, past_length + seq_len, x.device
-                ) + self.get_alibi_attention_bias(past_length + seq_len, x.device)
-            elif attention_bias is None:
-                attention_bias = get_causal_attention_bias(self.__cache, past_length + seq_len, x.device)
-            elif attention_bias.dtype in (torch.int8, torch.bool):
-                attention_bias = attention_bias.to(dtype=torch.float)
-                attention_bias.masked_fill_(attention_bias == 0.0, torch.finfo(attention_bias.dtype).min)
-
-            # Transform to the right shape and data type.
-            mask_len = seq_len
+        block_mask:BlockMask = None
+        if self.config.flex_attention and attention_bias is not None:
             if attention_mask is not None:
-                mask_len = attention_mask.shape[-1]
-            elif past_key_values is not None:
-                mask_len = past_key_values[0][0].shape[-2] + seq_len
-            attention_bias = attention_bias[:, :, :mask_len, :mask_len].to(dtype=torch.float)
+                raise OLMoConfigurationError("Flexattention is currently not supported with attention mask")
+            if attention_bias.dtype != torch.bool:
+                attention_bias = attention_bias==1.0
 
-            # Add in the masking bias.
+            flex_mask = attention_bias
+            _, H, q_len, kv_len = attention_bias.shape
+            if H == 1:
+                flex_mask = flex_mask.squeeze(1)
+                def TG_mask(b, h, q_idx, kv_idx):
+                    return flex_mask[b, q_idx, kv_idx]
+                block_mask = create_block_mask(mask_mod=TG_mask, B=batch_size, H=None, Q_LEN=q_len, KV_LEN=kv_len)
+            else:
+                def TG_mask_per_head(b, h, q_idx, kv_idx):
+                    return flex_mask[b, h, q_idx, kv_idx]
+                block_mask = create_block_mask(mask_mod=TG_mask_per_head, B=batch_size, H=H, Q_LEN=q_len, KV_LEN=kv_len)
+            attention_bias = None
+        else:
+            # Transform the attention mask into what the blocks expect.
             if attention_mask is not None:
-                attention_bias = attention_bias + attention_mask
-                # Might get -infs after adding attention mask, since dtype.min + dtype.min = -inf.
-                # `F.scaled_dot_product_attention()` doesn't handle -inf like you'd expect, instead
-                # it can produce NaNs.
-                ensure_finite_(attention_bias, check_neg_inf=True, check_pos_inf=False)
+                # shape: (batch_size, 1, 1, seq_len)
+                attention_mask = attention_mask.to(dtype=torch.float).view(batch_size, -1)[:, None, None, :]
+                attention_mask = (1.0 - attention_mask) * torch.finfo(attention_mask.dtype).min
+
+            # Merge attention mask with attention bias.
+            if (
+                attention_bias is not None
+                or attention_mask is not None
+                or self.config.alibi
+                # NOTE (epwalsh): we need to initialize the attn bias in order for attn to work properly
+                # with key+value cache. Otherwise `F.scaled_dot_product_attention()` doesn't seem to compute
+                # scores correctly.
+                or past_key_values is not None
+            ):
+                if attention_bias is None and self.config.alibi:
+                    attention_bias = get_causal_attention_bias(
+                        self.__cache, past_length + seq_len, x.device
+                    ) + self.get_alibi_attention_bias(past_length + seq_len, x.device)
+                elif attention_bias is None:
+                    attention_bias = get_causal_attention_bias(self.__cache, past_length + seq_len, x.device)
+                elif attention_bias.dtype in (torch.int8, torch.bool):
+                    attention_bias = attention_bias.to(dtype=torch.float)
+                    attention_bias.masked_fill_(attention_bias == 0.0, torch.finfo(attention_bias.dtype).min)
+
+                # Transform to the right shape and data type.
+                mask_len = seq_len
+                if attention_mask is not None:
+                    mask_len = attention_mask.shape[-1]
+                elif past_key_values is not None:
+                    mask_len = past_key_values[0][0].shape[-2] + seq_len
+                attention_bias = attention_bias[:, :, :mask_len, :mask_len].to(dtype=torch.float)
+
+                # Add in the masking bias.
+                if attention_mask is not None:
+                    attention_bias = attention_bias + attention_mask
+                    # Might get -infs after adding attention mask, since dtype.min + dtype.min = -inf.
+                    # `F.scaled_dot_product_attention()` doesn't handle -inf like you'd expect, instead
+                    # it can produce NaNs.
+                    ensure_finite_(attention_bias, check_neg_inf=True, check_pos_inf=False)
 
         attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = [] if use_cache else None
 
@@ -1409,6 +1439,7 @@ class OLMo(nn.Module):
                         use_cache=use_cache,
                         max_doc_len=max_doc_len,
                         cu_doc_lens=cu_doc_lens,
+                        block_mask=block_mask,
                     )
                 else:
                     # shape: (batch_size, seq_len, d_model)
@@ -1419,6 +1450,7 @@ class OLMo(nn.Module):
                         use_cache=use_cache,
                         max_doc_len=max_doc_len,
                         cu_doc_lens=cu_doc_lens,
+                        block_mask=block_mask,
                     )
 
                 if attn_key_values is not None:
@@ -1444,6 +1476,7 @@ class OLMo(nn.Module):
                     use_cache=use_cache,
                     max_doc_len=max_doc_len,
                     cu_doc_lens=cu_doc_lens,
+                    block_mask=block_mask,
                 )
                 if attn_key_values is not None:
                     assert cache is not None
