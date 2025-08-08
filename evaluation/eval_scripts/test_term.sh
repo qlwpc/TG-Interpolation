@@ -16,4 +16,4 @@ torchrun --nproc-per-node=1 --master_port 15590 scripts/train.py \
   --run_name=${run_name} \
   --save_folder=${workspace}/saved_models/test_models/${run_name} \
   --workspace=${workspace} \
-  --load_path=/home/wangpch/TG-LLaMA/TG-GPT2/Terminal/step4246-unsharded
+  --load_path=/home/wangpch/TG-Interpolation/saved_models/Terminal_test/step5142-unsharded

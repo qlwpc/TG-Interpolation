@@ -695,10 +695,11 @@ class CosWithWarmup(Scheduler):
     warmup_steps: int
     alpha_f: float = 0.1
     t_max: Optional[int] = None
+    min_lr: Optional[float] = None
 
     def get_lr(self, initial_lr: float, step: int, max_steps: int) -> float:
         max_steps = max_steps if self.t_max is None else self.t_max
-        eta_min = initial_lr * self.alpha_f
+        eta_min = initial_lr * self.alpha_f if self.min_lr is None else self.min_lr
         if step < self.warmup_steps:
             return self._linear_warmup(initial_lr, step, self.warmup_steps)
         elif step >= max_steps:
@@ -714,10 +715,11 @@ class LinearWithWarmup(Scheduler):
     warmup_steps: int
     alpha_f: float = 0.1
     t_max: Optional[int] = None
+    min_lr: Optional[float] = None
 
     def get_lr(self, initial_lr: float, step: int, max_steps: int) -> float:
         max_steps = max_steps if self.t_max is None else self.t_max
-        eta_min = initial_lr * self.alpha_f
+        eta_min = initial_lr * self.alpha_f if self.min_lr is None else self.min_lr
         if step < self.warmup_steps:
             return self._linear_warmup(initial_lr, step, self.warmup_steps)
         elif step >= max_steps:
@@ -977,6 +979,7 @@ def build_scheduler(cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = Non
             alpha_f=sched_cfg.alpha_f,
             t_max=None if sched_cfg.t_max is None else int(sched_cfg.t_max),
             warmup_min_lr=sched_cfg.warmup_min_lr,
+            min_lr=sched_cfg.min_lr,
         )
     elif sched_cfg.name == SchedulerType.linear_with_warmup:
         return LinearWithWarmup(
@@ -988,6 +991,7 @@ def build_scheduler(cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = Non
             alpha_f=sched_cfg.alpha_f,
             t_max=None if sched_cfg.t_max is None else int(sched_cfg.t_max),
             warmup_min_lr=sched_cfg.warmup_min_lr,
+            min_lr=sched_cfg.min_lr,
         )
     elif sched_cfg.name == SchedulerType.inverse_sqrt_with_warmup:
         return InvSqrtWithWarmup(

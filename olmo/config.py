@@ -586,6 +586,10 @@ class SchedulerConfig(BaseConfig):
     t_warmup: Union[int, float] = 100
     t_max: Optional[Union[int, float]] = None
     alpha_f: float = 0.1
+    min_lr: Optional[float] = None
+    """
+    If set, min_lr will always set to this value instead of initial_lr * alpha_f
+    """
 
     grad_clip_warmup_steps: Optional[Union[int, float]] = None
     """

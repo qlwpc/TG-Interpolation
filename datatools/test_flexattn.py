@@ -204,6 +204,48 @@ class AttentionProfiler:
                   f"{res['pytorch_attention']:12.4f} | {res['flash_attention']:12.4f} | {res['flex_attention']:12.4f} |")
         print("="*70)
 
+from typing import Optional, Union, Tuple
+from torch.nn.attention.flex_attention import _convert_mask_to_block_mask, _DEFAULT_SPARSE_BLOCK_SIZE, _round_up_to_multiple, _create_sparse_block_from_block_mask
+from torch._higher_order_ops.flex_attention import (
+    TransformGetItemToIndex,
+)
+def create_block_mask_from_mask(mask:torch.Tensor,
+    B: Optional[int],
+    H: Optional[int],
+    Q_LEN: int,
+    KV_LEN: int,
+    device: str = "cuda",
+    BLOCK_SIZE: Union[int, Tuple[int, int]] = _DEFAULT_SPARSE_BLOCK_SIZE,):
+    if B is None:
+        B = 1
+    if H is None:
+        H = 1
+    if isinstance(BLOCK_SIZE, int):
+        Q_BLOCK_SIZE = BLOCK_SIZE
+        KV_BLOCK_SIZE = BLOCK_SIZE
+    else:
+        Q_BLOCK_SIZE, KV_BLOCK_SIZE = BLOCK_SIZE
+    if Q_LEN < 128:
+        Q_BLOCK_SIZE = Q_LEN
+    else:
+        Q_LEN = _round_up_to_multiple(Q_LEN, Q_BLOCK_SIZE)
+    KV_LEN = _round_up_to_multiple(KV_LEN, KV_BLOCK_SIZE)
+
+    with TransformGetItemToIndex():
+        partial_block_mask, full_block_mask = _convert_mask_to_block_mask(
+            mask,
+            KV_BLOCK_SIZE=KV_BLOCK_SIZE,
+            Q_BLOCK_SIZE=Q_BLOCK_SIZE,
+            separate_full_blocks=True,
+        )
+        # partial_block_mask, full_block_mask = inner_func(
+        #     mask_mod, B, H, Q_LEN, KV_LEN, device, KV_BLOCK_SIZE, Q_BLOCK_SIZE
+        # )
+        block_mask = _create_sparse_block_from_block_mask(
+            (partial_block_mask, full_block_mask), mask_mod
+        )
+    return partial_block_mask, full_block_mask
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='GPU Attention Profiler')
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'],
@@ -234,10 +276,16 @@ if __name__ == "__main__":
     data = np.load("../dataset/bbc-news/tg/test.npy")
     vocab_path = "../dataset/bbc-news/TG_GPT2_tokenizer.json"
     tokenizer = Tokenizer.from_file(vocab_path)
-    input_ids = torch.tensor(data[:seq_len], dtype=torch.long)
+    input_ids_1 = torch.tensor(data[:seq_len], dtype=torch.long)
+    input_ids_2 = torch.tensor(data[seq_len:2*seq_len], dtype=torch.long)
     TG_mask = TG_attention_bias("../dataset/bbc-news/TG_GPT2_tokenizer.json", seq_len)
     print(tokenizer.decode(data[:seq_len], skip_special_tokens=False))
-    attn_mask, label_mask = TG_mask(input_ids)
+    attn_mask1, label_mask = TG_mask(input_ids_1)
+    attn_mask2, label_mask = TG_mask(input_ids_2)
+    # attn_mask1 = attn_mask1.unsqueeze(0)
+    # attn_mask2 = attn_mask2.unsqueeze(0)
+    attn_mask = torch.stack([attn_mask1, attn_mask2])
+    input_ids = torch.stack([input_ids_1, input_ids_2])
     attn_mask = attn_mask.cuda()
     # print(attn_mask)
     # exit(0)
@@ -246,11 +294,12 @@ if __name__ == "__main__":
         return q_idx >= kv_idx
 
     def TG_causal(b, h, q_idx, kv_idx):
-        return attn_mask[q_idx, kv_idx]
+        return attn_mask[b, q_idx, kv_idx]
     
-    profiler.block_mask = create_block_mask(TG_causal, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len)
+    profiler.block_mask = create_block_mask(TG_causal, B=2, H=None, Q_LEN=seq_len, KV_LEN=seq_len)
+    print(profiler.block_mask)
     # flex_attention(Q,K,V, block_mask=block_mask)
-    profiler.flex_attention = torch.compile(flex_attention)
+    profiler.flex_attention = torch.compile(flex_attention, mode="default", fullgraph=True)
 
     Q, K, V = profiler.generate_data(**test_configs[0])
     # flash = profiler.flash_attn(Q, K, V).transpose(1,2)
@@ -267,3 +316,8 @@ if __name__ == "__main__":
     # 输出结果
     profiler.print_results()
     # profiler.plot_results(save_path=args.plot)
+
+
+
+    def TG_causal(b, h, q_idx, kv_idx):
+        return mask[b, h, q_idx, kv_idx]
