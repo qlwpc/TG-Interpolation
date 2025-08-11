@@ -106,6 +106,14 @@ evaluators:
       generate_doc_lengths: true
       paths:
         - /dev/shm/dataset/bbc-news/terminal/dev.npy
+  - label: TG-ppl-validation-test
+    data:
+      num_workers: 1
+      pin_memory: true
+      drop_last: false
+      generate_doc_lengths: true
+      paths:
+        - /dev/shm/dataset/bbc-news/terminal/test.npy
   # - label: syntactic_generalization
   #   type: downstream
 
@@ -118,4 +126,10 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - /dev/shm/dataset/bbc-news/terminal/dev.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2013-20.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2015-06.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2017-04.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2019-30.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2020-40.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2022-40.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2023-50.npy
