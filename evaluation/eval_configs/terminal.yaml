@@ -64,8 +64,8 @@ scheduler:
   warmup_min_lr: 0
 
 tokenizer:
-  identifier: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
-  vocabulary: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  identifier: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  vocabulary: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
   truncate_direction: right
 
 save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
@@ -106,42 +106,42 @@ evaluators:
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_5000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_5000.npy
   - label: TG-ppl-validation-8000
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_8000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_8000.npy
   - label: TG-ppl-validation-10000
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_10000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_10000.npy
   - label: TG-ppl-validation-20000
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_20000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_20000.npy
   - label: TG-ppl-validation-40000
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_40000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_40000.npy
   - label: TG-ppl-validation-100000
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/test_100000.npy
+        - /dev/shm/dataset/bbc-news/terminal/test_100000.npy
   - label: syntactic_generalization
     type: downstream
 
@@ -154,4 +154,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - ${workspace}/dataset/bbc-news/terminal/CC-MAIN-2013-20.npy
+    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2013-20.npy

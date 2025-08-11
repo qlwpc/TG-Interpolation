@@ -10,6 +10,9 @@ export PYTHONPATH=${PYTHONPATH}:${workspace}
 nvidia-smi
 wandb offline
 cd ${workspace}
+date
+tar -xvf dataset.tar -C /dev/shm
+date
 run_name=TG_test
 torchrun --nproc-per-node=2 --master_port 15592 scripts/train.py \
   ${workspace}/train_configs/TG.yaml \
