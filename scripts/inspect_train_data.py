@@ -198,6 +198,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_num",
         type=int,
+        default=-1,
         help="Step number of checkpoint from which training state is to be obtained. Required when data indices are not present.",
     )
     parser.add_argument("--world_size", type=int, help="World size. Required when data indices are not present.")
