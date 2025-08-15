@@ -348,7 +348,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         self,
         tokenizer: Tokenizer,
         dataset_path: str,
-        dataset_name: Union[str, Sequence[str], None] = None,
+        dataset_name: str = None, # tg or tree
         model_ctx_len: int = 2048,
         split="validation",
         metric_type="sent",  # Override default metric type, whether be sent/doc
@@ -369,32 +369,29 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
         self.samples: List[Dict[str, Any]] = []
         self.term_len: List[int] = []
-        dataset_names: Sequence[Optional[str]]
-        if isinstance(dataset_name, str) or dataset_name is None:
-            dataset_names = [dataset_name]
-        else:
-            dataset_names = dataset_name
 
         log.info(
-                f"Starting loading TG_approx_ppl dataset"
+                f"Starting loading {self.dataset_name}_approx_ppl dataset"
             )
 
-        import json, os
-        for ds_name in dataset_names:
-            with open(os.path.join(dataset_path,ds_name), 'r', encoding='utf-8') as file:
-                dataset = json.load(file)
-
-        self.dataset = dataset #datasets.concatenate_datasets(dataset_list)
+        self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
+        self.sent_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_sent_index.npy")))
+        self.doc_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_doc_index.npy")))
+        self.length = len(self.sent_index)
         self._generate_TG_attention_bias = generate_TG_attention_bias
         self.prep_examples()
         self.reset()
         log.info(f"Loading Dataset finished")
 
     def __getitem__(self, index):
-        return self.samples[index]
+        return {
+            "sent_id" : index//self.SENT_SIZE + 1, 
+            "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
+            "input_ids": self.dataset[self.sent_index[index]:self.sent_index[index+1]], 
+        }
 
     def __len__(self):
-        return len(self.samples)
+        return self.length
 
     def get_term_length(self):
         return self.term_len
@@ -406,26 +403,21 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
     def prep_examples(self):
         """Append doc_ids to each example so that they are processed together in the metric"""
-        doc_id = 0
-        cnt = 2 * 300
-        cur = 0
-        for sent in self.dataset:
-            # if cur >= cnt:
-            #     break
-            # cur += 1
-            # if cur % 100 == 0:
-            #     log.info(self.token_decode(sent["input_ids"]))
-            if (sent["sent_id"] >= len(self.term_len)):
-                self.term_len.extend([0]*(sent["sent_id"] + 1 - len(self.term_len)))
-                self.term_len[sent["sent_id"]] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
-            self.samples.append(
-                {
-                    "sent_id" : sent["sent_id"],
-                    "doc_id": sent.get("doc_id") if sent.get("doc_id") is not None else 0,
-                    "input_ids": sent["input_ids"], 
-                }
-            )
-            doc_id += 1
+        self.sent_index = torch.cat([torch.LongTensor([0]), torch.cumsum(self.sent_index, dim=0)])
+        self.doc_index = torch.cumsum(self.doc_index, dim=0)
+        self.sent_doc_id = torch.zeros((self.length // self.SENT_SIZE + 1), dtype=torch.int)
+        self.term_len = [0] * (self.length // self.SENT_SIZE + 1)
+        self.sent_doc_id[0] = 1
+        self.sent_doc_id[self.doc_index] = 1
+        self.sent_doc_id = torch.cumsum(self.sent_doc_id, dim=0)
+
+        # for i in range(0, len(self)):
+        #     sent = self[i]
+        #     print(self.tokenizer.decode(sent["input_ids"], skip_special_tokens=False))
+
+        for i in range(1, len(self.term_len)):
+            sent = self[self.SENT_SIZE * (i-1)]
+            self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
 
     def pad_tokens_until_max(self, tokens, max_len=2048):
         """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
@@ -437,7 +429,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         else:
             # pad to max_len, but check again if this padding exceeded self.model_ctx_len
             # this time truncate from right side of the sequence because additional padding caused len(tokens) > self.model_ctx_len
-            tokens = tokens + [self.vocab.pad] * (max_len - len(tokens))
+            tokens = np.concatenate([tokens, [self.vocab.pad] * (max_len - len(tokens))], axis=0)
 
             if len(tokens) > self.model_ctx_len:
                 tokens = tokens[: self.model_ctx_len]
@@ -2141,17 +2133,23 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
 
 
 TG_path = "./TG-LLaMA/OLMoData/TG"
-TXLTREE_path = "./dataset/bbc-news/"
-label_to_task_map = {
+TXLTREE_path = "./dataset/bbc-news/testppl_tree/"
+TESTOR_TREE_PATH = "./dataset/bbc-news/testor_tree/"
+
+TG_task_map = {
     "tg_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
     "tg_approx_sent_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "smallppl.json", "metric_type": "sent"}),
     "txl_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
     "txl_approx_sent_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "smallppl.json", "metric_type": "sent"}),
-    "tg_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "docppl.json", "metric_type": "doc"}),
-    "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "docsmallppl.json", "metric_type": "doc"}),
-    "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "test_tree.json", "metric_type": "doc"}),
-    "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "test_tree.json", "metric_type": "doc"}),
+    "tg_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "tg", "metric_type": "doc"}),
+    "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "tg", "metric_type": "doc"}),
+    "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
+    "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
+}
+
+label_to_task_map = {
+    
     "piqa": PIQA,
     "hellaswag": HellaSwag,
     "winogrande": WinoGrande,
@@ -2910,6 +2908,7 @@ label_to_task_map_new = {
 }
 
 label_to_task_map = {
+    **TG_task_map,
     **label_to_task_map,
     **label_to_task_map_new,
 }
