@@ -3,6 +3,7 @@
 #SBATCH -n 2
 #SBATCH -c 8
 #SBATCH --gres=gpu:2
+#SBATCH --time=96:00:00
 
 workspace=${HOME}/TG-Interpolation
 export HF_ENDPOINT=https://hf-mirror.com
