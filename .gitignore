@@ -18,3 +18,4 @@ build_*/
 train_logs/
 saved_models/
 dataset/
+dataset.tar
