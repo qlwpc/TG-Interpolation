@@ -18,7 +18,7 @@ model:
   alibi: false
   rope: true
   flash_attention: true   
-  attention_dropout: 0.1
+  attention_dropout: 0.0
   attention_layer_norm: false
   clip_qkv: null
   include_bias: true
@@ -29,8 +29,8 @@ model:
   bias_for_layer_norm: true
   attention_layer_norm_with_affine: false
   activation_type: swiglu
-  residual_dropout: 0.1
-  embedding_dropout: 0.1
+  residual_dropout: 0.0
+  embedding_dropout: 0.0
   max_sequence_length: 2048
   vocab_size: 50320
   embedding_size : 50320
@@ -53,8 +53,6 @@ optimizer:
   learning_rate: 6.0e-4
   weight_decay: 0.1
   eps: 1e-8
-  decay_norm_and_bias: true
-  decay_embeddings: true
   betas:
   - 0.9
   - 0.95
@@ -82,7 +80,7 @@ save_num_unsharded_checkpoints_to_keep: -1
 load_path: null
 
 max_duration: 2ep
-stop_at: 800000
+stop_at: 1
 global_train_batch_size: 128
 device_train_microbatch_size: 24
 
@@ -99,7 +97,7 @@ speed_monitor:
 
 eval_interval: 50
 eval_subset_num_batches: -1
-device_eval_batch_size: 60
+device_eval_batch_size: 100
 eval_on_load: true
 eval_no_save: true
 evaluators:
@@ -116,4 +114,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - /dev/shm/dataset/bbc-news/tree/CC-MAIN-2013-20.npy
+    - /dev/shm/dataset/bbc-news/tree/dev.npy
