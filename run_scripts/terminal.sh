@@ -3,6 +3,7 @@
 #SBATCH -n 2
 #SBATCH -c 8
 #SBATCH --gres=gpu:2
+#SBATCH --time=96:00:00
 
 workspace=${HOME}/TG-Interpolation
 export HF_ENDPOINT=https://hf-mirror.com
@@ -13,8 +14,8 @@ cd ${workspace}
 date
 tar -xvf dataset.tar -C /dev/shm
 date
-run_name=Terminal_test
-torchrun --nproc-per-node=2 --master_port 15590 scripts/train.py \
+run_name=Terminal-lr0035-bs144
+torchrun --nproc-per-node=2 --master_port 15591 scripts/train.py \
   ${workspace}/train_configs/terminal.yaml \
   --run_name=${run_name} \
   --save_folder=${workspace}/saved_models/${run_name} \

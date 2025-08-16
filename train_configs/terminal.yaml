@@ -49,7 +49,7 @@ compile: null
 
 optimizer:
   name: adamw
-  learning_rate: 0.005
+  learning_rate: 0.0035
   weight_decay: 0.1
   eps: 1e-8
   betas:
@@ -73,13 +73,13 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 3000
+save_interval_unsharded: 5000
 save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
 
 max_duration: 1ep
-stop_at: 10000 # 2000000000
+stop_at: 2000000000 # 2000000000
 global_train_batch_size: 144
 device_train_microbatch_size: 32
 
@@ -126,10 +126,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2013-20.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2015-06.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2017-04.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2019-30.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2020-40.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2022-40.npy
-    - /dev/shm/dataset/bbc-news/terminal/CC-MAIN-2023-50.npy
+    - /dev/shm/dataset/bbc-news/terminal/train.npy
