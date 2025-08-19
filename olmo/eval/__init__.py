@@ -71,12 +71,15 @@ def build_downstream_evaluator(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
+            device_eval_batch_size = train_config.device_eval_batch_size
         )
     elif eval_cfg.type == EvaluatorType.tg_doc:
         metric = TGperplexityDocumentLevelMetric(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
+            device_eval_batch_size = train_config.device_eval_batch_size,
+            dataset_length=len(ds_eval_dataset)
         )
     elif eval_cfg.label == "syntactic_generalization":
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type)
