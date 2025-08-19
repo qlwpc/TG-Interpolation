@@ -115,7 +115,7 @@ evaluators:
       drop_last: false
       generate_doc_lengths: true
       paths:
-        - /dev/shm/dataset/bbc-news/tree/test.npy
+        - /dev/shm/dataset/bbc-news/tg/test.npy
 
 data:
   pad_direction: right
