@@ -1387,8 +1387,8 @@ class OLMo(nn.Module):
                 or self.config.alibi
                 # NOTE (epwalsh): we need to initialize the attn bias in order for attn to work properly
                 # with key+value cache. Otherwise `F.scaled_dot_product_attention()` doesn't seem to compute
-                # scores correctly.
-                or past_key_values is not None
+                # scores correctly. But Flash_attn compute correctly
+                or (past_key_values is not None and self.flash_attn_func is None)
             ):
                 if attention_bias is None and self.config.alibi:
                     attention_bias = get_causal_attention_bias(
