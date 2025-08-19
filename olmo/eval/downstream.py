@@ -169,50 +169,63 @@ class TGperplexityDocumentLevelMetric(Metric):
             self, 
             metric_type="doc_ppl", 
             vocab_path = None,
-            term_length = None
+            term_length = None, 
+            device_eval_batch_size = None, 
+            dataset_length = None,
+            samples_per_sent = 300,
         ) -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
-        super().__init__(sync_on_compute=True)
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = "doc_ppl"
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.term_length = term_length
-        self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
+        self.samples_per_sent = samples_per_sent
+        self.cur_sent = 0
+        self.cur_batch = 0
+        self.device_eval_batch_size = device_eval_batch_size 
+        self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
     def reset(
         self,
     ):
-        self.loglikelihoods = []
-
+        # self.loglikelihoods = []
+        self.cur_sent = 0
+        self.cur_batch = 0
 
     def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
-        device = batch["input_ids"].device
-
-        for idx, sent_id in enumerate(batch["sent_id"]):
-            self.loglikelihoods.append(
-                torch.Tensor((sent_id, ce_loss[idx])).to(device)
-            )
+        # device = batch["input_ids"].device
+        self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
+        self.cur_batch += self.device_eval_batch_size
+        if self.cur_batch == self.samples_per_sent:
+            self.cur_batch = 0
+            self.cur_sent += 1
+        # for idx, sent_id in enumerate(batch["sent_id"]):
+        #     self.loglikelihoods.append(
+        #         torch.Tensor((sent_id, ce_loss[idx])).to(device)
+        #     )
 
     def compute(self) -> torch.Tensor: 
         # states should have been synced from all accelerators at this point
         # account for duplicates here because of DistributedSampler compensating for drop_last=False
-        samples_per_sent = 300
-        sent_cnt = len(self.loglikelihoods)//samples_per_sent
-        loglikelihood_dict = torch.zeros(sent_cnt, dtype=torch.int32)
-        loglikelihood_tensor = torch.empty(
-            sent_cnt, 
-            samples_per_sent, 
-            dtype=torch.float32,
-            device=self.loglikelihoods[0][0].device
-        )
-        # collect loglikelihoods
-        for sent_id, loglikelihood in self.loglikelihoods:
-            sent_id = int(sent_id.item()) - 1  # data sent_id count from 1
-            loglikelihood_tensor[sent_id, loglikelihood_dict[sent_id]] = loglikelihood
-            loglikelihood_dict[sent_id] += 1
+        
+        # sent_cnt = len(self.loglikelihoods)//self.samples_per_sent
+        # sent_cnt = self.loglikelihoods.shape[0]
+        # loglikelihood_dict = torch.zeros(sent_cnt, dtype=torch.int32)
+        # loglikelihood_tensor = torch.empty(
+        #     sent_cnt, 
+        #     self.samples_per_sent, 
+        #     dtype=torch.float32,
+        #     device=self.loglikelihoods[0][0].device
+        # )
+        # # collect loglikelihoods
+        # for sent_id, loglikelihood in self.loglikelihoods:
+        #     sent_id = int(sent_id.item()) - 1  # data sent_id count from 1
+        #     loglikelihood_tensor[sent_id, loglikelihood_dict[sent_id]] = loglikelihood
+        #     loglikelihood_dict[sent_id] += 1
         ppl = 0.0
         data_numwords = sum(self.term_length)
-        ppl = torch.logsumexp(-loglikelihood_tensor, dim=1).sum().item()
+        ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
 
         ppl = np.exp(-ppl / data_numwords)
         return torch.tensor(ppl)
@@ -418,6 +431,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         for i in range(1, len(self.term_len)):
             sent = self[self.SENT_SIZE * (i-1)]
             self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
+        # self.length = 3000
 
     def pad_tokens_until_max(self, tokens, max_len=2048):
         """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
@@ -508,12 +522,12 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             batch["label_mask"] = torch.stack(all_label_mask)
 
         if self.metric_type=="doc":
+            if self.num_evaled % self.SENT_SIZE == self.batch_size or self.batch_size == self.SENT_SIZE:
+                self.sent_to_add = torch.LongTensor(data[0]["input_ids"])
+                batch["add_len"] = self.sent_to_add.shape[0]
             if self.num_evaled % self.SENT_SIZE == 0:
                 if self._generate_TG_attention_bias is not None:
                     self._generate_TG_attention_bias(self.sent_to_add, True)
-            elif self.num_evaled % self.SENT_SIZE == self.batch_size:
-                self.sent_to_add = torch.LongTensor(data[0]["input_ids"])
-                batch["add_len"] = self.sent_to_add.shape[0]
         return batch
 
     def token_encode(self, string: str) -> List[int]:

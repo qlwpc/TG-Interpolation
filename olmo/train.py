@@ -956,11 +956,11 @@ class Trainer:
                     attention_bias=batch.get("attention_bias"),
                     doc_lens=batch.get("doc_lens"),
                     max_doc_lens=batch.get("max_doc_lens"),
-                    use_cache=(self.num_evaled % 300 == batch_size),
+                    use_cache=(self.num_evaled % 300 == batch_size or batch_size==300),
                     past_key_values = self.doc_kv_cache,
                 )
                 logits, kv_cache = out.logits, out.attn_key_values
-                if self.num_evaled % 300 == batch_size:
+                if self.num_evaled % 300 == batch_size or batch_size == 300:
                     # update input_ids
                     # List[Tuple[torch.Tensor, torch.Tensor]] -> len=model_num_layers, tuple(key, value), 
                     # tensor shape: Batch * n_kv_heads * seq_length * dim_head
@@ -970,7 +970,7 @@ class Trainer:
                         for k, v in kv_cache
                     ]
                     self.logits_to_update = torch.log_softmax(logits[0, update_T - 1, :], dim=-1)
-                elif self.num_evaled % 300 == 0:
+                if self.num_evaled % 300 == 0:
                     # update past_key_values
                     self.doc_kv_cache = self.kv_to_update
                     self.cur_length = self.doc_kv_cache[0][0].shape[-2]
@@ -1265,7 +1265,7 @@ class Trainer:
                 activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                 record_shapes=False,
                 profile_memory=False,
-                with_stack=False,
+                with_stack=True,
                 schedule=profiling_schedule,
                 on_trace_ready=on_trace_ready,
             )
