@@ -7,6 +7,7 @@ from convert_TG_and_tokenize import convert_TG_format
 import argparse
 import json
 from datasets import load_dataset
+import numpy as np
 
 def process_text(text, max_len=256):
     text = preprocess_text(text)
@@ -171,12 +172,11 @@ if __name__=="__main__":
                     for tree in trees:
                         tree = tree[0]
                         parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
-                        if if_endline:
-                            parsed_string += " (Ċ Ċ)"
                         TG_string = convert_TG_format(parsed_string)
                         file.write(TG_string + "\n")
                         input_ids = tokenizer.encode(TG_string).ids
-                        input_ids[input_ids == 50261] = 198
+                        if if_endline:
+                            input_ids.append(198) # endline token
                         if cur_cnt == 1:
                             input_ids = [args.bos] + input_ids
                         elif cur_cnt == len(split_sents):
@@ -186,11 +186,6 @@ if __name__=="__main__":
                             "sent_id": sent_id,
                             "input_ids": input_ids
                         })
-                        # doc_tg_list.append({
-                        #     "doc_id": doc_id,
-                        #     "sent_id": sent_id,
-                        #     "input_ids": input_ids
-                        # })
 
         with open(args.output_dir + f"test_tree_{bbc_split}.json", "w+") as output:
             json.dump(doc_list, output, indent=None)
