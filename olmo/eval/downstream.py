@@ -431,7 +431,6 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         for i in range(1, len(self.term_len)):
             sent = self[self.SENT_SIZE * (i-1)]
             self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
-        # self.length = 3000
 
     def pad_tokens_until_max(self, tokens, max_len=2048):
         """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
