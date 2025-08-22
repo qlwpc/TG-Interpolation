@@ -287,7 +287,7 @@ public:
         start = end = 0;
     }
 
-    void add_end(int T) {
+    void add_end(int64_t T) {
         end = (end + T) % max_length;
     }
 
@@ -316,7 +316,9 @@ public:
     void pop_front(int64_t pop_length) {
         start = (start + pop_length) % max_length;
     }
-
+    void pop_end(int64_t pop_length) {
+        end = (end - pop_length + max_length) % max_length;
+    }
 };
 
 // Main class TG_attention_bias
@@ -382,6 +384,7 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor> operator()(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+        int64_t update_T = T;
         int64_t top = top_;
         int64_t last_token = last_token_;
         cached_input_.append(input_ids, update_state);
@@ -412,8 +415,11 @@ public:
         for (int64_t i = 0; i < T; ++i) {
             int64_t token = input_acc[i];
             mask_acc[i][pastT + i] = true;
-            if (token == vocab_.pad) 
+            // pad only occurs at the end of input, we won't cache pad into cached_input_
+            if (token == vocab_.pad) {
+                --update_T;
                 continue;
+            }
             
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
@@ -443,7 +449,8 @@ public:
             top_ = top;
             last_token_ = last_token;
             cached_input_.pop_front(remove_len);
-            cur_length_ = std::min(max_length_, cur_length_ + T);
+            cached_input_.pop_end(T - update_T);  //pop out pad tokens
+            cur_length_ = cur_length_ - remove_len + update_T;
 
             // Update stack
             int64_t new_top = -1;

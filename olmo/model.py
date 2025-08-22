@@ -479,7 +479,7 @@ class OLMoBlock(nn.Module):
                 pass
         
         if config.flex_attention:
-            self.flex_attention = torch.compile(flex_attention, mode="max-autotune")
+            self.flex_attention = torch.compile(flex_attention)
 
     def reset_parameters(self):
         if self.k_norm is not None:
