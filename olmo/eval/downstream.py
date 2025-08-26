@@ -2163,7 +2163,6 @@ TG_task_map = {
 }
 
 label_to_task_map = {
-    
     "piqa": PIQA,
     "hellaswag": HellaSwag,
     "winogrande": WinoGrande,
