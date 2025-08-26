@@ -6,8 +6,7 @@ from tokenizers import Tokenizer
 from convert_TG_and_tokenize import convert_TG_format
 import argparse
 import json
-from datasets import load_dataset
-import numpy as np
+import os
 
 def process_text(text, max_len=256):
     text = preprocess_text(text)
@@ -106,20 +105,19 @@ def parse_string(span, kth, constituent):
 if __name__=="__main__":
     # use local environment berkepar to parse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--eos", type=int, default=50256)
-    parser.add_argument("--bos", type=int, default=50257)
-    parser.add_argument("--input_json", type=str, default="../dataset/bbc-news/test_index.json")
-    parser.add_argument("--output_dir", type=str, default="../dataset/bbc-news/test300/")
+    # parser.add_argument("--eos", type=int, default=50256)
+    # parser.add_argument("--bos", type=int, default=50257)
+    parser.add_argument("--input_dir", type=str, default="/public/home/wangpch/blimp/data")
+    parser.add_argument("--output_dir", type=str, default="../dataset/blimp/test300/")
     parser.add_argument("--input_list", type=str, required=True)
 
     args = parser.parse_args()
     parse_list = args.input_list.split(',')
-    tokenizer = Tokenizer.from_file("TG_GPT2_tokenizer.json")
+    # tokenizer = Tokenizer.from_file("TG_GPT2_tokenizer.json")
     # vocab = SentencepieceVocab.from_vocab_file("TG_GPT2_tokenizer.json")
-
     sentparser = spacy.load('en_core_web_md')
     sentparser.add_pipe("set_custom_boundaries", before="parser")
-        
+    
     beneparser = benepar.Parser("benepar_en3_large")
     # nlp = spacy.load('en_core_web_md')
     # if spacy.__version__.startswith('2'):
@@ -128,66 +126,24 @@ if __name__=="__main__":
     #     nlp.add_pipe("benepar", config={"model": "benepar_en3_large"})
 
 
-    test_docs = {}
-    with open(args.input_json, "r") as file:
-        test_docs = json.load(file)
-
-    # for bbc_split, indices in test_docs.items():
-    for bbc_split in parse_list:
-        indices = test_docs[bbc_split]
-        doc_id = 0
-        sent_id = 0
-        doc_list = []
-        doc_tg_list = []
-        ds = load_dataset("permutans/fineweb-bbc-news", bbc_split)
-        ds = ds["train"]
-        with open(args.output_dir + bbc_split + ".txt", "w+") as file:
-            for index in tqdm(indices):
-                doc_id += 1  # count from 1
-                line = ds[index]["text"]
-                split_sents = process_text(line.strip(), max_len=256)
-                sents = []
-                end = []
-                for sent in split_sents:
-                    if sent==['\n']:
-                        end[-1] = True
-                    else:
-                        sents.append(sent)
-                        end.append(False)
-                # print(sents)
-                cur_cnt = 0
-                for sent, if_endline in zip(sents, end):
-                    sent_id += 1
-                    cur_cnt += 1
-                    # print(sent.text)
-                    # text = " ".join(sent)
-                    # doc = nlp(text)
-                    # constituent_data = doc_parse_prepare(doc)
-                    # sent = list(doc.sents)[0]
-                    # for j in range(300):
-                    #     tree = parse_string(sent, j, constituent_data)
-                    #     output.write(tree + "\n")
-                    input_sentence1 = benepar.InputSentence(words=sent)
-                    trees = beneparser.parse(input_sentence1)
-                    for tree in trees:
-                        tree = tree[0]
-                        parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
-                        TG_string = convert_TG_format(parsed_string)
-                        file.write(TG_string + "\n")
-                        input_ids = tokenizer.encode(TG_string).ids
-                        if if_endline:
-                            input_ids.append(198) # endline token
-                        if cur_cnt == 1:
-                            input_ids = [args.bos] + input_ids
-                        elif cur_cnt == len(split_sents):
-                            input_ids += [args.eos]
-                        # doc_list.append({
-                        #     "doc_id": doc_id,
-                        #     "sent_id": sent_id,
-                        #     "input_ids": input_ids
-                        # })
-
-        with open(args.output_dir + f"test_tree_{bbc_split}.json", "w+") as output:
-            json.dump(doc_list, output, indent=None)
-    # with open(args.output_dir + "test_tg.json", "w+") as output:
-    #     json.dump(doc_tg_list, output, indent=None)
+    for split in parse_list:
+        sent_list = []
+        with open(os.path.join(args.input_dir, split+".jsonl"), 'r') as inputjson:
+            for line in inputjson:
+                case = json.loads(line.strip())
+                sent_list.append(case["sentence_good"])
+                sent_list.append(case["sentence_bad"])
+        print(f"processing file {split}")
+        with open(os.path.join(args.output_dir, split+".txt"), "w+") as file:
+            for sent in tqdm(sent_list):
+                split_sents = process_text(sent, max_len=256)
+                if len(split_sents)!=1:
+                    print(f"WARNING: file {split} sent {sent} split into more than one sent!!")
+                sent = split_sents[0]
+                input_sentence1 = benepar.InputSentence(words=sent)
+                trees = beneparser.parse(input_sentence1)
+                for tree in trees:
+                    tree = tree[0]
+                    parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
+                    TG_string = convert_TG_format(parsed_string)
+                    file.write(TG_string + "\n")
