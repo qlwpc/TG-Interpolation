@@ -1935,7 +1935,6 @@ class OLMo(nn.Module):
         """
         Word sync beam search for the model.
         """
-
         def collate_fn(data):
             max_input_len = 0
             for sample in data:
@@ -1951,16 +1950,14 @@ class OLMo(nn.Module):
                 pad_shape = (
                     0, (max_input_len - sample["input_ids"].shape[0])
                 )
-                cur_input_id = torch.cat([sample["input_ids"], torch.full((max_input_len - sample["input_ids"].shape[0], ), vocab.pad, device=sample["input_ids"].device)], dim=0) 
+                cur_input_id = F.pad(sample["input_ids"], pad_shape, value=vocab.pad)
                 input_ids.append(cur_input_id)
                 log_probs.append(sample["logprob"])
                 last_token_index.append(sample["input_ids"].shape[0] - 1)
 
                 attention_bias = None
                 if generate_TG_bias is not None:
-                    attention_bias, _ = generate_TG_bias(sample["input_ids"].cpu())
-
-                if attention_bias is not None:
+                    attention_bias, _ = generate_TG_bias(sample["input_ids"])
                     if not isinstance(attention_bias, torch.Tensor):
                         attention_bias = torch.tensor(attention_bias)
                     # Reshape to `(1, seq_len, seq_len)`
@@ -1976,12 +1973,12 @@ class OLMo(nn.Module):
                     )
 
             batch = {
-                "input_ids": torch.stack(input_ids),
-                "last_token_index": torch.tensor(last_token_index),
-                "log_probs": torch.tensor(log_probs, device=sample["input_ids"].device),
+                "input_ids": torch.stack(input_ids).to(self.device),
+                "last_token_index": torch.tensor(last_token_index, device=self.device),
+                "log_probs": torch.tensor(log_probs).unsqueeze(1).to(self.device),
             }
             if all_attention_bias:
-                batch["attention_bias"] = torch.stack(all_attention_bias).to(sample["input_ids"].device)
+                batch["attention_bias"] = torch.stack(all_attention_bias).to(self.device)
 
             return batch
 
@@ -1994,15 +1991,10 @@ class OLMo(nn.Module):
         if past_input is None:
             if eval_input_ids is not None:
                 istart = 1  # if we have eval_input_ids, we start from 1
-                past_input = torch.LongTensor([eval_input_ids[0].item()]).to(self.device)
+                past_input = torch.LongTensor([eval_input_ids[0].item()])
             else:
-                past_input = torch.LongTensor([vocab.bos]).to(self.device)
+                past_input = torch.LongTensor([vocab.bos])
 
-        input_batch = {
-            "input_ids": past_input,
-            #"attention_bias": generate_TG_bias(past_input) if generate_TG_bias is not None else None,
-        }
-        move_to_device(input_batch, self.device)
         # need to parse past?
         print(f"eval input = {eval_input_ids} past input is {past_input}")
         nc = Genlength if nc is None else nc
@@ -2030,8 +2022,10 @@ class OLMo(nn.Module):
                     input_ids=data["input_ids"],
                     attention_bias = data.get("attention_bias"),
                 ).logits
+
+                flag_next_set = set()
                 logits = logits[torch.arange(len(beams)), data["last_token_index"], :]
-                log_probs = F.log_softmax(logits, dim=-1) + data["log_probs"].unsqueeze(1)
+                log_probs = F.log_softmax(logits, dim=-1) + data["log_probs"]
                 C = logits.shape[-1]
                 del logits, data
                 # if beam["number_of_consecutive_start_NT"] == pc or beam["number_of_start_NT"] == nc:
@@ -2053,7 +2047,6 @@ class OLMo(nn.Module):
                     topks_term_log_probs, topks_term_indices = torch.topk(log_probs[:, token], term_size, dim=-1)
                     topks_term_indices = topks_term_indices * C + token
 
-                flag_next_set = set()
                 def add_next_beams(beam_index, token_index, log_prob):
                     if (beam_index, token_index) in flag_next_set:
                         return
@@ -2061,14 +2054,14 @@ class OLMo(nn.Module):
                     beam = beams[beam_index] 
                     if generate_TG_bias is None:
                         # txltree
-                        input = torch.tensor([token_index], dtype=beam["input_ids"].dtype, device=beam["input_ids"].device)
+                        input = torch.tensor([token_index], dtype=beam["input_ids"].dtype)
                     else:
                         if vocab.is_closing_non_terminal(token_index):
-                            input = torch.tensor([token_index, token_index], dtype=beam["input_ids"].dtype, device=beam["input_ids"].device)
+                            input = torch.tensor([token_index, token_index], dtype=beam["input_ids"].dtype)
                         else:
-                            input = torch.tensor([token_index], dtype=beam["input_ids"].dtype, device=beam["input_ids"].device)
+                            input = torch.tensor([token_index], dtype=beam["input_ids"].dtype)
                     
-                    next_beam = {}
+                    next_beam = defaultdict(float)
                     next_beam["input_ids"] = torch.cat([beam["input_ids"], input], dim=0)
                     next_beam["logprob"] = log_prob
                     next_beam["number_of_consecutive_start_NT"] = beam["number_of_consecutive_start_NT"]
@@ -2083,21 +2076,21 @@ class OLMo(nn.Module):
                     return
 
                 # prepare fast shift
-                topks_term_log_probs.to(torch.device("cpu"))
-                topks_term_indices.to(torch.device("cpu"))
-                for k in range(topks_term_log_probs.shape[0]):
-                    top_index = topks_term_indices[k].item()
+                topks_term_log_probs = topks_term_log_probs.tolist()
+                topks_term_indices = topks_term_indices.tolist()
+                for k in range(len(topks_term_indices)):
+                    top_index = topks_term_indices[k]
                     beam_index = top_index // C
                     token_index = top_index % C
-                    add_next_beams(beam_index, token_index, topks_term_log_probs[k].item())
+                    add_next_beams(beam_index, token_index, topks_term_log_probs[k])
                 # prepare all next candidate
-                topk_log_probs.to(torch.device("cpu"))
-                topk_indices.to(torch.device("cpu"))
-                for k in range(topk_indices.shape[0]):
-                    top_index = topk_indices[k].item()
+                topk_log_probs = topk_log_probs.tolist()
+                topk_indices = topk_indices.tolist()
+                for k in range(len(topk_indices)):
+                    top_index = topk_indices[k]
                     beam_index = top_index // C
                     token_index = top_index % C
-                    add_next_beams(beam_index, token_index, topk_log_probs[k].item())
+                    add_next_beams(beam_index, token_index, topk_log_probs[k])
                 
                 del beams
                 beams = next_NT_beams
@@ -2108,9 +2101,8 @@ class OLMo(nn.Module):
             beams = next_beams[:beam_size]
             if i==tag_start or i==tag_end:
                 logprob = [beam["logprob"] for beam in beams]
-                logprob = torch.tensor(logprob)
+                logprob = torch.tensor(logprob, device=self.device)
                 surprisal = -torch.logsumexp(logprob, dim=0).item()
-                # print(beams[0]["input_ids"])
                 if i==tag_start:
                     start_surprisal = surprisal
                 elif i==tag_end:

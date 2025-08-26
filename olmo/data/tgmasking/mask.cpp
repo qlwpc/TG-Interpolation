@@ -484,6 +484,7 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor> operator()(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+        int64_t update_T = T;
         int64_t top = top_;
         int64_t last_token = last_token_;
         cached_input_.append(input_ids, update_state);
@@ -515,8 +516,10 @@ public:
         for (int64_t i = 0; i < T; ++i) {
             mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
-            if (token == vocab_.pad) 
+            if (token == vocab_.pad) {
+                --update_T;
                 continue;
+            }
 
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
@@ -557,9 +560,10 @@ public:
             top_ = top;
             last_token_ = last_token;
             cached_input_.pop_front(remove_len);
+            cached_input_.pop_end(T - update_T);  //pop out pad tokens
             cached_label_.pop_front(remove_len);
-            cached_label_.add_end(T);
-            cur_length_ = std::min(max_length_, cur_length_ + T);
+            cached_label_.add_end(update_T);
+            cur_length_ = cur_length_ - remove_len + update_T;
 
             // Update stack
             int64_t new_top = -1;
