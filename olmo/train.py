@@ -931,6 +931,7 @@ class Trainer:
         if batch["doc_id"] > self.cur_doc_id:
             self.kv_to_update = None
             self.doc_kv_cache = None
+            self.past_key_values = None
             self.cur_doc_id = batch["doc_id"]
             self.cur_length = 0
             self.last_logProb = None
@@ -944,12 +945,13 @@ class Trainer:
                 
                 if self.cur_length + T > self.cfg.model.max_sequence_length:
                     remove_len = self.cur_length + T - self.cfg.model.max_sequence_length
-                    self.doc_kv_cache = [
+                    self.past_key_values = [
                         ( k[:, :, remove_len:, :], v[:, :, remove_len:, :] ) 
                         for k, v in self.doc_kv_cache
                     ]
-                    self.cur_length -= remove_len
-
+                else:
+                    self.past_key_values = self.doc_kv_cache
+                
                 out = self.dist_model(
                     input_ids=batch["input_ids"],
                     attention_mask=batch.get("attention_mask"),
@@ -957,16 +959,17 @@ class Trainer:
                     doc_lens=batch.get("doc_lens"),
                     max_doc_lens=batch.get("max_doc_lens"),
                     use_cache=(self.num_evaled % 300 == batch_size or batch_size==300),
-                    past_key_values = self.doc_kv_cache,
+                    past_key_values = self.past_key_values,
                 )
                 logits, kv_cache = out.logits, out.attn_key_values
                 if self.num_evaled % 300 == batch_size or batch_size == 300:
                     # update input_ids
                     # List[Tuple[torch.Tensor, torch.Tensor]] -> len=model_num_layers, tuple(key, value), 
                     # tensor shape: Batch * n_kv_heads * seq_length * dim_head
+                    past_length = self.past_key_values[0][0].shape[-2] if self.past_key_values is not None else 0
                     self.kv_to_update = [
-                        ( k[0, :, :self.cur_length + update_T, :].clone().expand(batch_size,-1,-1,-1),
-                          v[0, :, :self.cur_length + update_T, :].clone().expand(batch_size,-1,-1,-1) ) 
+                        ( k[0, :, :past_length + update_T, :].clone().expand(batch_size,-1,-1,-1),
+                          v[0, :, :past_length + update_T, :].clone().expand(batch_size,-1,-1,-1) ) 
                         for k, v in kv_cache
                     ]
                     self.logits_to_update = torch.log_softmax(logits[0, update_T - 1, :], dim=-1)
@@ -975,6 +978,7 @@ class Trainer:
                     self.doc_kv_cache = self.kv_to_update
                     self.cur_length = self.doc_kv_cache[0][0].shape[-2]
                     self.last_logProb = self.logits_to_update
+                    self.past_key_values = None
 
                 logits_for_loss = logits[..., :-1, :].contiguous()
                 # shape: (batch_size * seq_len, vocab_size)

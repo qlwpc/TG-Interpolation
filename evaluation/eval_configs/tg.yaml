@@ -17,6 +17,7 @@ model:
   weight_tying: true
   alibi: false
   rope: true
+  flex_attention: true
   flash_attention: true   
   attention_dropout: 0.0
   attention_layer_norm: false
@@ -40,7 +41,7 @@ model:
   init_fn: normal
   init_std: 0.02
   init_cutoff_factor: 3
-  transformer_grammar_type : tree
+  transformer_grammar_type : tg
 
 ddp:
   grad_sync_mode: batch
@@ -97,11 +98,11 @@ speed_monitor:
 
 eval_interval: 3
 eval_subset_num_batches: -1
-device_eval_batch_size: 75
+device_eval_batch_size: 100
 eval_on_load: true
 eval_no_save: true
 evaluators:
-  - label: txl_approx_doc_testor
+  - label: tg_approx_doc
     type: tg_doc
     data:
       num_workers: 1         # must be 0 or 1
