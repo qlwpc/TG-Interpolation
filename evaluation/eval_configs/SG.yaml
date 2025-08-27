@@ -40,7 +40,7 @@ model:
   init_fn: normal
   init_std: 0.02
   init_cutoff_factor: 3
-  transformer_grammar_type : tree
+  transformer_grammar_type : tgnomask
 
 ddp:
   grad_sync_mode: batch
@@ -65,8 +65,8 @@ scheduler:
   warmup_min_lr: 0
 
 tokenizer:
-  identifier: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
-  vocabulary: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  identifier: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  vocabulary: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
   truncate_direction: right
 
 save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
@@ -80,7 +80,7 @@ save_num_unsharded_checkpoints_to_keep: -1
 load_path: null
 
 max_duration: 1ep
-stop_at: 1
+stop_at: 3
 global_train_batch_size: 128
 device_train_microbatch_size: 6
 
@@ -95,16 +95,14 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 3
+eval_interval: 2
 eval_subset_num_batches: -1
-device_eval_batch_size: 75
+device_eval_batch_size: 1
 eval_on_load: true
 eval_no_save: true
 evaluators:
-  - label: txl_approx_doc
-    type: tg_doc
-    data:
-      num_workers: 1         # must be 0 or 1
+  - label: syntactic_generalization
+    type: downstream
 data:
   pad_direction: right
   num_workers: 1
@@ -114,4 +112,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - /dev/shm/dataset/bbc-news/tree/dev.npy
+    - ${workspace}/dataset/bbc-news/tree/dev.npy
