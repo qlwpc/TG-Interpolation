@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from torchmetrics import MeanMetric, Metric
 
 from ..config import EvaluatorType
-from .downstream import ICLMetric, TGperplexityDocumentLevelMetric, TGperplexitySentenceLevelMetric
+from .downstream import ICLMetric, TGPerplexityDocumentLevelMetric, TGPerplexitySentenceLevelMetric
 
 __all__ = ["Evaluator"]
 
@@ -86,10 +86,10 @@ class Evaluator:
                     metric = self.eval_metric
                 metric.update(instance_loss)
         elif self.type == EvaluatorType.tg_sent:
-            # assert isinstance(self.eval_metric, TGperplexitySentenceLevelMetric)
+            # assert isinstance(self.eval_metric, TGPerplexitySentenceLevelMetric)
             self.eval_metric.update(batch, logits)
         elif self.type == EvaluatorType.tg_doc:
-            # assert isinstance(self.eval_metric, TGperplexityDocumentLevelMetric)
+            # assert isinstance(self.eval_metric, TGPerplexityDocumentLevelMetric)
             self.eval_metric.update(batch, ce_loss)
         else:
             raise ValueError(f"Unexpected evaluator type '{self.type}'")
