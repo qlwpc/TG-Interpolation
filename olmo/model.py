@@ -1935,6 +1935,24 @@ class OLMo(nn.Module):
         """
         Word sync beam search for the model.
         """
+        # from tokenizers import Tokenizer
+        # tmptokenizer:Tokenizer = Tokenizer.from_file("/public/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+        if eval_input_ids is not None:
+            if len(eval_input_ids.shape) == 2:
+                eval_input_ids = eval_input_ids[0]
+
+        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else self.config.max_sequence_length
+        istart = 0
+        if past_input is None:
+            if eval_input_ids is not None:
+                istart = 1  # if we have eval_input_ids, we start from 1
+                past_input = torch.LongTensor([eval_input_ids[0].item()])
+            else:
+                past_input = torch.LongTensor([vocab.bos])
+
+        # need to parse past?
+        nc = int(1.2*Genlength) if nc is None else nc
+        print(f"eval input = {eval_input_ids} past input is {past_input} nc = {nc} pc = {pc}")
         def collate_fn(data):
             max_input_len = 0
             for sample in data:
@@ -1945,8 +1963,13 @@ class OLMo(nn.Module):
             all_attention_bias = []
             log_probs = []
             last_token_index = []
+            Stop_Add_NT = []
             # pad according to max_lengths
+            bid = -1
             for sample in data:
+                # print(f"bid = {bid}")
+                # print(tmptokenizer.decode(sample["input_ids"].tolist(), skip_special_tokens=False))
+                bid += 1
                 pad_shape = (
                     0, (max_input_len - sample["input_ids"].shape[0])
                 )
@@ -1971,6 +1994,8 @@ class OLMo(nn.Module):
                             value=pad_value,
                         )
                     )
+                if sample["number_of_consecutive_start_NT"] >= pc or sample["number_of_start_NT"] >= nc:
+                    Stop_Add_NT.append(bid)
 
             batch = {
                 "input_ids": torch.stack(input_ids).to(self.device),
@@ -1979,25 +2004,11 @@ class OLMo(nn.Module):
             }
             if all_attention_bias:
                 batch["attention_bias"] = torch.stack(all_attention_bias).to(self.device)
+            if len(Stop_Add_NT) > 0:
+                batch["Stop_Add_NT"] = torch.LongTensor(Stop_Add_NT).to(self.device)
 
             return batch
 
-        if eval_input_ids is not None:
-            if len(eval_input_ids.shape) == 2:
-                eval_input_ids = eval_input_ids[0]
-
-        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else self.config.max_sequence_length
-        istart = 0
-        if past_input is None:
-            if eval_input_ids is not None:
-                istart = 1  # if we have eval_input_ids, we start from 1
-                past_input = torch.LongTensor([eval_input_ids[0].item()])
-            else:
-                past_input = torch.LongTensor([vocab.bos])
-
-        # need to parse past?
-        print(f"eval input = {eval_input_ids} past input is {past_input}")
-        nc = Genlength if nc is None else nc
         start_beam = {
             "input_ids": past_input,
             #"gen_TG_bias": generate_TG_bias,
@@ -2023,15 +2034,13 @@ class OLMo(nn.Module):
                     attention_bias = data.get("attention_bias"),
                 ).logits
 
+                log_probs = F.log_softmax(logits[torch.arange(len(beams)), data["last_token_index"], :], dim=-1) + data["log_probs"]
                 flag_next_set = set()
-                logits = logits[torch.arange(len(beams)), data["last_token_index"], :]
-                log_probs = F.log_softmax(logits, dim=-1) + data["log_probs"]
                 C = logits.shape[-1]
-                del logits, data
-                # if beam["number_of_consecutive_start_NT"] == pc or beam["number_of_start_NT"] == nc:
-                #     log_probs[vocab.opening_non_terminals[0] : vocab.opening_non_terminals[1]] = torch.finfo(log_probs.dtype).min
+                if data.get("Stop_Add_NT") is not None:
+                    log_probs[data["Stop_Add_NT"], vocab.opening_non_terminals[0] : vocab.opening_non_terminals[1]] = torch.finfo(log_probs.dtype).min
+                del data
 
-                log_probs[:, vocab.pad] = torch.finfo(log_probs.dtype).min
                 if eval_input_ids is None:
                     topk_log_probs, topk_indices = torch.topk(log_probs.view(-1), kn, dim=-1)
                     log_probs[:, NT_start:NT_end] = torch.finfo(log_probs.dtype).min
@@ -2066,9 +2075,12 @@ class OLMo(nn.Module):
                     next_beam["logprob"] = log_prob
                     next_beam["number_of_consecutive_start_NT"] = beam["number_of_consecutive_start_NT"]
                     next_beam["number_of_start_NT"] = beam["number_of_start_NT"]
-                    if vocab.is_non_terminal(token_index):
+                    if vocab.is_opening_non_terminal(token_index):
                         next_beam["number_of_consecutive_start_NT"] += 1
                         next_beam["number_of_start_NT"] += 1
+                        next_NT_beams.append(next_beam)
+                    elif vocab.is_closing_non_terminal(token_index):
+                        next_beam["number_of_consecutive_start_NT"] = 0
                         next_NT_beams.append(next_beam)
                     else:
                         next_beam["number_of_consecutive_start_NT"] = 0
@@ -2103,6 +2115,8 @@ class OLMo(nn.Module):
                 logprob = [beam["logprob"] for beam in beams]
                 logprob = torch.tensor(logprob, device=self.device)
                 surprisal = -torch.logsumexp(logprob, dim=0).item()
+                # for j in range(beam_size):
+                #     print(tmptokenizer.decode(beams[j]["input_ids"].tolist(), skip_special_tokens=False))
                 if i==tag_start:
                     start_surprisal = surprisal
                 elif i==tag_end:
