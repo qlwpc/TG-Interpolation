@@ -628,7 +628,6 @@ class OLMoBlock(nn.Module):
             q, k = self.rotary_emb(q, k)
 
         if attention_bias is not None:
-            # TODO: change perHead TG bias
             # Resize and cast attention bias.
             # The current dtype of the attention bias might not match the dtype that the SDP attn function will
             # run in if AMP is enabled, and this can be a problem if some tokens are masked out due to padding
