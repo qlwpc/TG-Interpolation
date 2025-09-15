@@ -36,9 +36,7 @@ class ICLMetric(Metric):
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
 
-    def reset(
-        self,
-    ):
+    def reset(self):
         self.loglikelihoods = []
         self.labels = []
 
@@ -161,8 +159,250 @@ class ICLMetric(Metric):
             score = sum(correct) / len(correct)
 
         return torch.tensor(score)
+    
 
-class TGperplexityDocumentLevelMetric(Metric):
+class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
+    """Only supports zero-shot for now."""
+
+    metric_type: str
+
+    def __init__(
+        self,
+        tokenizer: Tokenizer,
+        dataset_path: str,
+        dataset_name: Union[str, Sequence[str], None] = None,
+        model_ctx_len: int = 2048,
+        split="validation",
+        metric_type=None,  # Override default metric type
+        prompts=[None],  # List of prompt variants to use
+    ):
+        super().__init__()
+
+        self.tokenizer = tokenizer
+        self.dataset_path = dataset_path
+        self.dataset_name = dataset_name
+        self.model_ctx_len = model_ctx_len
+        self.prompts = prompts
+        self.current_prompt = None
+        if metric_type is not None:
+            self.metric_type = metric_type
+        self.log_instances = 0  # Set to > 0 to log the first few instances as a sanity check
+
+        self.samples: List[Dict[str, Any]] = []
+        dataset_names: Sequence[Optional[str]]
+        if isinstance(dataset_name, str) or dataset_name is None:
+            dataset_names = [dataset_name]
+        else:
+            dataset_names = dataset_name
+
+        dataset_list = []
+        for ds_name in dataset_names:
+            dataset = load_hf_dataset(self.dataset_path, ds_name, split)
+            dataset_list.append(dataset)
+        self.dataset = datasets.concatenate_datasets(dataset_list)
+
+        # prep examples
+        self.prep_examples()
+
+    def __getitem__(self, index):
+        return self.samples[index]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def prep_examples(self):
+        """Append doc_ids to each example so that they are processed together in the metric"""
+        doc_id = 0
+        for doc in self.dataset:
+            for prompt in self.prompts:
+                self.current_prompt = prompt
+                # from EAI harness
+                # how this all works:
+                #          CTX      CONT
+                # inp    0 1 2 3|4 5 6 7 8 9   <- last token is deleted by inp[:, :-1]
+                # gpt2    \               \
+                # logits   1 2 3|4 5 6 7 8 9   <- the ctx half gets tossed out by the
+                # cont_toks      4 5 6 7 8 9      [:, -len(continuation_enc):, :self.vocab_size] slice
+
+                continuations = self.doc_to_continuations(doc)
+                label_id = self.doc_to_label(doc)
+                doc_text = self.doc_to_text(doc)
+                ctx = self.token_encode(doc_text)
+                dc = self.token_encode(self.doc_to_domain_conditional(doc))
+                if self.log_instances > 0:
+                    self.log_instances -= 1
+                    ds_name = self.dataset_name
+                    if isinstance(ds_name, list):
+                        ds_name = ds_name[0]
+                    log.info(
+                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
+                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}"
+                    )
+
+                for cont_id, continuation_str in enumerate(continuations):
+                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
+                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
+                    continuation = self.token_encode(continuation_str)
+
+                    # query, remove last token from continuation, truncate from left is longer than model ctx length
+                    query = ctx + continuation[:-1]
+                    query = query[-self.model_ctx_len :]
+                    # this will be different from len(ctx) when truncated by model_ctx_len
+                    actual_ctx_len = len(query) - len(continuation) + 1
+
+                    # get domain conditional query
+                    # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
+                    dc_query = dc + continuation[:-1]
+
+                    # form a sample
+                    self.samples.append(
+                        {
+                            "doc_id": doc_id,
+                            "cont_id": cont_id,
+                            "ctx": ctx,
+                            "continuation": continuation,
+                            "ctx_len": actual_ctx_len,
+                            "dc_len": len(dc),
+                            "cont_len": len(
+                                continuation
+                            ),  # even if query has last token removed, LM will output same cont len
+                            "cont_str_len": cont_str_len,
+                            "cont_byte_len": cont_byte_len,
+                            "query": query,  # remove last token from continuation
+                            "dc_query": dc_query,
+                            "label_id": label_id,
+                        }
+                    )
+
+                doc_id += 1
+
+    def pad_tokens_until_max(self, tokens, max_len=2048):
+        """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
+        queries are already truncated at max length of model_ctx_len
+        this acts as additional check for all types of sequences in the batch
+        """
+        if len(tokens) > self.model_ctx_len:
+            return tokens[-self.model_ctx_len :]
+        else:
+            # pad to max_len, but check again if this padding exceeded self.model_ctx_len
+            # this time truncate from right side of the sequence because additional padding caused len(tokens) > self.model_ctx_len
+            tokens = tokens + [self.tokenizer.pad_token_id] * (max_len - len(tokens))
+
+            if len(tokens) > self.model_ctx_len:
+                tokens = tokens[: self.model_ctx_len]
+
+            return tokens
+
+    def collate_fn(self, data):
+        # pad to max length
+        # 'ctx', 'continuation', 'query' can all have variable length
+        max_ctx_len = 0
+        max_cont_len = 0
+        max_query_len = 0
+        max_dc_query_len = 0
+
+        for sample in data:
+            if len(sample["ctx"]) > max_ctx_len:
+                max_ctx_len = len(sample["ctx"])
+
+            if len(sample["continuation"]) > max_cont_len:
+                max_cont_len = len(sample["continuation"])
+
+            if len(sample["query"]) > max_query_len:
+                max_query_len = len(sample["query"])
+
+            if len(sample["dc_query"]) > max_dc_query_len:
+                max_dc_query_len = len(sample["dc_query"])
+
+        doc_ids = []
+        cont_ids = []
+        ctxs = []
+        continuations = []
+        ctx_lens = []
+        dc_lens = []
+        cont_lens = []
+        cont_str_lens = []
+        cont_byte_lens = []
+        queries = []
+        dc_queries = []
+        label_ids = []
+
+        # pad according to max_lengths
+        for sample in data:
+            doc_ids.append(sample["doc_id"])
+            cont_ids.append(sample["cont_id"])
+
+            ctxs.append(torch.LongTensor(self.pad_tokens_until_max(sample["ctx"], max_len=max_ctx_len)))
+            continuations.append(
+                torch.LongTensor(self.pad_tokens_until_max(sample["continuation"], max_len=max_cont_len))
+            )
+
+            ctx_lens.append(sample["ctx_len"])
+            dc_lens.append(sample["dc_len"])
+            cont_lens.append(sample["cont_len"])
+            cont_str_lens.append(sample["cont_str_len"])
+            cont_byte_lens.append(sample["cont_byte_len"])
+
+            queries.append(torch.LongTensor(self.pad_tokens_until_max(sample["query"], max_len=max_query_len)))
+            dc_queries.append(
+                torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
+            )
+
+            label_ids.append(sample["label_id"])
+
+        batch = {
+            "doc_id": torch.LongTensor(doc_ids),
+            "cont_id": torch.LongTensor(cont_ids),
+            "ctx": torch.stack(ctxs),
+            "continuation": torch.stack(continuations),
+            "ctx_len": torch.LongTensor(ctx_lens),
+            "dc_len": torch.LongTensor(dc_lens),
+            "cont_len": torch.LongTensor(cont_lens),  # since query has last token removed from continuation
+            "cont_str_len": torch.LongTensor(cont_str_lens),
+            "cont_byte_len": torch.LongTensor(cont_byte_lens),
+            "input_ids": torch.stack(queries),
+            "dc_input_ids": torch.stack(dc_queries),
+            "label_id": torch.LongTensor(label_ids),
+        }
+
+        return batch
+
+    def token_encode(self, string: str) -> List[int]:
+        return self.tokenizer.encode(string, add_special_tokens=False)
+
+    def token_decode(self, tokens: List[int]) -> str:
+        return self.tokenizer.decode(tokens)
+
+    @abc.abstractmethod
+    def doc_to_text(self, doc) -> str:
+        """Match EAI eval harness
+        returns a single context string
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def doc_to_continuations(self, doc) -> List[str]:
+        """Match EAI eval harness
+        returns a list of continuations
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def doc_to_label(self, doc) -> int:
+        """Match EAI eval harness
+        returns continuation id which corresponds to true label
+        """
+        raise NotImplementedError
+
+    def doc_to_domain_conditional(self, doc) -> str:
+        """Provide string for domain conditional normalization
+        by default its blank string, continuation normalized by prob conditioned on a blank
+        """
+        del doc
+        return " "
+
+
+class TGPerplexityDocumentLevelMetric(Metric):
     full_state_update: bool = False
     
     def __init__(
@@ -186,9 +426,7 @@ class TGperplexityDocumentLevelMetric(Metric):
         self.device_eval_batch_size = device_eval_batch_size 
         self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
-    def reset(
-        self,
-    ):
+    def reset(self):
         self.cur_sent = 0
         self.cur_batch = 0
 
@@ -235,8 +473,9 @@ class TGperplexityDocumentLevelMetric(Metric):
 #     # 恢复默认打印选项
 #     torch.set_printoptions()
 
+
 # Deprecated please use Document Level ppl metric
-class TGperplexitySentenceLevelMetric(Metric):
+class TGPerplexitySentenceLevelMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
 
@@ -254,9 +493,7 @@ class TGperplexitySentenceLevelMetric(Metric):
         self.term_length = term_length
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
 
-    def reset(
-        self,
-    ):
+    def reset(self):
         self.loglikelihoods = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
@@ -660,120 +897,200 @@ class SGDataset(metaclass=abc.ABCMeta):
     def collate_fn(self, data):
         return data[0]
 
-class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
-    """Only supports zero-shot for now."""
 
+BLiMP_TASK_ANAPHOR_AGR = ["anaphor_gender_agreement", "anaphor_number_agreement"]
+BLiMP_TASK_ARG_STRUCTURE = ["animate_subject_passive", "animate_subject_trans", "causative",
+                            "drop_argument", "inchoative", "intransitive", "passive_1", "passive_2", "transitive"]
+BLiMP_TASK_BINDING = ["principle_A_c_command", "principle_A_case_1", "principle_A_case_2",
+                      "principle_A_domain_1", "principle_A_domain_2", "principle_A_domain_3",
+                      "principle_A_reconstruction"]
+BLiMP_TASK_CONTROL_RAISING = ["existential_there_object_raising", "existential_there_subject_raising",
+                              "expletive_it_object_raising", "tough_vs_raising_1", "tough_vs_raising_2"]
+BLiMP_TASK_DET_NOUN_AGR = ["determiner_noun_agreement_1", "determiner_noun_agreement_2",
+                           "determiner_noun_agreement_irregular_1", "determiner_noun_agreement_irregular_2",
+                           "determiner_noun_agreement_with_adj_2", "determiner_noun_agreement_with_adj_irregular_1",
+                           "determiner_noun_agreement_with_adj_irregular_2", "determiner_noun_agreement_with_adjective_1"]
+BLiMP_TASK_ELLIPSIS = ["ellipsis_n_bar_1", "ellipsis_n_bar_2"]
+BLiMP_TASK_FILLER_GAP = ["wh_questions_object_gap", "wh_questions_subject_gap", "wh_questions_subject_gap_long_distance", 
+                         "wh_vs_that_no_gap", "wh_vs_that_no_gap_long_distance", "wh_vs_that_with_gap", 
+                         "wh_vs_that_with_gap_long_distance"]
+BLiMP_TASK_IRREGULAR_FORMS = ["irregular_past_participle_adjectives", "irregular_past_participle_verbs"]
+BLiMP_TASK_ISLAND_EFFECTS = ["adjunct_island", "complex_NP_island", "coordinate_structure_constraint_complex_left_branch",
+                             "coordinate_structure_constraint_object_extraction", "left_branch_island_echo_question",
+                             "left_branch_island_simple_question", "sentential_subject_island", "wh_island"]
+BLiMP_TASK_NPI_LICENSING = ["matrix_question_npi_licensor_present", "npi_present_1", "npi_present_2",
+                            "only_npi_licensor_present", "only_npi_scope", "sentential_negation_npi_licensor_present",
+                            "sentential_negation_npi_scope"]
+BLiMP_TASK_QUANTIFIERS = ["existential_there_quantifiers_1", "existential_there_quantifiers_2",
+                          "superlative_quantifiers_1", "superlative_quantifiers_2"]
+BLiMP_TASK_SUBJECT_VERB_AGR = ["distractor_agreement_relational_noun", "distractor_agreement_relative_clause",
+                               "irregular_plural_subject_verb_agreement_1", "irregular_plural_subject_verb_agreement_2",
+                               "regular_plural_subject_verb_agreement_1", "regular_plural_subject_verb_agreement_2"]
+BLiMP_TASK_DICT = {
+    "anaphor_agreement" : BLiMP_TASK_ANAPHOR_AGR,
+    "argument_structure" : BLiMP_TASK_ARG_STRUCTURE,
+    "binding" : BLiMP_TASK_BINDING,
+    "control_raising" : BLiMP_TASK_CONTROL_RAISING,
+    "determiner_noun_agreement" : BLiMP_TASK_DET_NOUN_AGR,
+    "ellipsis" : BLiMP_TASK_ELLIPSIS,
+    "filler_gap_dependency" : BLiMP_TASK_FILLER_GAP,
+    "irregular_forms" : BLiMP_TASK_IRREGULAR_FORMS,
+    "island_effects" : BLiMP_TASK_ISLAND_EFFECTS,
+    "npi_licensing" : BLiMP_TASK_NPI_LICENSING,
+    "quantifiers" : BLiMP_TASK_QUANTIFIERS,
+    "subject_verb_agreement" : BLiMP_TASK_SUBJECT_VERB_AGR, 
+}
+BLiMP_TASK_LIST = [x for v in BLiMP_TASK_DICT.values() for x in v]
+
+
+# TODO: 
+class BLiMPMetric(Metric):
+    full_state_update: bool = False
+    
+    def __init__(
+            self, 
+            metric_type="BLiMP_simple", 
+            vocab_path = None,
+            term_length = None, 
+            device_eval_batch_size = None, 
+            dataset_length = None,
+            samples_per_sent = 300,
+        ) -> None:
+        super().__init__(sync_on_compute=False) # since we use one device to eval, sync could be false
+
+        self.metric_type = metric_type
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.term_length = term_length
+        self.samples_per_sent = samples_per_sent
+        self.cur_sent = 0
+        self.cur_batch = 0
+        self.device_eval_batch_size = device_eval_batch_size 
+        self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
+
+    def reset(self):
+        self.cur_sent = 0
+        self.cur_batch = 0
+
+    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
+        self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
+        self.cur_batch += self.device_eval_batch_size
+        if self.cur_batch == self.samples_per_sent:
+            self.cur_batch = 0
+            self.cur_sent += 1
+
+    def compute(self) -> torch.Tensor: 
+        data_numwords = sum(self.term_length)
+        ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
+        ppl = np.exp(-ppl / data_numwords)
+        return torch.tensor(ppl)
+
+# def print_tensor_data(tensor, precision=4, suppress_small=True):
+#     """
+#     打印PyTorch Tensor中的所有数据
+    
+#     参数:
+#         tensor (torch.Tensor): 要打印的PyTorch张量
+#         precision (int): 浮点数打印精度，默认为4位小数
+#         suppress_small (bool): 是否抑制非常小的数用科学计数法显示，默认为True
+#     """
+#     # 将Tensor转换为numpy数组
+#     # 设置numpy打印选项
+#     # np.set_printoptions(
+#     #     precision=precision,
+#     #     threshold=np.inf,  # 显示所有元素
+#     #     linewidth=np.inf,   # 不换行
+#     #     suppress=suppress_small  # 抑制科学计数法
+#     # )
+#     torch.set_printoptions(
+#         precision=4,    # 小数位数
+#         threshold=10000000, # 触发缩略显示的阈值（元素数量）
+#         edgeitems=3,    # 缩略时显示的首尾元素数量
+#         linewidth=100000,  # 每行的字符宽度
+#         sci_mode=False  # 是否禁用科学计数法
+#     )
+    
+#     print(tensor)
+    
+#     # 恢复默认打印选项
+#     torch.set_printoptions()
+
+
+# TODO:
+class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     metric_type: str
 
     def __init__(
         self,
         tokenizer: Tokenizer,
         dataset_path: str,
-        dataset_name: Union[str, Sequence[str], None] = None,
+        dataset_name: str = None, # tg or tree
         model_ctx_len: int = 2048,
         split="validation",
-        metric_type=None,  # Override default metric type
-        prompts=[None],  # List of prompt variants to use
+        metric_type="sent",  # Override default metric type, whether be sent/doc
+        generate_TG_attention_bias: Optional[TG_attention_bias] = None,
+        vocab_path: str = None,
+        device_eval_batch_size: int = 60, 
     ):
-        super().__init__()
 
+        super().__init__()
+        self.task_list = BLiMP_TASK_LIST
         self.tokenizer = tokenizer
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
         self.dataset_name = dataset_name
         self.model_ctx_len = model_ctx_len
-        self.prompts = prompts
-        self.current_prompt = None
-        if metric_type is not None:
-            self.metric_type = metric_type
-        self.log_instances = 0  # Set to > 0 to log the first few instances as a sanity check
+        self.metric_type = metric_type 
+        self.log_instances = 2  # Set to > 0 to log the first few instances as a sanity check
+        self.batch_size = device_eval_batch_size
+        self.SENT_SIZE = 300
 
         self.samples: List[Dict[str, Any]] = []
-        dataset_names: Sequence[Optional[str]]
-        if isinstance(dataset_name, str) or dataset_name is None:
-            dataset_names = [dataset_name]
-        else:
-            dataset_names = dataset_name
+        self.term_len: List[int] = []
 
-        dataset_list = []
-        for ds_name in dataset_names:
-            dataset = load_hf_dataset(self.dataset_path, ds_name, split)
-            dataset_list.append(dataset)
-        self.dataset = datasets.concatenate_datasets(dataset_list)
+        log.info(
+                f"Starting loading {self.dataset_name}_approx_ppl dataset"
+            )
 
-        # prep examples
+        self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
+        self.sent_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_sent_index.npy")))
+        self.doc_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_doc_index.npy")))
+        self.length = len(self.sent_index)
+        self._generate_TG_attention_bias = generate_TG_attention_bias
         self.prep_examples()
+        self.reset()
+        log.info(f"Loading Dataset finished")
 
     def __getitem__(self, index):
-        return self.samples[index]
+        return {
+            "sent_id" : index//self.SENT_SIZE + 1, 
+            "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
+            "input_ids": self.dataset[self.sent_index[index]:self.sent_index[index+1]], 
+        }
 
     def __len__(self):
-        return len(self.samples)
+        return self.length
+
+    def get_term_length(self):
+        return self.term_len
+
+    def reset(self) -> None:
+        self.cur_doc_id = 0
+        self.sent_to_add = None
+        self.num_evaled = 0
 
     def prep_examples(self):
         """Append doc_ids to each example so that they are processed together in the metric"""
-        doc_id = 0
-        for doc in self.dataset:
-            for prompt in self.prompts:
-                self.current_prompt = prompt
-                # from EAI harness
-                # how this all works:
-                #          CTX      CONT
-                # inp    0 1 2 3|4 5 6 7 8 9   <- last token is deleted by inp[:, :-1]
-                # gpt2    \               \
-                # logits   1 2 3|4 5 6 7 8 9   <- the ctx half gets tossed out by the
-                # cont_toks      4 5 6 7 8 9      [:, -len(continuation_enc):, :self.vocab_size] slice
+        self.sent_index = torch.cat([torch.LongTensor([0]), torch.cumsum(self.sent_index, dim=0)])
+        self.doc_index = torch.cumsum(self.doc_index, dim=0)
+        self.sent_doc_id = torch.zeros((self.length // self.SENT_SIZE + 1), dtype=torch.int)
+        self.term_len = [0] * (self.length // self.SENT_SIZE + 1)
+        self.sent_doc_id[0] = 1
+        self.sent_doc_id[self.doc_index] = 1
+        self.sent_doc_id = torch.cumsum(self.sent_doc_id, dim=0)
 
-                continuations = self.doc_to_continuations(doc)
-                label_id = self.doc_to_label(doc)
-                doc_text = self.doc_to_text(doc)
-                ctx = self.token_encode(doc_text)
-                dc = self.token_encode(self.doc_to_domain_conditional(doc))
-                if self.log_instances > 0:
-                    self.log_instances -= 1
-                    ds_name = self.dataset_name
-                    if isinstance(ds_name, list):
-                        ds_name = ds_name[0]
-                    log.info(
-                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}"
-                    )
-
-                for cont_id, continuation_str in enumerate(continuations):
-                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
-                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
-                    continuation = self.token_encode(continuation_str)
-
-                    # query, remove last token from continuation, truncate from left is longer than model ctx length
-                    query = ctx + continuation[:-1]
-                    query = query[-self.model_ctx_len :]
-                    # this will be different from len(ctx) when truncated by model_ctx_len
-                    actual_ctx_len = len(query) - len(continuation) + 1
-
-                    # get domain conditional query
-                    # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                    dc_query = dc + continuation[:-1]
-
-                    # form a sample
-                    self.samples.append(
-                        {
-                            "doc_id": doc_id,
-                            "cont_id": cont_id,
-                            "ctx": ctx,
-                            "continuation": continuation,
-                            "ctx_len": actual_ctx_len,
-                            "dc_len": len(dc),
-                            "cont_len": len(
-                                continuation
-                            ),  # even if query has last token removed, LM will output same cont len
-                            "cont_str_len": cont_str_len,
-                            "cont_byte_len": cont_byte_len,
-                            "query": query,  # remove last token from continuation
-                            "dc_query": dc_query,
-                            "label_id": label_id,
-                        }
-                    )
-
-                doc_id += 1
+        for i in range(1, len(self.term_len)):
+            sent = self[self.SENT_SIZE * (i-1)]
+            self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
 
     def pad_tokens_until_max(self, tokens, max_len=2048):
         """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
@@ -785,7 +1102,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         else:
             # pad to max_len, but check again if this padding exceeded self.model_ctx_len
             # this time truncate from right side of the sequence because additional padding caused len(tokens) > self.model_ctx_len
-            tokens = tokens + [self.tokenizer.pad_token_id] * (max_len - len(tokens))
+            tokens = np.concatenate([tokens, [self.vocab.pad] * (max_len - len(tokens))], axis=0)
 
             if len(tokens) > self.model_ctx_len:
                 tokens = tokens[: self.model_ctx_len]
@@ -794,76 +1111,66 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def collate_fn(self, data):
         # pad to max length
-        # 'ctx', 'continuation', 'query' can all have variable length
-        max_ctx_len = 0
-        max_cont_len = 0
-        max_query_len = 0
-        max_dc_query_len = 0
-
+        if self.metric_type=="doc" and data[0]["doc_id"] > self.cur_doc_id:
+            self.cur_doc_id = data[0]["doc_id"]
+            if self._generate_TG_attention_bias is not None:
+                self._generate_TG_attention_bias.reset_state()
+        
+        self.num_evaled += len(data)
+        max_input_len = 0
         for sample in data:
-            if len(sample["ctx"]) > max_ctx_len:
-                max_ctx_len = len(sample["ctx"])
+            if len(sample["input_ids"]) > max_input_len:
+                max_input_len = len(sample["input_ids"])
 
-            if len(sample["continuation"]) > max_cont_len:
-                max_cont_len = len(sample["continuation"])
-
-            if len(sample["query"]) > max_query_len:
-                max_query_len = len(sample["query"])
-
-            if len(sample["dc_query"]) > max_dc_query_len:
-                max_dc_query_len = len(sample["dc_query"])
-
-        doc_ids = []
-        cont_ids = []
-        ctxs = []
-        continuations = []
-        ctx_lens = []
-        dc_lens = []
-        cont_lens = []
-        cont_str_lens = []
-        cont_byte_lens = []
-        queries = []
-        dc_queries = []
-        label_ids = []
-
+        sent_ids = []
+        input_ids = []
+        all_attention_bias = []
+        all_label_mask = []
         # pad according to max_lengths
         for sample in data:
-            doc_ids.append(sample["doc_id"])
-            cont_ids.append(sample["cont_id"])
-
-            ctxs.append(torch.LongTensor(self.pad_tokens_until_max(sample["ctx"], max_len=max_ctx_len)))
-            continuations.append(
-                torch.LongTensor(self.pad_tokens_until_max(sample["continuation"], max_len=max_cont_len))
+            pad_shape = (
+                0, (max_input_len - len(sample["input_ids"]))
             )
+            sent_ids.append(sample["sent_id"])
+            # make sure Gen TG bias have the correct length
+            cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
 
-            ctx_lens.append(sample["ctx_len"])
-            dc_lens.append(sample["dc_len"])
-            cont_lens.append(sample["cont_len"])
-            cont_str_lens.append(sample["cont_str_len"])
-            cont_byte_lens.append(sample["cont_byte_len"])
+            attention_bias, label_mask = None, None
+            if self._generate_TG_attention_bias is not None:
+                attention_bias, label_mask = self._generate_TG_attention_bias(cur_input_id)
+            input_ids.append(cur_input_id)
+            
+            if attention_bias is not None:
+                if not isinstance(attention_bias, torch.Tensor):
+                    attention_bias = torch.tensor(attention_bias)
+                # Reshape to `(1, seq_len, seq_len)`
+                while len(attention_bias.shape) < 3:
+                    attention_bias = attention_bias.unsqueeze(0)
+                all_attention_bias.append(attention_bias)
 
-            queries.append(torch.LongTensor(self.pad_tokens_until_max(sample["query"], max_len=max_query_len)))
-            dc_queries.append(
-                torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
-            )
-
-            label_ids.append(sample["label_id"])
+            if label_mask is not None:
+                if not isinstance(label_mask, torch.Tensor):
+                    label_mask = torch.tensor(label_mask)
+                all_label_mask.append(label_mask)
 
         batch = {
-            "doc_id": torch.LongTensor(doc_ids),
-            "cont_id": torch.LongTensor(cont_ids),
-            "ctx": torch.stack(ctxs),
-            "continuation": torch.stack(continuations),
-            "ctx_len": torch.LongTensor(ctx_lens),
-            "dc_len": torch.LongTensor(dc_lens),
-            "cont_len": torch.LongTensor(cont_lens),  # since query has last token removed from continuation
-            "cont_str_len": torch.LongTensor(cont_str_lens),
-            "cont_byte_len": torch.LongTensor(cont_byte_lens),
-            "input_ids": torch.stack(queries),
-            "dc_input_ids": torch.stack(dc_queries),
-            "label_id": torch.LongTensor(label_ids),
+            "doc_id": data[0]["doc_id"] if self.metric_type=="doc" else None,
+            "sent_id": torch.LongTensor(sent_ids),
+            "input_ids": torch.stack(input_ids),
         }
+        if all_attention_bias:
+            batch["attention_bias"] = torch.stack(all_attention_bias)
+        if all_label_mask:
+            batch["label_mask"] = torch.stack(all_label_mask)
 
+        if self.metric_type=="doc":
+            if self.num_evaled % self.SENT_SIZE == self.batch_size or self.batch_size == self.SENT_SIZE:
+                # Make sure bias has the same length with kv cache, we must pass pad into GenBias
+                self.sent_to_add = torch.LongTensor(self.pad_tokens_until_max(data[0]["input_ids"], max_len=max_input_len))
+                batch["add_len"] = data[0]["input_ids"].shape[0]
+            if self.num_evaled % self.SENT_SIZE == 0:
+                if self._generate_TG_attention_bias is not None:
+                    self._generate_TG_attention_bias(self.sent_to_add, True)
         return batch
 
     def token_encode(self, string: str) -> List[int]:
@@ -871,34 +1178,6 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def token_decode(self, tokens: List[int]) -> str:
         return self.tokenizer.decode(tokens)
-
-    @abc.abstractmethod
-    def doc_to_text(self, doc) -> str:
-        """Match EAI eval harness
-        returns a single context string
-        """
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def doc_to_continuations(self, doc) -> List[str]:
-        """Match EAI eval harness
-        returns a list of continuations
-        """
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def doc_to_label(self, doc) -> int:
-        """Match EAI eval harness
-        returns continuation id which corresponds to true label
-        """
-        raise NotImplementedError
-
-    def doc_to_domain_conditional(self, doc) -> str:
-        """Provide string for domain conditional normalization
-        by default its blank string, continuation normalized by prob conditioned on a blank
-        """
-        del doc
-        return " "
 
 
 class PIQA(ICLMultiChoiceTaskDataset):
@@ -2119,7 +2398,6 @@ TG_task_map = {
 }
 
 label_to_task_map = {
-    
     "piqa": PIQA,
     "hellaswag": HellaSwag,
     "winogrande": WinoGrande,

@@ -101,7 +101,7 @@ device_eval_batch_size: 75
 eval_on_load: true
 eval_no_save: true
 evaluators:
-  - label: txl_approx_doc
+  - label: txl_approx_doc_testor
     type: tg_doc
     data:
       num_workers: 1         # must be 0 or 1
