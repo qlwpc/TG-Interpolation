@@ -14,9 +14,9 @@ cd ${workspace}
 date
 tar -xvf dataset.tar -C /dev/shm
 date
-run_name=Tree_bs292_lr007
-torchrun --nproc-per-node=4 --master_port 15590 scripts/train.py \
-  ${workspace}/train_configs/tree.yaml \
+run_name=nomask_bs420_lr009
+torchrun --nproc-per-node=4 --master_port 15596 scripts/train.py \
+  ${workspace}/train_configs/nomask.yaml \
   --run_name=${run_name} \
   --save_folder=${workspace}/saved_models/${run_name} \
   --workspace=${workspace} 
