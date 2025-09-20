@@ -2,6 +2,8 @@ from typing import Generator, List, NamedTuple
 
 import numpy as np
 import torch
+from nltk import Tree
+import re
 
 
 def find_end_first_consecutive_true(arr: np.ndarray) -> int:
@@ -128,3 +130,53 @@ def get_document_lengths(input_ids: torch.Tensor, eos_token_id: int) -> torch.Te
         ]
     )
     return doc_boundaries[1:] - doc_boundaries[:-1]
+
+
+def pformat_flat(self, nodesep="", parens="()", quotes=False):
+    childstrs = []
+    for child in self:
+        if isinstance(child, Tree):
+            childstrs.append(pformat_flat(child, nodesep, parens, quotes))
+        elif isinstance(child, tuple):
+            childstrs.append("/".join(child))
+        elif isinstance(child, str) and not quotes:
+            return child if child!='Ċ' else "<|SEP|>"  # 50261
+        else:
+            childstrs.append(repr(child))
+    # print(f"label {self._label} child {childstrs}")
+    if isinstance(self._label, str):
+        if self._label=="qlwpcRegen":
+            return " ".join(childstrs)
+        else:
+            return "{}{}{} {} {}{}".format(
+                parens[0],
+                self._label,
+                nodesep,
+                " ".join(childstrs),
+                self._label,
+                parens[1],
+            )
+    else:
+        return "{}{}{} {} {}{}".format(
+            parens[0],
+            repr(self._label),
+            nodesep,
+            " ".join(childstrs),
+            repr(self._label),
+            parens[1],
+        )
+
+def convert_TG_format(input:str) -> str:
+    line = "(qlwpcRegen " + input.strip() + ")"
+    tree = Tree.fromstring(line, remove_empty_top_bracketing=False)
+    outputstr = pformat_flat(tree)
+    return outputstr
+
+def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndarray:
+    if string_with_POS_tags:
+        TG_str = convert_TG_format(input)
+    else:
+        TG_str = input
+    ids = np.array(tokenizer.encode(TG_str).ids)
+    ids[ids == 50261] = 198  # change <SEP>(50261) to \n (198)
+    return ids
