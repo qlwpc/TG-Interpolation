@@ -244,6 +244,34 @@ public:
         return term;
     }
 
+    // The start of TG_tree cannot be closing-non-terminal here
+    template <typename T>
+    py::array_t<T> convert_TGnpy_to_tree_impl(py::array_t<T> TG_tree) {
+        auto buf_TG = TG_tree.template unchecked<1>();
+        size_t N = TG_tree.size();
+        size_t tree_N = 0;
+        for (size_t i = 0; i < buf_TG.shape(0); ++i) 
+            if (is_closing_non_terminal(buf_TG[i])) 
+                tree_N++, i++;
+            else
+                tree_N++;
+
+        auto tree = py::array_t<T>(tree_N);
+        auto buf_tree = tree.template mutable_unchecked<1>();
+        
+        size_t tree_index = 0;
+        for (size_t i = 0; i < buf_TG.shape(0); ++i) {
+            T token = buf_TG[i];
+            buf_tree[tree_index++] = token;
+            if (is_closing_non_terminal(token))
+                ++i;
+        }
+        if (tree_index != tree_N) {
+            throw std::runtime_error("Assertion failed: tree_index != T");
+        }
+        return tree;
+    }
+
     py::array convert_treenpy_to_TG(py::array tree) {
         auto dtype = tree.dtype();
         if (dtype.is(py::dtype::of<uint16_t>()))
@@ -264,6 +292,18 @@ public:
             return convert_treenpy_to_terminal_impl<int32_t>(tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return convert_treenpy_to_terminal_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
+    py::array convert_TGnpy_to_tree(py::array TG_tree) {
+        auto dtype = TG_tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_TGnpy_to_tree_impl<uint16_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<int32_t>()))
+            return convert_TGnpy_to_tree_impl<int32_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_TGnpy_to_tree_impl<int64_t>(TG_tree);
         else
             throw std::runtime_error("Unsupported data type");
     }
@@ -1084,7 +1124,9 @@ PYBIND11_MODULE(tg_mask, m) {
         .def("convert_treenpy_to_TG", &SentencepieceVocab::convert_treenpy_to_TG, 
             py::arg("tree"), "Convert tree sequence to TG format")
         .def("convert_treenpy_to_terminal", &SentencepieceVocab::convert_treenpy_to_terminal, 
-            py::arg("tree"), "Convert tree sequence to terminal format")
+            py::arg("tree"), "Convert tree/TG sequence to terminal format")
+        .def("convert_TGnpy_to_tree", &SentencepieceVocab::convert_TGnpy_to_tree, 
+            py::arg("TG_tree"), "Convert TG sequence to tree format")
         // Add other property readers...
         .def(py::pickle(
             [](const SentencepieceVocab &v) { // __getstate__

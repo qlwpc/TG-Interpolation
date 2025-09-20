@@ -40,13 +40,14 @@ model:
   init_fn: normal
   init_std: 0.02
   init_cutoff_factor: 3
-  transformer_grammar_type : tree
 
 ddp:
   grad_sync_mode: batch
   find_unused_params: false
 
-compile: null
+compile: 
+  mode: default
+  fullgraph: false
 
 optimizer:
   name: adamw
@@ -60,13 +61,13 @@ optimizer:
 
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 50
-  alpha_f: 0.1
+  t_warmup: 2000
+  min_lr: 1e-5
   warmup_min_lr: 0
 
 tokenizer:
-  identifier: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
-  vocabulary: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  identifier: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  vocabulary: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
   truncate_direction: right
 
 save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
@@ -74,15 +75,15 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 4000
+save_interval_unsharded: 3000
 save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
 
 max_duration: 1ep
-stop_at: 1
+stop_at: 2000000000
 global_train_batch_size: 128
-device_train_microbatch_size: 6
+device_train_microbatch_size: 24
 
 precision: amp_bf16
 distributed_strategy: ddp
@@ -93,25 +94,30 @@ max_grad_norm: 1.0
 max_grad_norm_ratio: null
 
 speed_monitor:
-  window_size: 20
+  window_size: 20 
 
-eval_interval: 3
+eval_interval: 200
 eval_subset_num_batches: -1
-device_eval_batch_size: 75
-eval_on_load: true
-eval_no_save: true
+device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  - label: txl_approx_doc_testor
-    type: tg_doc
-    data:
-      num_workers: 1         # must be 0 or 1
+  # - label: TG-ppl-validation
+  #   data:
+  #     num_workers: 1
+  #     pin_memory: true
+  #     drop_last: false
+  #     generate_doc_lengths: true
+  #     paths:
+  #       - ${workspace}/dataset/bbc-news/terminal/dev.npy
+  # - label: syntactic_generalization
+  #   type: downstream
+
 data:
   pad_direction: right
   num_workers: 1
-  drop_last: true
+  drop_last: false
   pin_memory: true
-  prefetch_factor: 6
+  prefetch_factor: 8
   persistent_workers: true
   timeout: 0
   paths: 
-    - /dev/shm/dataset/bbc-news/tree/dev.npy
+    - ${workspace}/dataset/bbc-news/terminal/dev.npy

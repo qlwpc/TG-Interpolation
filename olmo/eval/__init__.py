@@ -8,7 +8,7 @@ from ..config import EvaluatorConfig, EvaluatorType, TrainConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
-from .downstream import ICLMetric, label_to_task_map, TGperplexitySentenceLevelMetric, TGperplexityDocumentLevelMetric, SyntacticGeneralizationMetric
+from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
 
@@ -67,14 +67,14 @@ def build_downstream_evaluator(
         timeout=data_config.timeout,
     )
     if eval_cfg.type == EvaluatorType.tg_sent:
-        metric = TGperplexitySentenceLevelMetric(
+        metric = TGPerplexitySentenceLevelMetric(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
             device_eval_batch_size = train_config.device_eval_batch_size
         )
     elif eval_cfg.type == EvaluatorType.tg_doc:
-        metric = TGperplexityDocumentLevelMetric(
+        metric = TGPerplexityDocumentLevelMetric(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),

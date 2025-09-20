@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional, cast, Callable, Tuple
 from torch.utils.data import DataLoader, DistributedSampler
 
 from ..aliases import PathOrStr
-from ..config import DataConfig, TrainConfig
+from ..config import DataConfig, TrainConfig, TGConfig
 from ..exceptions import OLMoConfigurationError
+from ..tokenizer import Tokenizer
 from ..torch_util import barrier, get_global_rank, get_world_size
 from .collator import DataCollator
 from .iterable_dataset import IterableDataset
@@ -48,26 +49,46 @@ class Soft_Alibilike_bias:
         return mask, label_mask
 
 
+class HeadMixingBias:
+    def __init__(self, config:List[TGConfig], train_config:TrainConfig, max_length:int) -> None:
+        self.config = config
+        self.TG_biases = []
+        for head_config in self.config:
+            self.TG_biases.append(get_TG_generate_bias_func(train_config, max_length, head_config.grammar_type))
+    
+    def __call__(self, input_ids:torch.Tensor, update_state=False) -> Tuple[torch.Tensor, torch.Tensor]:
+        masks, label_mask = [], None
+        for gen_TG_bias, head_config in zip(self.TG_biases, self.config):
+            mask, label_mask = gen_TG_bias(input_ids, update_state)
+            masks.append(mask.unsqueeze(0).expand(head_config.n_heads, -1, -1))
+        mask = torch.cat(masks, dim=0)
+        return mask, label_mask
+
 #TODO: promote parameter forwarding 
-def get_TG_generate_bias_func(train_config: TrainConfig, max_length = None) -> TG_attention_bias:
+def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int] = None, TG_type:Optional[str]=None) -> TG_attention_bias:
     generate_TG_attention_bias = None
     vocab_path = train_config.tokenizer.vocabulary
     max_length = max_length if max_length is not None else train_config.model.max_sequence_length
-    if train_config.model.transformer_grammar_type=="tg":
+    if TG_type is None:
+        TG_type = train_config.model.transformer_grammar_type
+    
+    if TG_type == "mixing":
+        generate_TG_attention_bias = HeadMixingBias(train_config.model.mix_head_type, train_config, max_length)
+    elif TG_type=="tg":
         generate_TG_attention_bias = TG_attention_bias(vocab_path, max_length)
-    elif train_config.model.transformer_grammar_type=="tgproximal":
+    elif TG_type=="tgproximal":
         generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, train_config.model.tg_proximal_k)
-    elif train_config.model.transformer_grammar_type=="tgheight":
+    elif TG_type=="tgheight":
         generate_TG_attention_bias = Height_TG_attention_bias(vocab_path, max_length, train_config.model.tg_height_h)
-    elif train_config.model.transformer_grammar_type=="tgnomask":
+    elif TG_type=="tgnomask":
         generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, max_length)
-    elif train_config.model.transformer_grammar_type=="mixA":
+    elif TG_type=="mixA":
         generate_TG_attention_bias = ChangeHead_bias(vocab_path, max_length, "mixA")
-    elif train_config.model.transformer_grammar_type=="mixB":
+    elif TG_type=="mixB":
         generate_TG_attention_bias = ChangeHead_bias(vocab_path, max_length, "mixB")
-    elif train_config.model.transformer_grammar_type=="soft_prox":
+    elif TG_type=="soft_prox":
         generate_TG_attention_bias = Soft_Alibilike_bias(vocab_path, max_length)
-    elif train_config.model.transformer_grammar_type=="tgheightprox":
+    elif TG_type=="tgheightprox":
         generate_TG_attention_bias = Height_TG_attention_bias(vocab_path, max_length, train_config.model.tg_height_h, train_config.model.tg_proximal_k)
     
     return generate_TG_attention_bias
@@ -154,9 +175,23 @@ def build_train_dataloader(
     collator = DataCollator(
         pad_direction=train_config.data.pad_direction, pad_token_id=train_config.model.pad_token_id
     )
-    dataset = build_memmap_dataset(
-        train_config, train_config.data, include_instance_metadata=include_instance_metadata
-    )
+    if train_config.finetune_task is None:
+        dataset = build_memmap_dataset(
+            train_config, train_config.data, include_instance_metadata=include_instance_metadata
+        )
+    else:
+        task_kwargs = {}
+        from ..eval.downstream import label_to_task_map
+        task_class = label_to_task_map[TrainConfig.finetune_task]
+        if isinstance(task_class, tuple):
+            task_class, task_kwargs = task_class
+        tokenizer = Tokenizer.from_train_config(train_config)
+        dataset = task_class(tokenizer=tokenizer, 
+                             split="train", 
+                             generate_TG_attention_bias=get_TG_generate_bias_func(train_config, train_config.model.max_sequence_length),
+                             vocab_path=train_config.tokenizer.vocabulary,
+                             **task_kwargs)  # type: ignore
+    
     work_dir = Path(train_config.save_folder) / "train_data"
     if get_global_rank() == 0:
         if work_dir.is_dir() and not train_config.save_overwrite:
