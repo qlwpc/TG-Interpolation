@@ -10,11 +10,13 @@ from sklearn.metrics import f1_score
 from torchmetrics import Metric
 import numpy as np
 import json, os
+import evaluate
 
 from olmo.util import load_hf_dataset, load_oe_eval_requests
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
+from ..data.util import encode_TG_string
 
 log = logging.getLogger(__name__)
 
@@ -402,6 +404,139 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         return " "
 
 
+class XsumDataset(metaclass=abc.ABCMeta):
+    def __init__(self,
+        tokenizer: Tokenizer,
+        dataset_path: str,
+        model_ctx_len: int = 2048,
+        split="train",
+        metric_type="sent",
+        generate_TG_attention_bias: Optional[Callable | str] = None,
+        vocab_path: str = None):
+
+        self.tokenizer = tokenizer
+        self.MAX_SUMMARY_LENGTH = 150
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.model_ctx_len = model_ctx_len
+        self.generate_TG_attention_bias = generate_TG_attention_bias
+        self.prompts = "<SEP> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <SEP>"
+        self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
+        self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
+        passages = []
+        gold_summary = []
+        with open(os.path.join(dataset_path, f"gold_{split}_summary.jsonl"), 'r') as file:
+            for line in file:
+                summary = json.loads(line.strip())
+                gold_summary.append(summary)
+
+        with open(os.path.join(dataset_path, f"xsum_{split}.txt"), 'r') as file:
+            for line in file:
+                passages.append(line.strip())
+
+        if split=="train":
+            train_summary = []
+            with open(os.path.join(dataset_path, f"gold_{split}_summary.jsonl"), 'r') as file:
+                train_ids = json.load(file)
+            with open(os.path.join(dataset_path, "xsum_train_summary.txt"), 'r') as file:
+                for line in file:
+                    train_summary.append(line.strip())
+            train_ids = set(train_ids)
+            self.passages = []
+            self.train_summary = []
+            self.gold_summary = []
+            for passage, summary, gold in zip(passages, train_summary, gold_summary):
+                if gold["id"] in train_ids:
+                    self.passages.append(passage)
+                    self.train_summary.append(summary)
+                    self.gold_summary.append(gold)
+        else:
+            self.passages = passages
+            self.gold_summary = gold_summary
+            self.train_summary = None
+
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        '''
+        truncate input as the length of TG.
+        '''
+        passage = self.passages[index]
+        passage_tokens = encode_TG_string(self.tokenizer, passage)
+        passage_TG_tokens = self.vocab.convert_treenpy_to_TG(passage_tokens)
+        if self.train_summary is not None:
+            train_summary = self.train_summary[index]
+            train_summary_tokens = encode_TG_string(self.tokenizer, train_summary)
+            train_summary_TG_tokens = self.vocab.convert_treenpy_to_TG(train_summary_tokens)
+            passage_truncate_length = self.model_ctx_len - len(train_summary_TG_tokens) - len(self.prompts_TG_tokens) - 1 - 1 # one for bos and one for eos
+            input_ids = np.concatenate([
+                np.array(self.vocab.bos),
+                passage_TG_tokens[:passage_truncate_length],
+                self.prompts_TG_tokens,
+                train_summary_TG_tokens,
+                np.array(self.vocab.eos)
+            ])
+            loss_tokens = np.concatenate([
+                train_summary_TG_tokens, 
+                np.array(self.vocab.eos)
+            ])
+        else:
+            passage_truncate_length = self.model_ctx_len - self.MAX_SUMMARY_LENGTH - len(self.prompts_TG_tokens) - 1 - 1
+            input_ids = np.concatenate([
+                np.array(self.vocab.bos),
+                passage_TG_tokens[:passage_truncate_length],
+                self.prompts_TG_tokens,
+            ])
+            loss_tokens = None
+        
+        attention_bias, label_mask, TG_label_mask = None, None, None
+        if self.generate_TG_attention_bias is None:
+            input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+            if loss_tokens is not None:
+                loss_tokens = self.vocab.convert_treenpy_to_terminal(loss_tokens)
+        elif type(self.generate_TG_attention_bias) == str:
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            if loss_tokens is not None:
+                loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
+        else:
+            attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
+        
+        if loss_tokens is not None:
+            label_mask = torch.zeros((input_ids.shape[0], ), dtype=torch.bool)
+            label_mask[label_mask.shape[0] - loss_tokens.shape[0]:] = True
+            if TG_label_mask is not None:
+                label_mask = torch.bitwise_and(label_mask, TG_label_mask)
+        return {
+            "attention_bias": attention_bias,
+            "label" : self.gold_summary[index],
+            "label_mask": label_mask,
+            "input_ids": input_ids,
+        }
+
+    def __len__(self):
+        return len(self.passages)
+
+class RougeMetric(Metric):
+    def __init__(self, 
+                 metric_type="rouge",
+                 vocab_path = None
+        ) -> None:
+        super().__init__(sync_on_compute=True)
+        self.add_state("predictions", default=[], dist_reduce_fx=None)
+        self.add_state("references", default=[], dist_reduce_fx=None)
+
+    def update(self):
+        pass
+
+    def compute(self):
+        rouge = evaluate.load('rouge')
+        results = rouge.compute(
+            predictions=self.predictions,
+            references=self.references,
+            use_stemmer=True,        # 对应 -m
+            rouge_types=['rouge1', 'rouge2', 'rougeL'],  # 指定要计算的 ROUGE 类型
+            use_aggregator=True      # 是否聚合结果（返回平均值）
+        )
+        return results
+
 class TGPerplexityDocumentLevelMetric(Metric):
     full_state_update: bool = False
     
@@ -442,37 +577,6 @@ class TGPerplexityDocumentLevelMetric(Metric):
         ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
         ppl = np.exp(-ppl / data_numwords)
         return torch.tensor(ppl)
-
-# def print_tensor_data(tensor, precision=4, suppress_small=True):
-#     """
-#     打印PyTorch Tensor中的所有数据
-    
-#     参数:
-#         tensor (torch.Tensor): 要打印的PyTorch张量
-#         precision (int): 浮点数打印精度，默认为4位小数
-#         suppress_small (bool): 是否抑制非常小的数用科学计数法显示，默认为True
-#     """
-#     # 将Tensor转换为numpy数组
-#     # 设置numpy打印选项
-#     # np.set_printoptions(
-#     #     precision=precision,
-#     #     threshold=np.inf,  # 显示所有元素
-#     #     linewidth=np.inf,   # 不换行
-#     #     suppress=suppress_small  # 抑制科学计数法
-#     # )
-#     torch.set_printoptions(
-#         precision=4,    # 小数位数
-#         threshold=10000000, # 触发缩略显示的阈值（元素数量）
-#         edgeitems=3,    # 缩略时显示的首尾元素数量
-#         linewidth=100000,  # 每行的字符宽度
-#         sci_mode=False  # 是否禁用科学计数法
-#     )
-    
-#     print(tensor)
-    
-#     # 恢复默认打印选项
-#     torch.set_printoptions()
-
 
 # Deprecated please use Document Level ppl metric
 class TGPerplexitySentenceLevelMetric(Metric):
@@ -2395,6 +2499,7 @@ TG_task_map = {
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
+    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"})
 }
 
 label_to_task_map = {

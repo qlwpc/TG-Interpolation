@@ -44,6 +44,7 @@ __all__ = [
     "EvaluatorConfig",
     "TokenizerConfig",
     "TrainConfig",
+    "TGConfig",
     "PaddingDirection",
     "TruncationDirection",
     "SpeedMonitorConfig",
@@ -198,6 +199,13 @@ class BlockType(StrEnum):
     implementations of operations like attention to imitate the behavior of Llama.
     """
 
+@dataclass
+class TGConfig(BaseConfig):
+    grammar_type : str
+    n_heads: int
+    """
+    Num of heads 
+    """
 
 class InitFnType(StrEnum):
     mitchell = "mitchell"
@@ -482,6 +490,7 @@ class ModelConfig(BaseConfig):
     """
     transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight"] 
     """
+    mix_head_type: List[TGConfig] = field(default_factory=list)
 
     tg_proximal_k : int = 20
     tg_height_h : int = 5
@@ -936,6 +945,11 @@ class TrainConfig(BaseConfig):
     workspace: Optional[str] = './'
     """
     workspace path
+    """
+
+    finetune_task: Optional[str] = None
+    """
+    task to be finetuned,
     """
 
     model: ModelConfig = field(default_factory=ModelConfig)
