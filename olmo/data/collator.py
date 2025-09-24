@@ -15,10 +15,11 @@ __all__ = ["DataCollator"]
 class DataCollator:
     pad_direction: PaddingDirection
     pad_token_id: int
+    generate_attenion_mask: bool
 
     @classmethod
     def from_train_config(cls, config: TrainConfig) -> DataCollator:
-        return cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id)
+        return cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, generate_attention_mask=False)
 
     def __call__(self, items: Union[List[Dict[str, Any]], List[torch.Tensor]]) -> Dict[str, Any]:
         assert items
@@ -32,6 +33,7 @@ class DataCollator:
         all_instance_mask = []
         all_doc_lens = []
         all_max_doc_lens = []
+        all_gold_summary = []
         max_docs = max((len(x["doc_lens"]) if isinstance(x, dict) and "doc_lens" in x else 0 for x in items))
 
         for x in items:
@@ -56,8 +58,11 @@ class DataCollator:
 
             # Pad attention mask.
             attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
-            if attention_mask is not None:
-                if not isinstance(attention_mask, torch.Tensor):
+            if attention_mask is not None or self.generate_attenion_mask:
+                if attention_mask is None:
+                    attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
+                    attention_mask.masked_fill_(input_ids == self.pad_token_id, False)
+                elif not isinstance(attention_mask, torch.Tensor):
                     attention_mask = torch.tensor(attention_mask)
                 pad_value = False if attention_mask.dtype == torch.bool else 0.0
                 all_attention_mask.append(
@@ -120,6 +125,10 @@ class DataCollator:
             if metadata is not None:
                 all_metadata.append(metadata)
 
+            gold_summary = x.get("gold_summary") if isinstance(x, dict) else None
+            if gold_summary is not None:
+                all_gold_summary.append(gold_summary)
+
         out: Dict[str, Any] = {"input_ids": torch.stack(all_input_ids)}
         if all_attention_mask:
             out["attention_mask"] = torch.stack(all_attention_mask)
@@ -137,5 +146,7 @@ class DataCollator:
             out["max_doc_lens"] = all_max_doc_lens
         if all_metadata:
             out["metadata"] = all_metadata
+        if all_gold_summary:
+            out["gold_summary"] = all_gold_summary
 
         return out

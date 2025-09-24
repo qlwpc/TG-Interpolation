@@ -721,7 +721,7 @@ class Trainer:
 
     def model_forward(
         self, batch: Dict[str, Any], loss_reduction: str = "mean", compute_z_loss: bool = False
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, int]:
         # shape: (batch_size, seq_len, vocab_size)
         logits = self.dist_model(
             input_ids=batch["input_ids"],
@@ -734,26 +734,28 @@ class Trainer:
         # shape: (batch_size * seq_len, vocab_size)
         logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
         # shape: (batch_size, seq_len)
-        labels = self.get_labels(batch)
+        ignore_id = self.cfg.model.pad_token_id
+        labels = self.get_labels(batch, ignore_id=ignore_id)
         # shape: (batch_size * seq_len,)
         labels = labels.view(-1)
+        batch_size_in_loss_tokens = (labels!=ignore_id).sum().item()
         ce_loss, z_loss = self.loss_fn(
-            logits_for_loss, labels, ignore_index=-100, reduction=loss_reduction, compute_z_loss=compute_z_loss
+            logits_for_loss, labels, ignore_index=ignore_id, reduction=loss_reduction, compute_z_loss=compute_z_loss
         )
         if loss_reduction == "none":
             # Reshape (batch_size * seq_len,) -> (batch_size, seq_len)
             ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1)
             if z_loss is not None:
                 z_loss = z_loss.view(batch["input_ids"].shape[0], -1)
-        return ce_loss, z_loss, logits
+        return ce_loss, z_loss, logits, batch_size_in_loss_tokens
 
     def train_micro_batch(
-        self, micro_batch: Dict[str, Any], batch_size_in_tokens: int
+        self, micro_batch: Dict[str, Any]
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        ce_loss, z_loss, logits = self.model_forward(
+        ce_loss, z_loss, logits, batch_size_in_loss_tokens = self.model_forward(
             micro_batch, compute_z_loss=self.cfg.softmax_auxiliary_loss, loss_reduction="sum"
         )
-        ce_loss = ce_loss / batch_size_in_tokens
+        ce_loss = ce_loss / batch_size_in_loss_tokens
 
         # In case this helps with memory utilization.
         del micro_batch
@@ -761,7 +763,7 @@ class Trainer:
         # Get loss to optimize for.
         if self.cfg.softmax_auxiliary_loss:
             assert z_loss is not None
-            z_loss = z_loss / batch_size_in_tokens
+            z_loss = z_loss / batch_size_in_loss_tokens
             loss = ce_loss + z_loss
         else:
             loss = ce_loss
@@ -773,7 +775,7 @@ class Trainer:
     def train_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Split into micro-batches.
         micro_batches = self.split_batch(batch)
-        batch_size_in_tokens = batch["input_ids"].numel()
+        # batch_size_in_tokens = batch["input_ids"].numel()  # TODO: label_mask, fix right loss tokens?
 
         # In case this helps with memory utilization.
         del batch
@@ -800,7 +802,7 @@ class Trainer:
             with grad_sync_context():
                 with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                     # Run forward pass.
-                    loss, ce_loss, z_loss = self.train_micro_batch(micro_batch, batch_size_in_tokens)
+                    loss, ce_loss, z_loss = self.train_micro_batch(micro_batch)
 
                     # Update overall CE batch loss.
                     ce_batch_loss += ce_loss.detach()
@@ -1013,7 +1015,7 @@ class Trainer:
                     else:
                         surprisal = self.dist_model.module.word_sync_beam_search(
                             vocab=evaluator.eval_loader.dataset.vocab,
-                            eval_input_ids=sent["input_ids"],
+                            eval_input_ids=sent["input_ids"][0],
                             generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=10*sent["input_ids"].shape[1] + 10),
                             tag_start=sent["tag_start"],
                             tag_end=sent["tag_end"],
@@ -1023,6 +1025,29 @@ class Trainer:
             
         evaluator.update_metrics(
             task_name, score_dict
+        )
+    
+    def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
+        batch = move_to_device(batch, self.device)
+        # currently only support eval_batch_size==1
+        with torch.no_grad():
+            with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
+                if self.cfg.model.transformer_grammar_type == None:
+                    predictions = self.dist_model.module.generate(batch["input_ids"], 
+                                                                   max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
+                                                                   beam_size=6).token_ids
+                    predictions = predictions[:, 0, :]
+                else:
+                    predictions = self.dist_model.module.word_sync_beam_search(
+                            vocab = evaluator.eval_loader.dataset.vocab,
+                            past_input = batch["input_ids"],
+                            max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH // 2,
+                            max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
+                            beam_size=6,
+                        )
+        
+        evaluator.update_metrics(
+            batch, predictions, batch["gold_summary"]
         )
 
     def split_batch(self, batch: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1137,6 +1162,8 @@ class Trainer:
                     self.TG_doc_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "syntactic_generalization":
                     self.SG_eval_step(eval_batch, evaluator)
+                elif evaluator.label == "xsum":
+                    self.summarization_eval_step(eval_batch, evaluator)
                 else:
                     self.eval_step(eval_batch, evaluator)
 
@@ -1241,7 +1268,7 @@ class Trainer:
         if self.cfg.torch_profiling and get_global_rank() == 0:
             from torch.profiler import schedule
 
-            profiling_schedule = schedule(wait=0, warmup=0, active=3, repeat=1)
+            profiling_schedule = schedule(wait=0, warmup=1, active=2, repeat=1)
 
             def on_trace_ready(p):
                 profiler_output_dir = Path(self.cfg.save_folder) / "profiler"
@@ -1303,7 +1330,7 @@ class Trainer:
         # Train.
         first_batch: bool = True
         cancel_initiated: bool = False
-        stop_at: int = self.cfg.stop_at
+        stop_at: int = self.cfg.stop_at if self.cfg.stop_at <= self.max_steps else self.max_steps
         save_checkpoints: bool = True
 
         with torch_profiler as p:
@@ -1317,15 +1344,23 @@ class Trainer:
                     # overhead. So for now I'm putting these assertions here so if the assumption is violated it will
                     # fail loudly.
                     batch_size, seq_len = batch["input_ids"].shape
-                    assert seq_len == self.cfg.model.max_sequence_length
-                    assert batch_size == self.cfg.device_train_batch_size
-                    global_batch_size = batch_size * get_world_size()  # assumes batch size equal across ranks
+                    if self.cfg.finetune_task is None: # pre-training
+                        assert seq_len == self.cfg.model.max_sequence_length
+                        assert batch_size == self.cfg.device_train_batch_size
+                        global_batch_size = batch_size * get_world_size()  # assumes batch size equal across ranks
+                        self.global_train_examples_seen_this_epoch += global_batch_size
+                        self.global_train_tokens_seen += global_batch_size * seq_len
+                        local_tokens = batch_size * seq_len
+                    else:  # SFT
+                        local_tokens = batch["input_ids"].numel()
+                        global_tokens_tensor = torch.tensor(local_tokens, device=self.device)
+                        dist.all_reduce(global_tokens_tensor, op=dist.ReduceOp.SUM)
+                        self.global_train_examples_seen_this_epoch += batch_size * get_world_size() # Assumption, to get accurate values should use all reduce
+                        self.global_train_tokens_seen += global_tokens_tensor.item()
                     self.global_step += 1
-                    self.global_train_examples_seen_this_epoch += global_batch_size
-                    self.global_train_tokens_seen += global_batch_size * seq_len
                     speed_monitor.batch_start(
                         global_total_tokens=self.global_train_tokens_seen,
-                        device_batch_num_tokens=batch_size * seq_len,  # num tokens in batch for this device
+                        device_batch_num_tokens=local_tokens,  # num tokens in batch for this device
                         # We start monitoring speed after the first batch since the first
                         # batch might be an outlier due to compiling and other initialization overhead.
                         num_fwd_flops=self.model.num_fwd_flops,  # this is per token

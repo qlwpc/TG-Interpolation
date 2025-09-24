@@ -17,6 +17,8 @@ from olmo.util import load_hf_dataset, load_oe_eval_requests
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
 from ..data.util import encode_TG_string
+from ..data.collator import DataCollator
+from ..config import PaddingDirection
 
 log = logging.getLogger(__name__)
 
@@ -409,17 +411,18 @@ class XsumDataset(metaclass=abc.ABCMeta):
         tokenizer: Tokenizer,
         dataset_path: str,
         model_ctx_len: int = 2048,
-        split="train",
+        split="test",
         metric_type="sent",
         generate_TG_attention_bias: Optional[Callable | str] = None,
         vocab_path: str = None):
 
         self.tokenizer = tokenizer
+        self.collator = DataCollator(pad_direction=PaddingDirection.left, pad_token_id=self.tokenizer.pad_token_id, generate_attenion_mask=True)
         self.MAX_SUMMARY_LENGTH = 150
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
-        self.prompts = "<SEP> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <SEP>"
+        self.prompts = "<|SEP|> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <|SEP|>"
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
         passages = []
@@ -435,7 +438,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
 
         if split=="train":
             train_summary = []
-            with open(os.path.join(dataset_path, f"gold_{split}_summary.jsonl"), 'r') as file:
+            with open(os.path.join(dataset_path, f"save_ids.json"), 'r') as file:
                 train_ids = json.load(file)
             with open(os.path.join(dataset_path, "xsum_train_summary.txt"), 'r') as file:
                 for line in file:
@@ -448,10 +451,10 @@ class XsumDataset(metaclass=abc.ABCMeta):
                 if gold["id"] in train_ids:
                     self.passages.append(passage)
                     self.train_summary.append(summary)
-                    self.gold_summary.append(gold)
+                    self.gold_summary.append(gold["summary"])
         else:
             self.passages = passages
-            self.gold_summary = gold_summary
+            self.gold_summary = [line["summary"] for line in gold_summary]
             self.train_summary = None
 
 
@@ -468,20 +471,21 @@ class XsumDataset(metaclass=abc.ABCMeta):
             train_summary_TG_tokens = self.vocab.convert_treenpy_to_TG(train_summary_tokens)
             passage_truncate_length = self.model_ctx_len - len(train_summary_TG_tokens) - len(self.prompts_TG_tokens) - 1 - 1 # one for bos and one for eos
             input_ids = np.concatenate([
-                np.array(self.vocab.bos),
+                np.array([self.vocab.bos]),
                 passage_TG_tokens[:passage_truncate_length],
                 self.prompts_TG_tokens,
                 train_summary_TG_tokens,
-                np.array(self.vocab.eos)
+                np.array([self.vocab.eos])
             ])
             loss_tokens = np.concatenate([
                 train_summary_TG_tokens, 
-                np.array(self.vocab.eos)
+                np.array([self.vocab.eos])
             ])
         else:
             passage_truncate_length = self.model_ctx_len - self.MAX_SUMMARY_LENGTH - len(self.prompts_TG_tokens) - 1 - 1
+            # print(f"length {passage_truncate_length} tokens is {self.tokenizer.decode(passage_TG_tokens[:passage_truncate_length].tolist())}")
             input_ids = np.concatenate([
-                np.array(self.vocab.bos),
+                np.array([self.vocab.bos]),
                 passage_TG_tokens[:passage_truncate_length],
                 self.prompts_TG_tokens,
             ])
@@ -506,35 +510,51 @@ class XsumDataset(metaclass=abc.ABCMeta):
                 label_mask = torch.bitwise_and(label_mask, TG_label_mask)
         return {
             "attention_bias": attention_bias,
-            "label" : self.gold_summary[index],
+            "gold_summary" : self.gold_summary[index],
             "label_mask": label_mask,
             "input_ids": input_ids,
         }
 
     def __len__(self):
         return len(self.passages)
+    
+    def collate_fn(self, data):
+        return self.collator(data)
 
 class RougeMetric(Metric):
     def __init__(self, 
-                 metric_type="rouge",
-                 vocab_path = None
+                 metric_type:str = "rouge",
+                 vocab_path:str = None,
+                 tokenizer:Tokenizer = None
         ) -> None:
         super().__init__(sync_on_compute=True)
         self.add_state("predictions", default=[], dist_reduce_fx=None)
         self.add_state("references", default=[], dist_reduce_fx=None)
+        self.tokenizer = tokenizer
 
-    def update(self):
-        pass
+    def update(self, batch, predictions, references):
+        input_ids = batch["input_ids"].cpu()
+        for b in range(predictions.shape[0]):
+            pred_summary = self.tokenizer.decode(predictions[b].tolist())
+            passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
+            print(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
+            self.predictions.append(pred_summary)
+        self.references.extend(references)
+
+    def reset(self):
+        self.predictions = []
+        self.referneces = []
 
     def compute(self):
         rouge = evaluate.load('rouge')
         results = rouge.compute(
             predictions=self.predictions,
             references=self.references,
-            use_stemmer=True,        # 对应 -m
-            rouge_types=['rouge1', 'rouge2', 'rougeL'],  # 指定要计算的 ROUGE 类型
-            use_aggregator=True      # 是否聚合结果（返回平均值）
+            use_stemmer=True,
+            rouge_types=['rouge1', 'rouge2', 'rougeL'],  
+            use_aggregator=True,  # ave scores
         )
+        results["R-AVG"] = sum(results.values()) / 3
         return results
 
 class TGPerplexityDocumentLevelMetric(Metric):
@@ -958,7 +978,7 @@ class SGDataset(metaclass=abc.ABCMeta):
             "subordination", "subordination_orc-orc", "subordination_pp-pp", "subordination_src-src",   
             # "nn-nv-rpl" don't include this test
         ]
-
+        self.task_list = ["center_embed"]
         self.dataset_path = dataset_path
         self.tokenizer = tokenizer
         self.metric_type = metric_type
@@ -2499,7 +2519,7 @@ TG_task_map = {
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
-    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"})
+    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "split": "test", "metric_type": "rouge"})
 }
 
 label_to_task_map = {

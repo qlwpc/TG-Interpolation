@@ -173,7 +173,9 @@ def build_train_dataloader(
 ) -> DataLoader:
     assert train_config.device_train_batch_size is not None
     collator = DataCollator(
-        pad_direction=train_config.data.pad_direction, pad_token_id=train_config.model.pad_token_id
+        pad_direction=train_config.data.pad_direction, 
+        pad_token_id=train_config.model.pad_token_id, 
+        generate_attenion_mask=train_config.data.generate_attention_mask
     )
     if train_config.finetune_task is None:
         dataset = build_memmap_dataset(
@@ -182,12 +184,12 @@ def build_train_dataloader(
     else:
         task_kwargs = {}
         from ..eval.downstream import label_to_task_map
-        task_class = label_to_task_map[TrainConfig.finetune_task]
+        task_class = label_to_task_map[train_config.finetune_task]
         if isinstance(task_class, tuple):
             task_class, task_kwargs = task_class
+        task_kwargs["split"] = "train"
         tokenizer = Tokenizer.from_train_config(train_config)
         dataset = task_class(tokenizer=tokenizer, 
-                             split="train", 
                              generate_TG_attention_bias=get_TG_generate_bias_func(train_config, train_config.model.max_sequence_length),
                              vocab_path=train_config.tokenizer.vocabulary,
                              **task_kwargs)  # type: ignore

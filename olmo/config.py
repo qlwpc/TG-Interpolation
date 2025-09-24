@@ -665,6 +665,7 @@ class EvaluatorType(StrEnum):
     lm = "lm"
     tg_doc = "tg_doc"
     tg_sent = "tg_sent"
+    rouge = "rouge"
 
 
 @dataclass
