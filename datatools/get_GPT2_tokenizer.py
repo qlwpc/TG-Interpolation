@@ -18,7 +18,7 @@ tokenizer.add_special_tokens([bos, pad])
 
 sum = AddedToken("<|SUM|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
 cls = AddedToken("<|CLS|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
-sep = AddedToken("<|SEP|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
+sep = AddedToken("<|SEP|>", single_word=True, lstrip=True, rstrip=False, normalized=True, special=True)
 tokenizer.add_special_tokens([sum, cls, sep])
 
 
