@@ -402,6 +402,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         return " "
 
 
+# Evaluation for Transformer Grammar
+
+
 class TGPerplexityDocumentLevelMetric(Metric):
     full_state_update: bool = False
     
@@ -1023,154 +1026,63 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self,
         tokenizer: Tokenizer,
         dataset_path: str,
-        dataset_name: str = None, # tg or tree
+        dataset_name: Union[str, Sequence[str], None] = None,
         model_ctx_len: int = 2048,
-        split="validation",
-        metric_type="sent",  # Override default metric type, whether be sent/doc
-        generate_TG_attention_bias: Optional[TG_attention_bias] = None,
+        metric_type="BLiMP_default",  
         vocab_path: str = None,
         device_eval_batch_size: int = 60, 
     ):
 
         super().__init__()
-        self.task_list = BLiMP_TASK_LIST
         self.tokenizer = tokenizer
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
-        self.dataset_name = dataset_name
-        self.model_ctx_len = model_ctx_len
         self.metric_type = metric_type 
-        self.log_instances = 2  # Set to > 0 to log the first few instances as a sanity check
         self.batch_size = device_eval_batch_size
+        self.task_list = BLiMP_TASK_LIST
         self.SENT_SIZE = 300
+        self.TASK_SIZE = 1000 * self.SENT_SIZE
+        self.length = len(self.task_list) * self.TASK_SIZE * self.SENT_SIZE
 
         self.samples: List[Dict[str, Any]] = []
-        self.term_len: List[int] = []
-
-        log.info(
-                f"Starting loading {self.dataset_name}_approx_ppl dataset"
-            )
-
         self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
-        self.sent_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_sent_index.npy")))
-        self.doc_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_doc_index.npy")))
-        self.length = len(self.sent_index)
-        self._generate_TG_attention_bias = generate_TG_attention_bias
+        self.input_len = self.dataset.shape[1]
+
         self.prep_examples()
         self.reset()
         log.info(f"Loading Dataset finished")
 
+    def prep_examples(self):
+        pass
+
     def __getitem__(self, index):
         return {
-            "sent_id" : index//self.SENT_SIZE + 1, 
-            "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
-            "input_ids": self.dataset[self.sent_index[index]:self.sent_index[index+1]], 
+            "UID" : self.task_list[index // self.TASK_SIZE], 
+            "pairID": index % self.TASK_SIZE // (self.SENT_SIZE * 2), 
+            "is_sentence_good" : index % (self.SENT_SIZE * 2) < self.SENT_SIZE, 
+            "input_ids": torch.LongTensor(self.dataset[index]), 
         }
 
     def __len__(self):
         return self.length
 
-    def get_term_length(self):
-        return self.term_len
-
     def reset(self) -> None:
-        self.cur_doc_id = 0
-        self.sent_to_add = None
-        self.num_evaled = 0
-
-    def prep_examples(self):
-        """Append doc_ids to each example so that they are processed together in the metric"""
-        self.sent_index = torch.cat([torch.LongTensor([0]), torch.cumsum(self.sent_index, dim=0)])
-        self.doc_index = torch.cumsum(self.doc_index, dim=0)
-        self.sent_doc_id = torch.zeros((self.length // self.SENT_SIZE + 1), dtype=torch.int)
-        self.term_len = [0] * (self.length // self.SENT_SIZE + 1)
-        self.sent_doc_id[0] = 1
-        self.sent_doc_id[self.doc_index] = 1
-        self.sent_doc_id = torch.cumsum(self.sent_doc_id, dim=0)
-
-        for i in range(1, len(self.term_len)):
-            sent = self[self.SENT_SIZE * (i-1)]
-            self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
-
-    def pad_tokens_until_max(self, tokens, max_len=2048):
-        """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
-        queries are already truncated at max length of model_ctx_len
-        this acts as additional check for all types of sequences in the batch
-        """
-        if len(tokens) > self.model_ctx_len:
-            return tokens[-self.model_ctx_len :]
-        else:
-            # pad to max_len, but check again if this padding exceeded self.model_ctx_len
-            # this time truncate from right side of the sequence because additional padding caused len(tokens) > self.model_ctx_len
-            tokens = np.concatenate([tokens, [self.vocab.pad] * (max_len - len(tokens))], axis=0)
-
-            if len(tokens) > self.model_ctx_len:
-                tokens = tokens[: self.model_ctx_len]
-
-            return tokens
+        pass
 
     def collate_fn(self, data):
-        # pad to max length
-        if self.metric_type=="doc" and data[0]["doc_id"] > self.cur_doc_id:
-            self.cur_doc_id = data[0]["doc_id"]
-            if self._generate_TG_attention_bias is not None:
-                self._generate_TG_attention_bias.reset_state()
-        
-        self.num_evaled += len(data)
-        max_input_len = 0
-        for sample in data:
-            if len(sample["input_ids"]) > max_input_len:
-                max_input_len = len(sample["input_ids"])
-
-        sent_ids = []
+        pair_ids = []
         input_ids = []
-        all_attention_bias = []
-        all_label_mask = []
         # pad according to max_lengths
         for sample in data:
-            pad_shape = (
-                0, (max_input_len - len(sample["input_ids"]))
-            )
-            sent_ids.append(sample["sent_id"])
-            # make sure Gen TG bias have the correct length
-            cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
-
-            attention_bias, label_mask = None, None
-            if self._generate_TG_attention_bias is not None:
-                attention_bias, label_mask = self._generate_TG_attention_bias(cur_input_id)
+            cur_input_id = sample["input_ids"]
             input_ids.append(cur_input_id)
-            
-            if attention_bias is not None:
-                if not isinstance(attention_bias, torch.Tensor):
-                    attention_bias = torch.tensor(attention_bias)
-                # Reshape to `(1, seq_len, seq_len)`
-                while len(attention_bias.shape) < 3:
-                    attention_bias = attention_bias.unsqueeze(0)
-                all_attention_bias.append(attention_bias)
-
-            if label_mask is not None:
-                if not isinstance(label_mask, torch.Tensor):
-                    label_mask = torch.tensor(label_mask)
-                all_label_mask.append(label_mask)
 
         batch = {
-            "doc_id": data[0]["doc_id"] if self.metric_type=="doc" else None,
-            "sent_id": torch.LongTensor(sent_ids),
+            "UID" : data[0]["UID"],  
+            "pairID": data[0]["pairID"], 
+            "is_sentence_good" : data[0]["is_sentence_good"], 
             "input_ids": torch.stack(input_ids),
         }
-        if all_attention_bias:
-            batch["attention_bias"] = torch.stack(all_attention_bias)
-        if all_label_mask:
-            batch["label_mask"] = torch.stack(all_label_mask)
-
-        if self.metric_type=="doc":
-            if self.num_evaled % self.SENT_SIZE == self.batch_size or self.batch_size == self.SENT_SIZE:
-                # Make sure bias has the same length with kv cache, we must pass pad into GenBias
-                self.sent_to_add = torch.LongTensor(self.pad_tokens_until_max(data[0]["input_ids"], max_len=max_input_len))
-                batch["add_len"] = data[0]["input_ids"].shape[0]
-            if self.num_evaled % self.SENT_SIZE == 0:
-                if self._generate_TG_attention_bias is not None:
-                    self._generate_TG_attention_bias(self.sent_to_add, True)
         return batch
 
     def token_encode(self, string: str) -> List[int]:
