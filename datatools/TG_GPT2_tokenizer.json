@@ -51,8 +51,8 @@
     {
       "id": 50261,
       "content": "<|SEP|>",
-      "single_word": false,
-      "lstrip": false,
+      "single_word": true,
+      "lstrip": true,
       "rstrip": false,
       "normalized": true,
       "special": true
