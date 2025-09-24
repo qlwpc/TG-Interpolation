@@ -2410,6 +2410,8 @@ TG_path = "./dataset/bbc-news/testppl_tg/"
 TXLTREE_path = "./dataset/bbc-news/testppl_tree/"
 TESTOR_TG_PATH = "./dataset/bbc-news/testor_tg/"
 TESTOR_TREE_PATH = "./dataset/bbc-news/testor_tree/"
+BLiMP_PATH = "./dataset/BLiMP/tree300/"
+BLiMP_RAW_PATH = "./dataset/BLiMP/raw_data/"
 
 TG_task_map = {
     "tg_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
@@ -2420,7 +2422,8 @@ TG_task_map = {
     "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TG_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
-    "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
+    "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}), 
+    "BLiMP_default": (BLiMPApproximationDataset, {"dataset_path": BLiMP_PATH}), 
     "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "split": "test", "metric_type": "rouge"})
 }
 
