@@ -978,7 +978,6 @@ class SGDataset(metaclass=abc.ABCMeta):
             "subordination", "subordination_orc-orc", "subordination_pp-pp", "subordination_src-src",   
             # "nn-nv-rpl" don't include this test
         ]
-        self.task_list = ["center_embed"]
         self.dataset_path = dataset_path
         self.tokenizer = tokenizer
         self.metric_type = metric_type
