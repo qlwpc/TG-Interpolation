@@ -8,7 +8,7 @@ from ..config import EvaluatorConfig, EvaluatorType, TrainConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
-from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric
+from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
 
@@ -21,6 +21,9 @@ __all__ = [
     "build_evaluators",
 ]
 
+beam_search_tasks = {
+    "syntactic_generalization",
+}
 
 def build_downstream_evaluator(
     train_config: TrainConfig,
@@ -52,7 +55,7 @@ def build_downstream_evaluator(
             seed=train_config.seed,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
-    if eval_cfg.label == "syntactic_generalization":
+    if eval_cfg.label in beam_search_tasks:
         eval_batch_size = 1
     
     ds_eval_dataloader = DataLoader(
@@ -83,6 +86,8 @@ def build_downstream_evaluator(
         )
     elif eval_cfg.label == "syntactic_generalization":
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type)
+    elif eval_cfg.label == "xsum":
+        metric = RougeMetric(tokenizer=tokenizer)
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type)
 
@@ -104,7 +109,7 @@ def build_evaluator(
 ) -> Evaluator:
     from ..data import build_eval_dataloader
 
-    if eval_config.type == EvaluatorType.downstream or eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent]:
+    if eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent, EvaluatorType.downstream, EvaluatorType.rouge]:
         # Downstream evaluation.
         return build_downstream_evaluator(train_config, eval_config, tokenizer, device)
     elif eval_config.type == EvaluatorType.lm:

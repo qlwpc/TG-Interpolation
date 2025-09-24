@@ -23,6 +23,7 @@ from typing import (
     Set,
     Tuple,
     cast,
+    Union
 )
 
 import torch
@@ -1355,8 +1356,6 @@ class OLMo(nn.Module):
 
         block_mask:BlockMask = None
         if self.config.flex_attention and attention_bias is not None:
-            if attention_mask is not None:
-                raise OLMoConfigurationError("Flexattention is currently not supported with attention mask")
             if attention_bias.dtype != torch.bool:
                 attention_bias = attention_bias==1.0
 
@@ -1366,11 +1365,17 @@ class OLMo(nn.Module):
                 flex_mask = flex_mask.squeeze(1)
                 def TG_mask(b, h, q_idx, kv_idx):
                     return flex_mask[b, q_idx, kv_idx]
-                block_mask = create_block_mask(mask_mod=TG_mask, B=batch_size, H=None, Q_LEN=q_len, KV_LEN=kv_len)
+                def TG_mask_with_pad(b, h, q_idx, kv_idx):
+                    return attention_mask[kv_idx] and flex_mask[b, q_idx, kv_idx]
+                mask_mod = TG_mask if attention_mask is None else TG_mask_with_pad
+                block_mask = create_block_mask(mask_mod=mask_mod, B=batch_size, H=None, Q_LEN=q_len, KV_LEN=kv_len)
             else:
                 def TG_mask_per_head(b, h, q_idx, kv_idx):
                     return flex_mask[b, h, q_idx, kv_idx]
-                block_mask = create_block_mask(mask_mod=TG_mask_per_head, B=batch_size, H=H, Q_LEN=q_len, KV_LEN=kv_len)
+                def TG_mask_per_head_with_pad(b, h, q_idx, kv_idx):
+                    return attention_mask[kv_idx] and flex_mask[b, h, q_idx, kv_idx]
+                mask_mod = TG_mask_per_head if attention_mask is None else TG_mask_per_head_with_pad
+                block_mask = create_block_mask(mask_mod=mask_mod, B=batch_size, H=H, Q_LEN=q_len, KV_LEN=kv_len)
             attention_bias = None
         else:
             # Transform the attention mask into what the blocks expect.
@@ -1922,11 +1927,13 @@ class OLMo(nn.Module):
 
     def word_sync_beam_search(self, 
         vocab : SentencepieceVocab,
+        eval_input_ids : Optional[torch.Tensor] = None, 
+        max_word_steps : Optional[int] = None,
+        max_length : Optional[int] = None,
         beam_size : int = 300,
         nc : Optional[int] = None,
         pc : int = 3,
         past_input : Optional[torch.Tensor] = None, 
-        eval_input_ids : Optional[torch.Tensor] = None, 
         generate_TG_bias : Optional[TG_attention_bias] = None,
         tag_start : Optional[int] = None,
         tag_end : Optional[int] = None,
@@ -1936,11 +1943,8 @@ class OLMo(nn.Module):
         """
         # from tokenizers import Tokenizer
         # tmptokenizer:Tokenizer = Tokenizer.from_file("/public/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
-        if eval_input_ids is not None:
-            if len(eval_input_ids.shape) == 2:
-                eval_input_ids = eval_input_ids[0]
-
-        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else self.config.max_sequence_length
+        # print(f"{eval_input_ids}")
+        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
         istart = 0
         if past_input is None:
             if eval_input_ids is not None:
@@ -1949,7 +1953,6 @@ class OLMo(nn.Module):
             else:
                 past_input = torch.LongTensor([vocab.bos])
 
-        # need to parse past?
         nc = int(1.2*Genlength) if nc is None else nc
         print(f"eval input = {eval_input_ids} past input is {past_input} nc = {nc} pc = {pc}")
         def collate_fn(data):
@@ -1969,7 +1972,7 @@ class OLMo(nn.Module):
                 # print(f"bid = {bid}")
                 # print(tmptokenizer.decode(sample["input_ids"].tolist(), skip_special_tokens=False))
                 bid += 1
-                pad_shape = (
+                pad_shape = (   # right padding by default
                     0, (max_input_len - sample["input_ids"].shape[0])
                 )
                 cur_input_id = F.pad(sample["input_ids"], pad_shape, value=vocab.pad)
@@ -2016,7 +2019,7 @@ class OLMo(nn.Module):
             "logprob": 0,  # = -sum of loss
         }
         kn = beam_size        # sub-beam size kn
-        ks = beam_size // 10 # fast-shift ks terminal into next_beams
+        ks = max(beam_size // 10, 1) # fast-shift ks terminal into next_beams
         NT_start = vocab.opening_non_terminals[0]
         NT_end = vocab.closing_non_terminals[1]
         start_surprisal = end_surprisal = 0
