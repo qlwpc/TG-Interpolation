@@ -952,19 +952,20 @@ class BLiMPMetric(Metric):
     
     def __init__(
             self, 
-            metric_type="BLiMP_simple", 
+            metric_type="BLiMP_default", 
             vocab_path = None,
-            term_length = None, 
             device_eval_batch_size = None, 
             dataset_length = None,
-            samples_per_sent = 300,
+            samples_per_sent = 300, 
+            pair_per_task = 1000, 
         ) -> None:
-        super().__init__(sync_on_compute=False) # since we use one device to eval, sync could be false
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
-        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
-        self.term_length = term_length
+        self.task_dict = BLiMP_TASK_DICT
+        self.task_list = BLiMP_TASK_LIST
         self.samples_per_sent = samples_per_sent
+        self.pair_per_task = pair_per_task
         self.cur_sent = 0
         self.cur_batch = 0
         self.device_eval_batch_size = device_eval_batch_size 
@@ -974,7 +975,7 @@ class BLiMPMetric(Metric):
         self.cur_sent = 0
         self.cur_batch = 0
 
-    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
+    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor):
         self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
         self.cur_batch += self.device_eval_batch_size
         if self.cur_batch == self.samples_per_sent:
@@ -982,40 +983,31 @@ class BLiMPMetric(Metric):
             self.cur_sent += 1
 
     def compute(self) -> torch.Tensor: 
-        data_numwords = sum(self.term_length)
-        ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
-        ppl = np.exp(-ppl / data_numwords)
-        return torch.tensor(ppl)
+        cnt_dict = {}
+        loglikelihoods = torch.logsumexp(-self.loglikelihoods, dim=1)
+        
+        for task_id, task in enumerate(self.task_list):
+            id_bias = task_id * self.pair_per_task
+            cnt_dict[task] = 0
+            for pair_id in range(self.pair_per_task):
+                p_good = loglikelihoods[id_bias + pair_id * 2]
+                p_bad = loglikelihoods[id_bias + pair_id * 2 + 1]
+                if p_good > p_bad:
+                    cnt_dict[task] += 1
 
-# def print_tensor_data(tensor, precision=4, suppress_small=True):
-#     """
-#     打印PyTorch Tensor中的所有数据
-    
-#     参数:
-#         tensor (torch.Tensor): 要打印的PyTorch张量
-#         precision (int): 浮点数打印精度，默认为4位小数
-#         suppress_small (bool): 是否抑制非常小的数用科学计数法显示，默认为True
-#     """
-#     # 将Tensor转换为numpy数组
-#     # 设置numpy打印选项
-#     # np.set_printoptions(
-#     #     precision=precision,
-#     #     threshold=np.inf,  # 显示所有元素
-#     #     linewidth=np.inf,   # 不换行
-#     #     suppress=suppress_small  # 抑制科学计数法
-#     # )
-#     torch.set_printoptions(
-#         precision=4,    # 小数位数
-#         threshold=10000000, # 触发缩略显示的阈值（元素数量）
-#         edgeitems=3,    # 缩略时显示的首尾元素数量
-#         linewidth=100000,  # 每行的字符宽度
-#         sci_mode=False  # 是否禁用科学计数法
-#     )
-    
-#     print(tensor)
-    
-#     # 恢复默认打印选项
-#     torch.set_printoptions()
+        acc_dict = {}
+        total_cnt = 0
+        for term, term_task_list in self.task_dict.items():
+            term_cnt = 0
+            for task in term_task_list: 
+                acc_dict[term + '/' + task] = cnt_dict[task] / self.pair_per_task
+                term_cnt += cnt_dict[task]
+            acc_dict[term + '/overall'] = term_cnt / (self.pair_per_task * len(term_task_list))
+            total_cnt += term_cnt
+
+        acc_dict['overall/overall'] = total_cnt / (self.pair_per_task * len(self.task_list))
+
+        return acc_dict
 
 
 # TODO:
@@ -1031,6 +1023,8 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         metric_type="BLiMP_default",  
         vocab_path: str = None,
         device_eval_batch_size: int = 60, 
+        samples_per_sent: int = 300,
+        pair_per_task: int = 1000, 
     ):
 
         super().__init__()
@@ -1040,9 +1034,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.metric_type = metric_type 
         self.batch_size = device_eval_batch_size
         self.task_list = BLiMP_TASK_LIST
-        self.SENT_SIZE = 300
-        self.TASK_SIZE = 1000 * self.SENT_SIZE
-        self.length = len(self.task_list) * self.TASK_SIZE * self.SENT_SIZE
+        self.SENT_SIZE = samples_per_sent
+        self.TASK_SIZE = pair_per_task * self.SENT_SIZE
+        self.length = len(self.task_list) * self.TASK_SIZE 
 
         self.samples: List[Dict[str, Any]] = []
         self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
