@@ -20,4 +20,6 @@ torchrun --nproc-per-node=1 --master_port 15591 scripts/train.py \
   ${workspace}/train_configs/nomask_and_tg.yaml \
   --run_name=${run_name} \
   --save_folder=${workspace}/saved_models/${run_name} \
-  --workspace=${workspace} 
+  --workspace=${workspace} \
+  --python_profiling=true \
+  --torch_profiling=true

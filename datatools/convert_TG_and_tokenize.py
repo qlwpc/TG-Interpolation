@@ -46,7 +46,7 @@ def convert_TG_format(input:str) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
     tree = Tree.fromstring(line, remove_empty_top_bracketing=False)
     outputstr = pformat_flat(tree)
-    outputstr = re.sub(" \n", "\n", outputstr)
+    # outputstr = re.sub(" \n", "\n", outputstr)
     return outputstr
     
 # def convert_treenpy_to_TG(tree: ndarray, vocab):
@@ -66,6 +66,8 @@ def convert_TG_format(input:str) -> str:
 #     return TG
 
 if __name__=="__main__":
+
+    # print(convert_TG_format("(Ċ Ċ) (S (VP (VB Summarize) (NP (DT the) (JJ above) (NN article)) (PP (IN in) (NP (CD 1) (NN sentence)))) (. .)) (Ċ Ċ)"))
     parser = argparse.ArgumentParser()
     parser.add_argument('--list_arg', type=str)  # 接收单个字符串
     args = parser.parse_args()
