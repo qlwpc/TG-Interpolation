@@ -413,10 +413,12 @@ class XsumDataset(metaclass=abc.ABCMeta):
         model_ctx_len: int = 2048,
         split="test",
         metric_type="sent",
-        generate_TG_attention_bias: Optional[Callable | str] = None,
+        generate_TG_attention_bias: Optional[Callable] = None,
+        transformer_grammar_type:str = "",
         vocab_path: str = None):
 
         self.tokenizer = tokenizer
+        self.transformer_grammar_type = transformer_grammar_type
         self.collator = DataCollator(pad_direction=PaddingDirection.left, pad_token_id=self.tokenizer.pad_token_id, generate_attenion_mask=True)
         self.MAX_SUMMARY_LENGTH = 150
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
@@ -492,11 +494,11 @@ class XsumDataset(metaclass=abc.ABCMeta):
             loss_tokens = None
         
         attention_bias, label_mask, TG_label_mask = None, None, None
-        if self.generate_TG_attention_bias is None:
+        if self.transformer_grammar_type == "terminal":
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_treenpy_to_terminal(loss_tokens)
-        elif type(self.generate_TG_attention_bias) == str:
+        elif self.transformer_grammar_type == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)

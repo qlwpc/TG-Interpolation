@@ -1028,11 +1028,11 @@ class Trainer:
         )
     
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
-        batch = move_to_device(batch, self.device)
         # currently only support eval_batch_size==1
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 if self.cfg.model.transformer_grammar_type == None:
+                    batch = move_to_device(batch, self.device)
                     predictions = self.dist_model.module.generate(batch["input_ids"], 
                                                                    max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                                                                    beam_size=6).token_ids
@@ -1040,11 +1040,15 @@ class Trainer:
                 else:
                     predictions = self.dist_model.module.word_sync_beam_search(
                             vocab = evaluator.eval_loader.dataset.vocab,
-                            past_input = batch["input_ids"],
+                            past_input = batch["input_ids"][0],
                             max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH // 2,
                             max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                             beam_size=6,
                         )
+                    predictions = predictions[0]["input_ids"].numpy()
+                    # predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
+                    predictions = np.expand_dims(predictions, axis=0)
+
         
         evaluator.update_metrics(
             batch, predictions, batch["gold_summary"]
