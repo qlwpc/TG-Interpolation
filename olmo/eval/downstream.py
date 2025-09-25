@@ -919,7 +919,6 @@ class SyntacticGeneralizationMetric(Metric):
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-        self.test_suite_dict = test_suite_dict
         self.map_task_dict = {}
         for key in test_suite_dict:
             self.add_state(key, default=[], dist_reduce_fx=None)
@@ -948,18 +947,21 @@ class SyntacticGeneralizationMetric(Metric):
         
         result = eval(formula)
         print(f"result is {result}")
-        getattr(self, self.map_task_dict[task]).append(result)
+        getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
 
     def compute(self) -> Dict[str, float]:
         acc_dict = {}
         avg_acc = 0.0
-        for key in self.test_suite_dict:
-            acc_dict[key] = sum(getattr(self, key))
+        for key in test_suite_dict:
+            acc = sum(getattr(self, key))
+            if isinstance(acc, torch.Tensor):
+                acc = acc.item()
+            acc_dict[key] = acc
             if acc_dict[key]>0:
                 acc_dict[key] /= len(getattr(self, key))
             if key != 'nn-nv-rpl':
                 avg_acc += acc_dict[key]
-        acc_dict["avg"] = avg_acc / len(self.test_suite_dict)
+        acc_dict["avg"] = avg_acc / len(test_suite_dict)
         return acc_dict
 
 class SGDataset(metaclass=abc.ABCMeta):
@@ -1074,19 +1076,20 @@ class BLiMPMetric(Metric):
     
     def __init__(
             self, 
-            metric_type="BLiMP_simple", 
+            metric_type="BLiMP_default", 
             vocab_path = None,
-            term_length = None, 
             device_eval_batch_size = None, 
             dataset_length = None,
-            samples_per_sent = 300,
+            samples_per_sent = 300, 
+            pair_per_task = 1000, 
         ) -> None:
-        super().__init__(sync_on_compute=False) # since we use one device to eval, sync could be false
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
-        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
-        self.term_length = term_length
+        self.task_dict = BLiMP_TASK_DICT
+        self.task_list = BLiMP_TASK_LIST
         self.samples_per_sent = samples_per_sent
+        self.pair_per_task = pair_per_task
         self.cur_sent = 0
         self.cur_batch = 0
         self.device_eval_batch_size = device_eval_batch_size 
@@ -1096,7 +1099,7 @@ class BLiMPMetric(Metric):
         self.cur_sent = 0
         self.cur_batch = 0
 
-    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
+    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor):
         self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
         self.cur_batch += self.device_eval_batch_size
         if self.cur_batch == self.samples_per_sent:
@@ -1104,40 +1107,31 @@ class BLiMPMetric(Metric):
             self.cur_sent += 1
 
     def compute(self) -> torch.Tensor: 
-        data_numwords = sum(self.term_length)
-        ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
-        ppl = np.exp(-ppl / data_numwords)
-        return torch.tensor(ppl)
+        cnt_dict = {}
+        loglikelihoods = torch.logsumexp(-self.loglikelihoods, dim=1)
+        
+        for task_id, task in enumerate(self.task_list):
+            id_bias = task_id * self.pair_per_task
+            cnt_dict[task] = 0
+            for pair_id in range(self.pair_per_task):
+                p_good = loglikelihoods[id_bias + pair_id * 2]
+                p_bad = loglikelihoods[id_bias + pair_id * 2 + 1]
+                if p_good > p_bad:
+                    cnt_dict[task] += 1
 
-# def print_tensor_data(tensor, precision=4, suppress_small=True):
-#     """
-#     打印PyTorch Tensor中的所有数据
-    
-#     参数:
-#         tensor (torch.Tensor): 要打印的PyTorch张量
-#         precision (int): 浮点数打印精度，默认为4位小数
-#         suppress_small (bool): 是否抑制非常小的数用科学计数法显示，默认为True
-#     """
-#     # 将Tensor转换为numpy数组
-#     # 设置numpy打印选项
-#     # np.set_printoptions(
-#     #     precision=precision,
-#     #     threshold=np.inf,  # 显示所有元素
-#     #     linewidth=np.inf,   # 不换行
-#     #     suppress=suppress_small  # 抑制科学计数法
-#     # )
-#     torch.set_printoptions(
-#         precision=4,    # 小数位数
-#         threshold=10000000, # 触发缩略显示的阈值（元素数量）
-#         edgeitems=3,    # 缩略时显示的首尾元素数量
-#         linewidth=100000,  # 每行的字符宽度
-#         sci_mode=False  # 是否禁用科学计数法
-#     )
-    
-#     print(tensor)
-    
-#     # 恢复默认打印选项
-#     torch.set_printoptions()
+        acc_dict = {}
+        total_cnt = 0
+        for term, term_task_list in self.task_dict.items():
+            term_cnt = 0
+            for task in term_task_list: 
+                acc_dict[term + '/' + task] = cnt_dict[task] / self.pair_per_task
+                term_cnt += cnt_dict[task]
+            acc_dict[term + '/overall'] = term_cnt / (self.pair_per_task * len(term_task_list))
+            total_cnt += term_cnt
+
+        acc_dict['overall/overall'] = total_cnt / (self.pair_per_task * len(self.task_list))
+
+        return acc_dict
 
 
 # TODO:
@@ -1150,152 +1144,63 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         dataset_path: str,
         dataset_name: str = None, # tg or tree
         model_ctx_len: int = 2048,
-        split="validation",
-        metric_type="sent",  # Override default metric type, whether be sent/doc
-        generate_TG_attention_bias: Optional[TG_attention_bias] = None,
+        metric_type="BLiMP_default",  
         vocab_path: str = None,
         device_eval_batch_size: int = 60, 
+        samples_per_sent: int = 300,
+        pair_per_task: int = 1000, 
     ):
 
         super().__init__()
-        self.task_list = BLiMP_TASK_LIST
         self.tokenizer = tokenizer
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
-        self.dataset_name = dataset_name
-        self.model_ctx_len = model_ctx_len
         self.metric_type = metric_type 
-        self.log_instances = 2  # Set to > 0 to log the first few instances as a sanity check
         self.batch_size = device_eval_batch_size
-        self.SENT_SIZE = 300
+        self.task_list = BLiMP_TASK_LIST
+        self.SENT_SIZE = samples_per_sent
+        self.TASK_SIZE = pair_per_task * self.SENT_SIZE
+        self.length = len(self.task_list) * self.TASK_SIZE 
 
         self.samples: List[Dict[str, Any]] = []
-        self.term_len: List[int] = []
-
-        log.info(
-                f"Starting loading {self.dataset_name}_approx_ppl dataset"
-            )
-
         self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
-        self.sent_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_sent_index.npy")))
-        self.doc_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_doc_index.npy")))
-        self.length = len(self.sent_index)
-        self._generate_TG_attention_bias = generate_TG_attention_bias
+        self.input_len = self.dataset.shape[1]
+
         self.prep_examples()
         self.reset()
         log.info(f"Loading Dataset finished")
 
+    def prep_examples(self):
+        pass
+
     def __getitem__(self, index):
         return {
-            "sent_id" : index//self.SENT_SIZE + 1, 
-            "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
-            "input_ids": self.dataset[self.sent_index[index]:self.sent_index[index+1]], 
+            "UID" : self.task_list[index // self.TASK_SIZE], 
+            "pairID": index % self.TASK_SIZE // (self.SENT_SIZE * 2), 
+            "is_sentence_good" : index % (self.SENT_SIZE * 2) < self.SENT_SIZE, 
+            "input_ids": torch.LongTensor(self.dataset[index]), 
         }
 
     def __len__(self):
         return self.length
 
-    def get_term_length(self):
-        return self.term_len
-
     def reset(self) -> None:
-        self.cur_doc_id = 0
-        self.sent_to_add = None
-        self.num_evaled = 0
-
-    def prep_examples(self):
-        """Append doc_ids to each example so that they are processed together in the metric"""
-        self.sent_index = torch.cat([torch.LongTensor([0]), torch.cumsum(self.sent_index, dim=0)])
-        self.doc_index = torch.cumsum(self.doc_index, dim=0)
-        self.sent_doc_id = torch.zeros((self.length // self.SENT_SIZE + 1), dtype=torch.int)
-        self.term_len = [0] * (self.length // self.SENT_SIZE + 1)
-        self.sent_doc_id[0] = 1
-        self.sent_doc_id[self.doc_index] = 1
-        self.sent_doc_id = torch.cumsum(self.sent_doc_id, dim=0)
-
-        for i in range(1, len(self.term_len)):
-            sent = self[self.SENT_SIZE * (i-1)]
-            self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
-
-    def pad_tokens_until_max(self, tokens, max_len=2048):
-        """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
-        queries are already truncated at max length of model_ctx_len
-        this acts as additional check for all types of sequences in the batch
-        """
-        if len(tokens) > self.model_ctx_len:
-            return tokens[-self.model_ctx_len :]
-        else:
-            # pad to max_len, but check again if this padding exceeded self.model_ctx_len
-            # this time truncate from right side of the sequence because additional padding caused len(tokens) > self.model_ctx_len
-            tokens = np.concatenate([tokens, [self.vocab.pad] * (max_len - len(tokens))], axis=0)
-
-            if len(tokens) > self.model_ctx_len:
-                tokens = tokens[: self.model_ctx_len]
-
-            return tokens
+        pass
 
     def collate_fn(self, data):
-        # pad to max length
-        if self.metric_type=="doc" and data[0]["doc_id"] > self.cur_doc_id:
-            self.cur_doc_id = data[0]["doc_id"]
-            if self._generate_TG_attention_bias is not None:
-                self._generate_TG_attention_bias.reset_state()
-        
-        self.num_evaled += len(data)
-        max_input_len = 0
-        for sample in data:
-            if len(sample["input_ids"]) > max_input_len:
-                max_input_len = len(sample["input_ids"])
-
-        sent_ids = []
+        pair_ids = []
         input_ids = []
-        all_attention_bias = []
-        all_label_mask = []
         # pad according to max_lengths
         for sample in data:
-            pad_shape = (
-                0, (max_input_len - len(sample["input_ids"]))
-            )
-            sent_ids.append(sample["sent_id"])
-            # make sure Gen TG bias have the correct length
-            cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
-
-            attention_bias, label_mask = None, None
-            if self._generate_TG_attention_bias is not None:
-                attention_bias, label_mask = self._generate_TG_attention_bias(cur_input_id)
+            cur_input_id = sample["input_ids"]
             input_ids.append(cur_input_id)
-            
-            if attention_bias is not None:
-                if not isinstance(attention_bias, torch.Tensor):
-                    attention_bias = torch.tensor(attention_bias)
-                # Reshape to `(1, seq_len, seq_len)`
-                while len(attention_bias.shape) < 3:
-                    attention_bias = attention_bias.unsqueeze(0)
-                all_attention_bias.append(attention_bias)
-
-            if label_mask is not None:
-                if not isinstance(label_mask, torch.Tensor):
-                    label_mask = torch.tensor(label_mask)
-                all_label_mask.append(label_mask)
 
         batch = {
-            "doc_id": data[0]["doc_id"] if self.metric_type=="doc" else None,
-            "sent_id": torch.LongTensor(sent_ids),
+            "UID" : data[0]["UID"],  
+            "pairID": data[0]["pairID"], 
+            "is_sentence_good" : data[0]["is_sentence_good"], 
             "input_ids": torch.stack(input_ids),
         }
-        if all_attention_bias:
-            batch["attention_bias"] = torch.stack(all_attention_bias)
-        if all_label_mask:
-            batch["label_mask"] = torch.stack(all_label_mask)
-
-        if self.metric_type=="doc":
-            if self.num_evaled % self.SENT_SIZE == self.batch_size or self.batch_size == self.SENT_SIZE:
-                # Make sure bias has the same length with kv cache, we must pass pad into GenBias
-                self.sent_to_add = torch.LongTensor(self.pad_tokens_until_max(data[0]["input_ids"], max_len=max_input_len))
-                batch["add_len"] = data[0]["input_ids"].shape[0]
-            if self.num_evaled % self.SENT_SIZE == 0:
-                if self._generate_TG_attention_bias is not None:
-                    self._generate_TG_attention_bias(self.sent_to_add, True)
         return batch
 
     def token_encode(self, string: str) -> List[int]:
@@ -2509,6 +2414,8 @@ TG_path = "./dataset/bbc-news/testppl_tg/"
 TXLTREE_path = "./dataset/bbc-news/testppl_tree/"
 TESTOR_TG_PATH = "./dataset/bbc-news/testor_tg/"
 TESTOR_TREE_PATH = "./dataset/bbc-news/testor_tree/"
+BLiMP_PATH = "./dataset/BLiMP/tree300/"
+BLiMP_RAW_PATH = "./dataset/BLiMP/raw_data/"
 
 TG_task_map = {
     "tg_approx_sent": (TGPerplexityApproximationDataset, {"dataset_path": TG_path, "dataset_name": "newppl.json", "metric_type": "sent"}),
@@ -2519,7 +2426,8 @@ TG_task_map = {
     "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TG_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
-    "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}),
+    "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}), 
+    "BLiMP_default": (BLiMPApproximationDataset, {"dataset_path": BLiMP_PATH}), 
     "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "split": "test", "metric_type": "rouge"})
 }
 
