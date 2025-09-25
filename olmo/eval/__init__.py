@@ -8,7 +8,7 @@ from ..config import EvaluatorConfig, EvaluatorType, TrainConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
-from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, RougeMetric
+from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
 
@@ -88,6 +88,8 @@ def build_downstream_evaluator(
         )
     elif eval_cfg.label == "syntactic_generalization":
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type)
+    elif eval_cfg.label == "BLiMP_default":
+        metric = BLiMPMetric(metric_type=ds_eval_dataset.metric_type)
     elif eval_cfg.label == "xsum":
         metric = RougeMetric(tokenizer=tokenizer)
     else:
