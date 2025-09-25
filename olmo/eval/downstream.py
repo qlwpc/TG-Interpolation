@@ -530,32 +530,38 @@ class RougeMetric(Metric):
                  tokenizer:Tokenizer = None
         ) -> None:
         super().__init__(sync_on_compute=True)
-        self.add_state("predictions", default=[], dist_reduce_fx=None)
-        self.add_state("references", default=[], dist_reduce_fx=None)
+        self.add_state("rouge1", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("rouge2", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("rougeL", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
         self.tokenizer = tokenizer
+        self.rouge = evaluate.load('rouge')
 
     def update(self, batch, predictions, references):
         input_ids = batch["input_ids"].cpu()
+        decode_predictions = []
         for b in range(predictions.shape[0]):
             pred_summary = self.tokenizer.decode(predictions[b].tolist())
             passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
-            print(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
-            self.predictions.append(pred_summary)
-        self.references.extend(references)
-
-    def reset(self):
-        self.predictions = []
-        self.referneces = []
-
-    def compute(self):
-        rouge = evaluate.load('rouge')
-        results = rouge.compute(
-            predictions=self.predictions,
-            references=self.references,
+            print(f"<{self.device} New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)} \n")
+            decode_predictions.append(pred_summary)
+        results = self.rouge.compute(
+            predictions=decode_predictions,
+            references=references,
             use_stemmer=True,
             rouge_types=['rouge1', 'rouge2', 'rougeL'],  
-            use_aggregator=True,  # ave scores
+            use_aggregator=False,  # ave scores
         )
+        self.rouge1 += sum(results["rouge1"])
+        self.rouge2 += sum(results["rouge2"])
+        self.rougeL += sum(results["rougeL"])
+        self.total  += len(references)
+
+    def compute(self) -> Dict[str, float]:
+        results = {}
+        results["rouge1"] = (self.rouge1 / self.total).item()
+        results["rouge2"] = (self.rouge2 / self.total).item()
+        results["rougeL"] = (self.rougeL / self.total).item()
         results["R-AVG"] = sum(results.values()) / 3
         return results
 
@@ -2428,7 +2434,7 @@ TG_task_map = {
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}), 
     "BLiMP_default": (BLiMPApproximationDataset, {"dataset_path": BLiMP_PATH}), 
-    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "split": "test", "metric_type": "rouge"})
+    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"})
 }
 
 label_to_task_map = {
