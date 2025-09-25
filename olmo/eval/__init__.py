@@ -37,10 +37,12 @@ def build_downstream_evaluator(
     if isinstance(task_class, tuple):
         task_class, task_kwargs = task_class
         task_kwargs["vocab_path"] = train_config.tokenizer.vocabulary
-        if eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent]:   
+        if eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent, EvaluatorType.rouge]:
             task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
         if eval_cfg.type == EvaluatorType.tg_doc:
             task_kwargs["device_eval_batch_size"] = train_config.device_eval_batch_size
+        if eval_cfg.type == EvaluatorType.rouge:
+            task_kwargs["transformer_grammar_type"] = train_config.model.transformer_grammar_type
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
     data_config = eval_cfg.data
     if is_unit_test:
