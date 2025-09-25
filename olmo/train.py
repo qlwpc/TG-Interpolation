@@ -1046,7 +1046,7 @@ class Trainer:
                             beam_size=6,
                         )
                     predictions = predictions[0]["input_ids"].numpy()
-                    # predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
+                    predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
                     predictions = np.expand_dims(predictions, axis=0)
 
         

@@ -2053,11 +2053,12 @@ class OLMo(nn.Module):
                 log_probs = F.log_softmax(logits[torch.arange(len(beams)), data["last_token_index"], :], dim=-1) + data["log_probs"]
 
                 # manage max_length and eos tokens
-                retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]==max_length - 1, 
-                                                  data["input_ids"][torch.arange(len(beams)), data["last_token_index"]]==self.config.eos_token_id))
-                log_probs[retain_indices, :] = torch.finfo(log_probs.dtype).min
-                for index in retain_indices:
-                    next_beams.append(beams[index])
+                if not first_step:
+                    retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]==max_length - 1, 
+                                                    data["input_ids"][torch.arange(len(beams)), data["last_token_index"]]==self.config.eos_token_id))
+                    log_probs[retain_indices, :] = torch.finfo(log_probs.dtype).min
+                    for index in retain_indices:
+                        next_beams.append(beams[index])
                 flag_next_set = set()
                 C = logits.shape[-1]
                 if data.get("Stop_Add_NT") is not None:
