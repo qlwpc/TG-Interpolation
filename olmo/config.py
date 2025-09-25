@@ -486,7 +486,7 @@ class ModelConfig(BaseConfig):
     Apply norm after the attention/feedforward layers rather than before, as introduced in the Swin transformer paper (Liu et al).
     """
 
-    transformer_grammar_type : Optional[str] = None
+    transformer_grammar_type : str = "terminal"
     """
     transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight"] 
     """
