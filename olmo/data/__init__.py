@@ -187,12 +187,12 @@ def build_train_dataloader(
         task_class = label_to_task_map[train_config.finetune_task]
         if isinstance(task_class, tuple):
             task_class, task_kwargs = task_class
-        task_kwargs["split"] = "train"
         tokenizer = Tokenizer.from_train_config(train_config)
         dataset = task_class(tokenizer=tokenizer, 
                              generate_TG_attention_bias=get_TG_generate_bias_func(train_config, train_config.model.max_sequence_length),
                              transformer_grammar_type=train_config.model.transformer_grammar_type,
                              vocab_path=train_config.tokenizer.vocabulary,
+                             split="train",
                              **task_kwargs)  # type: ignore
     
     work_dir = Path(train_config.save_folder) / "train_data"
