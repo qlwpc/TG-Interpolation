@@ -917,7 +917,6 @@ class SyntacticGeneralizationMetric(Metric):
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-        self.test_suite_dict = test_suite_dict
         self.map_task_dict = {}
         for key in test_suite_dict:
             self.add_state(key, default=[], dist_reduce_fx=None)
@@ -946,18 +945,21 @@ class SyntacticGeneralizationMetric(Metric):
         
         result = eval(formula)
         print(f"result is {result}")
-        getattr(self, self.map_task_dict[task]).append(result)
+        getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
 
     def compute(self) -> Dict[str, float]:
         acc_dict = {}
         avg_acc = 0.0
-        for key in self.test_suite_dict:
-            acc_dict[key] = sum(getattr(self, key))
+        for key in test_suite_dict:
+            acc = sum(getattr(self, key))
+            if isinstance(acc, torch.Tensor):
+                acc = acc.item()
+            acc_dict[key] = acc
             if acc_dict[key]>0:
                 acc_dict[key] /= len(getattr(self, key))
             if key != 'nn-nv-rpl':
                 avg_acc += acc_dict[key]
-        acc_dict["avg"] = avg_acc / len(self.test_suite_dict)
+        acc_dict["avg"] = avg_acc / len(test_suite_dict)
         return acc_dict
 
 class SGDataset(metaclass=abc.ABCMeta):
