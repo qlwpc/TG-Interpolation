@@ -530,38 +530,40 @@ class RougeMetric(Metric):
                  tokenizer:Tokenizer = None
         ) -> None:
         super().__init__(sync_on_compute=True)
-        self.add_state("rouge1", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("rouge2", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("rougeL", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("predictions", default=[], dist_reduce_fx=None)
+        self.add_state("references", default=[], dist_reduce_fx=None)
         self.tokenizer = tokenizer
-        self.rouge = evaluate.load('rouge')
 
     def update(self, batch, predictions, references):
         input_ids = batch["input_ids"].cpu()
-        decode_predictions = []
         for b in range(predictions.shape[0]):
-            pred_summary = self.tokenizer.decode(predictions[b].tolist())
+            # pred_summary = self.tokenizer.decode(predictions[b].tolist())
             passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
-            print(f"<{self.device} New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)} \n")
-            decode_predictions.append(pred_summary)
-        results = self.rouge.compute(
-            predictions=decode_predictions,
-            references=references,
+            print(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
+            self.predictions.append(torch.tensor(predictions[b], device=self.device))
+
+        for gold in references:
+            self.references.append(torch.tensor(self.tokenizer.encode(gold, add_special_tokens=False), device=self.device))
+
+    def reset(self):
+        self.predictions = []
+        self.references = []
+
+    def compute(self):
+        rouge = evaluate.load('rouge')
+        predictions_str = []
+        references_str = []
+        for prediction in self.predictions:
+            predictions_str.append(self.tokenizer.decode(prediction.tolist()))
+        for reference in self.references:
+            references_str.append(self.tokenizer.decode(reference.tolist()))
+        results = rouge.compute(
+            predictions=predictions_str,
+            references=references_str,
             use_stemmer=True,
             rouge_types=['rouge1', 'rouge2', 'rougeL'],  
-            use_aggregator=False,  # ave scores
+            use_aggregator=True,  # ave scores
         )
-        self.rouge1 += sum(results["rouge1"])
-        self.rouge2 += sum(results["rouge2"])
-        self.rougeL += sum(results["rougeL"])
-        self.total  += len(references)
-
-    def compute(self) -> Dict[str, float]:
-        results = {}
-        results["rouge1"] = (self.rouge1 / self.total).item()
-        results["rouge2"] = (self.rouge2 / self.total).item()
-        results["rougeL"] = (self.rougeL / self.total).item()
         results["R-AVG"] = sum(results.values()) / 3
         return results
 

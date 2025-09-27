@@ -1006,7 +1006,7 @@ class Trainer:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
-                    if self.cfg.model.transformer_grammar_type == None:
+                    if self.cfg.model.transformer_grammar_type == "terminal":
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits = self.model_forward(sent, loss_reduction="none")
@@ -1028,16 +1028,16 @@ class Trainer:
         )
     
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
-        # currently only support eval_batch_size==1
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
-                if self.cfg.model.transformer_grammar_type == None:
+                if self.cfg.model.transformer_grammar_type == "terminal":
                     batch = move_to_device(batch, self.device)
                     predictions = self.dist_model.module.generate(batch["input_ids"], 
                                                                    max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                                                                    beam_size=6).token_ids
                     predictions = predictions[:, 0, :]
                 else:
+                    # currently only support eval_batch_size==1
                     predictions = self.dist_model.module.word_sync_beam_search(
                             vocab = evaluator.eval_loader.dataset.vocab,
                             past_input = batch["input_ids"][0],
