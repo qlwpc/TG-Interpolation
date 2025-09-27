@@ -74,6 +74,8 @@ class Evaluator:
     ) -> None:
         if self.label == "syntactic_generalization":
             self.eval_metric.update(batch, ce_loss)
+        elif self.label == "BLiMP_default":
+            self.eval_metric.update(batch, logits)
         elif self.type == EvaluatorType.rouge:
             self.eval_metric.update(batch, ce_loss, logits)
         elif self.type == EvaluatorType.downstream:

@@ -1085,6 +1085,7 @@ class BLiMPMetric(Metric):
     def __init__(
             self, 
             metric_type="BLiMP_default", 
+            dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
             vocab_path = None,
             device_eval_batch_size = None, 
             dataset_length = None,
@@ -1096,23 +1097,58 @@ class BLiMPMetric(Metric):
         self.metric_type = metric_type
         self.task_dict = BLiMP_TASK_DICT
         self.task_list = BLiMP_TASK_LIST
-        self.samples_per_sent = samples_per_sent
+
+        if dataset_name == "terminal":
+            self.SENT_SIZE = 1
+        else:
+            self.SENT_SIZE = samples_per_sent
         self.pair_per_task = pair_per_task
-        self.cur_sent = 0
-        self.cur_batch = 0
+        # self.cur_sent = 0
+        # self.cur_batch = 0
         self.device_eval_batch_size = device_eval_batch_size 
+        
         self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
     def reset(self):
-        self.cur_sent = 0
-        self.cur_batch = 0
+        # self.cur_sent = 0
+        # self.cur_batch = 0
+        pass
 
-    def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor):
-        self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
-        self.cur_batch += self.device_eval_batch_size
-        if self.cur_batch == self.samples_per_sent:
-            self.cur_batch = 0
-            self.cur_sent += 1
+    def update(self, batch: Dict[str, Any], lm_logits:torch.Tensor):
+        logits_for_loss = lm_logits[..., :-1, :].contiguous()
+        # print_tensor_data(batch["input_ids"])
+        # print_tensor_data(batch["attention_bias"])
+        # shape: (batch_size * seq_len, vocab_size)
+        logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
+        # shape: (batch_size, seq_len)
+        labels, label_mask, attention_mask, instance_mask = (
+            batch["input_ids"].clone(),
+            batch.get("label_mask"),
+            batch.get("attention_mask"),
+        )
+        if label_mask is not None:
+            labels.masked_fill_(~label_mask, self.vocab.pad)
+        if attention_mask is not None:
+            labels.masked_fill_(attention_mask == 0.0, self.vocab.pad)
+        labels = labels[..., 1:].contiguous()
+        # shape: (batch_size * seq_len,)
+        labels = labels.view(-1)
+        ce_loss = F.cross_entropy(
+            logits_for_loss, labels, ignore_index=self.vocab.pad, reduction="none")
+        # print_tensor_data(ce_loss.view(batch["input_ids"].shape[0], -1))
+        ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
+        
+        for sent_id, loglikelihood in zip(batch["sent_id"], ce_loss):
+            sample_id = sent_id % self.samples_per_sent
+            sent_id = sent_id // self.samples_per_sent
+            self.loglikelihoods[sent_id, sample_id] = loglikelihood
+        
+        # self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
+        # self.cur_batch += self.device_eval_batch_size
+        # if self.cur_batch == self.samples_per_sent:
+        #    self.cur_batch = 0
+        #    self.cur_sent += 1
+
 
     def compute(self) -> torch.Tensor: 
         cnt_dict = {}
@@ -1150,9 +1186,11 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self,
         tokenizer: Tokenizer,
         dataset_path: str,
-        dataset_name: str = None, # tg or tree
+        dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
         model_ctx_len: int = 2048,
-        metric_type="BLiMP_default",  
+        split="test",
+        metric_type="BLiMP_default", 
+        generate_TG_attention_bias: Optional[Callable | str] = None, 
         vocab_path: str = None,
         device_eval_batch_size: int = 60, 
         samples_per_sent: int = 300,
@@ -1164,15 +1202,20 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
         self.metric_type = metric_type 
-        self.batch_size = device_eval_batch_size
         self.task_list = BLiMP_TASK_LIST
-        self.SENT_SIZE = samples_per_sent
+        self.batch_size = device_eval_batch_size
+
+        if dataset_name == "terminal":
+            self.SENT_SIZE = 1
+        else:
+            self.SENT_SIZE = samples_per_sent
         self.TASK_SIZE = pair_per_task * self.SENT_SIZE
         self.length = len(self.task_list) * self.TASK_SIZE 
 
         self.samples: List[Dict[str, Any]] = []
-        self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
+        self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
         self.input_len = self.dataset.shape[1]
+        self._generate_TG_attention_bias = generate_TG_attention_bias
 
         self.prep_examples()
         self.reset()
@@ -1183,9 +1226,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
 
     def __getitem__(self, index):
         return {
-            "UID" : self.task_list[index // self.TASK_SIZE], 
-            "pairID": index % self.TASK_SIZE // (self.SENT_SIZE * 2), 
-            "is_sentence_good" : index % (self.SENT_SIZE * 2) < self.SENT_SIZE, 
+            "sent_id" : index, 
             "input_ids": torch.LongTensor(self.dataset[index]), 
         }
 
@@ -1196,19 +1237,42 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         pass
 
     def collate_fn(self, data):
-        pair_ids = []
+        sent_ids = []
         input_ids = []
+        all_attention_bias = []
+        all_label_mask = []
         # pad according to max_lengths
         for sample in data:
             cur_input_id = sample["input_ids"]
+
+            attention_bias, label_mask = None, None
+            if self._generate_TG_attention_bias is not None:
+                attention_bias, label_mask = self._generate_TG_attention_bias(cur_input_id)
+            sent_ids.append(sample["sent_id"])
             input_ids.append(cur_input_id)
 
+            if attention_bias is not None:
+                if not isinstance(attention_bias, torch.Tensor):
+                    attention_bias = torch.tensor(attention_bias)
+                # Reshape to `(1, seq_len, seq_len)`
+                while len(attention_bias.shape) < 3:
+                    attention_bias = attention_bias.unsqueeze(0)
+                all_attention_bias.append(attention_bias)
+
+            if label_mask is not None:
+                if not isinstance(label_mask, torch.Tensor):
+                    label_mask = torch.tensor(label_mask)
+                all_label_mask.append(label_mask)
+
         batch = {
-            "UID" : data[0]["UID"],  
-            "pairID": data[0]["pairID"], 
-            "is_sentence_good" : data[0]["is_sentence_good"], 
+            "sent_id" : torch.tensor(sent_ids, dtype=torch.uint32), 
             "input_ids": torch.stack(input_ids),
         }
+        if all_attention_bias:
+            batch["attention_bias"] = torch.stack(all_attention_bias)
+        if all_label_mask:
+            batch["label_mask"] = torch.stack(all_label_mask)
+
         return batch
 
     def token_encode(self, string: str) -> List[int]:
