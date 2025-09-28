@@ -136,10 +136,11 @@ def cross_entropy_loss(
         return loss, None
 
     z_squared = logits.logsumexp(-1).pow(2)
+    mask = (labels != ignore_index)
     if reduction == "mean":
-        z_squared = (z_squared * (labels != ignore_index)).mean()
+        z_squared = (z_squared * mask).mean()
     elif reduction == "sum":
-        z_squared = (z_squared * (labels != ignore_index)).sum()
+        z_squared = (z_squared * mask).sum()
 
     z_loss = z_loss_multiplier * z_squared
 
@@ -182,9 +183,10 @@ try:
         )
 
         mask = labels != ignore_index
+        loss_tokens = mask.sum()
 
         if reduction == "mean":
-            loss = loss.sum() / mask.sum()
+            loss = loss.sum() / loss_tokens
         elif reduction == "sum":
             loss = loss.sum()
         else:
@@ -194,7 +196,7 @@ try:
             return loss, None
 
         if reduction == "mean":
-            z_loss = z_loss.sum() / mask.sum()
+            z_loss = z_loss.sum() / loss_tokens
         elif reduction == "sum":
             z_loss = z_loss.sum()
         else:
@@ -738,7 +740,6 @@ class Trainer:
         labels = self.get_labels(batch, ignore_id=ignore_id)
         # shape: (batch_size * seq_len,)
         labels = labels.view(-1)
-        batch_size_in_loss_tokens = (labels!=ignore_id).sum().item()
         ce_loss, z_loss = self.loss_fn(
             logits_for_loss, labels, ignore_index=ignore_id, reduction=loss_reduction, compute_z_loss=compute_z_loss
         )
@@ -747,12 +748,12 @@ class Trainer:
             ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1)
             if z_loss is not None:
                 z_loss = z_loss.view(batch["input_ids"].shape[0], -1)
-        return ce_loss, z_loss, logits, batch_size_in_loss_tokens
+        return ce_loss, z_loss, logits
 
     def train_micro_batch(
-        self, micro_batch: Dict[str, Any]
+        self, micro_batch: Dict[str, Any], batch_size_in_loss_tokens: int
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        ce_loss, z_loss, logits, batch_size_in_loss_tokens = self.model_forward(
+        ce_loss, z_loss, logits = self.model_forward(
             micro_batch, compute_z_loss=self.cfg.softmax_auxiliary_loss, loss_reduction="sum"
         )
         ce_loss = ce_loss / batch_size_in_loss_tokens
@@ -775,7 +776,8 @@ class Trainer:
     def train_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Split into micro-batches.
         micro_batches = self.split_batch(batch)
-        # batch_size_in_tokens = batch["input_ids"].numel()  # TODO: label_mask, fix right loss tokens?
+        batch_size_in_loss_tokens = (self.get_labels(batch, self.cfg.model.pad_token_id) != self.cfg.model.pad_token_id).sum().item()
+        # batch_size_in_tokens = batch["input_ids"].numel()  # fixed: since TG or finetune task exist pad/non-loss tokens
 
         # In case this helps with memory utilization.
         del batch
@@ -802,7 +804,7 @@ class Trainer:
             with grad_sync_context():
                 with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                     # Run forward pass.
-                    loss, ce_loss, z_loss = self.train_micro_batch(micro_batch)
+                    loss, ce_loss, z_loss = self.train_micro_batch(micro_batch, batch_size_in_loss_tokens)
 
                     # Update overall CE batch loss.
                     ce_batch_loss += ce_loss.detach()
