@@ -56,6 +56,10 @@ class HeadMixingBias:
         for head_config in self.config:
             self.TG_biases.append(get_TG_generate_bias_func(train_config, max_length, head_config.grammar_type))
     
+    def reset_state(self) -> None:
+        for TG_bias in self.TG_biases:
+            TG_bias.reset_state()
+
     def __call__(self, input_ids:torch.Tensor, update_state=False) -> Tuple[torch.Tensor, torch.Tensor]:
         masks, label_mask = [], None
         for gen_TG_bias, head_config in zip(self.TG_biases, self.config):
