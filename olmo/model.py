@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import math
 import sys
+import gc
 from abc import abstractmethod
 from collections import defaultdict
 from functools import partial
@@ -46,6 +47,7 @@ from .config import (
     ModelConfig,
     ShardedCheckpointerType,
     TrainConfig,
+    BeamSearchType
 )
 from .exceptions import OLMoConfigurationError
 from .initialization import init_normal
@@ -1932,23 +1934,43 @@ class OLMo(nn.Module):
         max_length : Optional[int] = None,
         beam_size : int = 300,
         nc : Optional[int] = None,
-        pc : int = 3,
+        pc : int = 4,
         past_input : Optional[torch.Tensor] = None, 
         generate_TG_bias : Optional[TG_attention_bias] = None,
         tag_start : Optional[int] = None,
         tag_end : Optional[int] = None,
+        strategy : BeamSearchType = BeamSearchType.default,
     ) -> OLMoOutput | float:
         """
         Word sync beam search for the model.
+        Hyperparameter from Stern(2017): beam_size = k_word, sub_beam_size = kn = 10*k_word
+        k_fast_track = ks = k_word // 10
         """
         # from tokenizers import Tokenizer
-        # tmptokenizer:Tokenizer = Tokenizer.from_file("/public/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+        # tmptokenizer:Tokenizer = Tokenizer.from_file("/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+
+        first_step = past_input is not None
+        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
+        istart = 0
+        initial_attention_bias = None
+        if past_input is None:
+            if eval_input_ids is not None:
+                istart = 1  # if we have eval_input_ids, we start from 1, 
+                past_input = torch.LongTensor([eval_input_ids[0].item()])
+            else:
+                past_input = torch.LongTensor([vocab.bos])
+        elif generate_TG_bias is not None:
+            generate_TG_bias.reset_state()
+            initial_attention_bias, _ = generate_TG_bias(past_input, update_state=True)
+        nc = int(1.2*Genlength) if nc is None else nc
+
+        # print(f"past input shape is {past_input.shape}")
+        # print(f"{self.device} past input is {tmptokenizer.decode(past_input.tolist(), skip_special_tokens=False)}")
         def collate_fn(data):
             max_input_len = 0
             for sample in data:
                 if sample["input_ids"].shape[0] > max_input_len:
                     max_input_len = sample["input_ids"].shape[0]
-
             input_ids = []
             all_attention_bias = []
             log_probs = []
@@ -1957,7 +1979,7 @@ class OLMo(nn.Module):
             bid = -1
             for sample in data:  # pad according to max_lengths
                 bid += 1
-                pad_shape = (   # right padding by default
+                pad_shape = (   # right padding only
                     0, (max_input_len - sample["input_ids"].shape[0])
                 )
                 cur_input_id = F.pad(sample["input_ids"], pad_shape, value=vocab.pad)
@@ -1968,20 +1990,14 @@ class OLMo(nn.Module):
                 attention_bias = sample.get("attention_bias")
                 if generate_TG_bias is not None:
                     if attention_bias is None:
-                        attention_bias, _ = generate_TG_bias(sample["input_ids"])
+                        attention_bias, _ = generate_TG_bias(cur_input_id)
                     if not isinstance(attention_bias, torch.Tensor):
                         attention_bias = torch.tensor(attention_bias)
                     # Reshape to `(1, seq_len, seq_len)`
                     while len(attention_bias.shape) < 3:
                         attention_bias = attention_bias.unsqueeze(0)
-                    pad_value = False if attention_bias.dtype == torch.bool else float("-inf")
-                    all_attention_bias.append(
-                        F.pad(
-                            attention_bias,
-                            pad_shape + pad_shape,
-                            value=pad_value,
-                        )
-                    )
+                    all_attention_bias.append(attention_bias)
+
                 if sample["number_of_consecutive_start_NT"] >= pc or sample["number_of_start_NT"] >= nc:
                     Stop_Add_NT.append(bid)
 
@@ -1997,20 +2013,6 @@ class OLMo(nn.Module):
 
             return batch
 
-        Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
-        istart = 0
-        first_step = past_input is not None
-        initial_attention_bias = None
-        if past_input is None:
-            if eval_input_ids is not None:
-                istart = 1  # if we have eval_input_ids, we start from 1, 
-                past_input = torch.LongTensor([eval_input_ids[0].item()])
-            else:
-                past_input = torch.LongTensor([vocab.bos])
-        elif generate_TG_bias is not None:
-            initial_attention_bias = generate_TG_bias(past_input, update_state=True)
-
-        nc = int(1.2*Genlength) if nc is None else nc
         # print(f"eval input = {eval_input_ids} past input is {past_input} nc = {nc} pc = {pc}")
         start_beam = {
             "input_ids": past_input,
@@ -2021,18 +2023,27 @@ class OLMo(nn.Module):
         }
         kv_cache = None
         past_kv_cache = None
-        kn = beam_size        # sub-beam size kn
+        kn = beam_size * 10        # sub-beam size kn
         ks = max(beam_size // 10, 1) # fast-shift ks terminal into next_beams
         NT_start = vocab.opening_non_terminals[0]
         NT_end = vocab.closing_non_terminals[1]
         start_surprisal = end_surprisal = 0
         beams = [start_beam]
         i = istart
+        topk_threshold = False
+        if strategy == BeamSearchType.default:
+            StopConditions = lambda: j==0
+        elif strategy == BeamSearchType.word_sync:
+            StopConditions = lambda: len(next_beams) < kn
+        elif strategy == BeamSearchType.word_sync_dfs:
+            StopConditions = lambda: True
         while i<Genlength:
             next_beams = []
             j = 0
-            while len(next_beams) < beam_size:
+            while StopConditions():
                 next_NT_beams = []
+                if beams == []:
+                    break
                 data = collate_fn(beams)
                 if kv_cache is not None:
                     past_kv_cache = [
@@ -2054,17 +2065,18 @@ class OLMo(nn.Module):
 
                 # manage max_length and eos tokens
                 if not first_step:
-                    retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]==max_length - 1, 
+                    retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]>=max_length - 1 - (generate_TG_bias is not None), 
                                                     data["input_ids"][torch.arange(len(beams)), data["last_token_index"]]==self.config.eos_token_id))
+                    if j==0 and len(retain_indices) == len(beams):
+                        return beams
                     log_probs[retain_indices, :] = torch.finfo(log_probs.dtype).min
                     for index in retain_indices:
                         next_beams.append(beams[index])
                 flag_next_set = set()
                 C = logits.shape[-1]
-                if data.get("Stop_Add_NT") is not None:
-                    log_probs[data["Stop_Add_NT"], vocab.opening_non_terminals[0] : vocab.opening_non_terminals[1]] = torch.finfo(log_probs.dtype).min
-                del data
-
+                # if data.get("Stop_Add_NT") is not None:
+                #     log_probs[data["Stop_Add_NT"], vocab.opening_non_terminals[0] : vocab.opening_non_terminals[1]] = torch.finfo(log_probs.dtype).min
+                # del data
                 if eval_input_ids is None:
                     topk_log_probs, topk_indices = torch.topk(log_probs.view(-1), kn, dim=-1)
                     log_probs[:, NT_start:NT_end] = torch.finfo(log_probs.dtype).min
@@ -2083,6 +2095,10 @@ class OLMo(nn.Module):
                 def add_next_beams(beam_index, token_index, log_prob):
                     if (beam_index, token_index) in flag_next_set:
                         return
+                    if strategy == BeamSearchType.word_sync_dfs:
+                        if topk_threshold and log_prob < next_beams[kn - 1]["logprob"]:
+                            return
+                    
                     flag_next_set.add((beam_index, token_index))
                     beam = beams[beam_index] 
                     if generate_TG_bias is None:  # case txltree
@@ -2095,7 +2111,7 @@ class OLMo(nn.Module):
                     
                     next_beam = defaultdict(float)
                     if first_step:
-                        next_beam["input_ids"] = torch.LongTensor([input])
+                        next_beam["input_ids"] = input
                     else:
                         next_beam["input_ids"] = torch.cat([beam["input_ids"], input], dim=0)
                     next_beam["logprob"] = log_prob
@@ -2104,23 +2120,29 @@ class OLMo(nn.Module):
                     if vocab.is_opening_non_terminal(token_index):
                         next_beam["number_of_consecutive_start_NT"] += 1
                         next_beam["number_of_start_NT"] += 1
-                        next_NT_beams.append(next_beam)
                     elif vocab.is_closing_non_terminal(token_index):
                         next_beam["number_of_consecutive_start_NT"] = 0
-                        next_NT_beams.append(next_beam)
                     else:
                         next_beam["number_of_consecutive_start_NT"] = 0
+
+                    if strategy == BeamSearchType.default:
                         next_beams.append(next_beam)
+                    elif strategy == BeamSearchType.word_sync or strategy == BeamSearchType.word_sync_dfs:
+                        if vocab.is_non_terminal(token_index):
+                            next_NT_beams.append(next_beam)
+                        else:
+                            next_beams.append(next_beam)
                     return
 
                 # prepare fast shift
-                topks_term_log_probs = topks_term_log_probs.tolist()
-                topks_term_indices = topks_term_indices.tolist()
-                for k in range(len(topks_term_indices)):
-                    top_index = topks_term_indices[k]
-                    beam_index = top_index // C
-                    token_index = top_index % C
-                    add_next_beams(beam_index, token_index, topks_term_log_probs[k])
+                if strategy==BeamSearchType.word_sync:
+                    topks_term_log_probs = topks_term_log_probs.tolist()
+                    topks_term_indices = topks_term_indices.tolist()
+                    for k in range(len(topks_term_indices)):
+                        top_index = topks_term_indices[k]
+                        beam_index = top_index // C
+                        token_index = top_index % C
+                        add_next_beams(beam_index, token_index, topks_term_log_probs[k])
                 # prepare all next candidate
                 topk_log_probs = topk_log_probs.tolist()
                 topk_indices = topk_indices.tolist()
@@ -2129,21 +2151,22 @@ class OLMo(nn.Module):
                     beam_index = top_index // C
                     token_index = top_index % C
                     add_next_beams(beam_index, token_index, topk_log_probs[k])
-                
-                del beams
                 beams = next_NT_beams
                 j = j + 1
                 first_step = False
+                if strategy == BeamSearchType.word_sync_dfs:
+                    next_beams.sort(key=lambda x: x["logprob"], reverse=True)
+                    next_beams = next_beams[:kn]
+                    topk_threshold = len(next_beams)>=kn
+                    
             
             next_beams.sort(key=lambda x: x["logprob"], reverse=True)
-            del beams
             beams = next_beams[:beam_size]
+            topk_threshold = False
             if i==tag_start or i==tag_end:
                 logprob = [beam["logprob"] for beam in beams]
                 logprob = torch.tensor(logprob, device=self.device)
                 surprisal = -torch.logsumexp(logprob, dim=0).item()
-                # for j in range(beam_size):
-                #     print(tmptokenizer.decode(beams[j]["input_ids"].tolist(), skip_special_tokens=False))
                 if i==tag_start:
                     start_surprisal = surprisal
                 elif i==tag_end:

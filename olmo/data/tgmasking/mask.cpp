@@ -244,14 +244,13 @@ public:
         return term;
     }
 
-    // The start of TG_tree cannot be closing-non-terminal here
     template <typename T>
     py::array_t<T> convert_TGnpy_to_tree_impl(py::array_t<T> TG_tree) {
         auto buf_TG = TG_tree.template unchecked<1>();
         size_t N = TG_tree.size();
         size_t tree_N = 0;
         for (size_t i = 0; i < buf_TG.shape(0); ++i) 
-            if (is_closing_non_terminal(buf_TG[i])) 
+            if (is_closing_non_terminal(buf_TG[i]) && i < buf_TG.shape(0) - 1 && is_closing_non_terminal(buf_TG[i+1])) 
                 tree_N++, i++;
             else
                 tree_N++;
@@ -263,7 +262,7 @@ public:
         for (size_t i = 0; i < buf_TG.shape(0); ++i) {
             T token = buf_TG[i];
             buf_tree[tree_index++] = token;
-            if (is_closing_non_terminal(token))
+            if (is_closing_non_terminal(token) && i < buf_TG.shape(0) - 1 && is_closing_non_terminal(buf_TG[i+1]))
                 ++i;
         }
         if (tree_index != tree_N) {
@@ -304,6 +303,24 @@ public:
             return convert_TGnpy_to_tree_impl<int32_t>(TG_tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return convert_TGnpy_to_tree_impl<int64_t>(TG_tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
+    template <typename T>
+    py::array_t<T> random_shuffle_tree_impl(py::array_t<T> TG_tree) {
+        //TODO
+        return tree;
+    }
+
+    py::array random_shuffle_tree(py::array TG_tree) {
+        auto dtype = TG_tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return random_shuffle_tree_impl<uint16_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<int32_t>()))
+            return random_shuffle_tree_impl<int32_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return random_shuffle_tree_impl<int64_t>(TG_tree);
         else
             throw std::runtime_error("Unsupported data type");
     }
@@ -348,7 +365,7 @@ public:
         } else {
             std::memcpy(buffer.data() + end, input_data, T * sizeof(int64_t));
             if (update_state) {
-                end += T;
+                end = (end + T) % max_length;
             }
         }
     }
@@ -366,6 +383,7 @@ class TG_attention_bias {
 public:
     SentencepieceVocab vocab_;
     std::vector<int64_t> stk_;
+    std::vector<int64_t> stk_copy_;
     TG_Cache cached_input_;
     int64_t max_length_;
     
@@ -377,7 +395,7 @@ public:
     TG_attention_bias() = default;
     TG_attention_bias(const std::string& vocab_path, int64_t max_token_length)
         : vocab_(SentencepieceVocab::from_vocab_file(vocab_path)),
-          stk_(max_token_length * 2, 0),
+          stk_(max_token_length * 2, 0), stk_copy_(max_token_length * 2, 0),
           cached_input_(max_token_length * 2, torch::kInt32),
           max_length_(max_token_length),
           last_token_(-1), top_(-1), cur_length_(0) {}
@@ -428,11 +446,9 @@ public:
         int64_t top = top_;
         int64_t last_token = last_token_;
         cached_input_.append(input_ids, update_state);
-        auto input_ptr = input_ids.data_ptr<int64_t>();
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
-
         // Find stack beginning
         int64_t stk_beg = 0;
         bool found = false;
@@ -444,6 +460,10 @@ public:
             }
         }
         if (!found) stk_beg = top + 1;
+        if (!update_state) {
+            std::memcpy(stk_copy_.data(), stk_.data(), (top+1) * sizeof(int64_t));
+        }
+        auto &stk = update_state ? stk_ : stk_copy_;
 
         auto label_mask = torch::ones_like(input_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
@@ -451,7 +471,6 @@ public:
         auto input_acc = input_ids.accessor<int64_t, 1>();
         auto mask_acc = mask.accessor<bool, 2>();
         auto label_acc = label_mask.accessor<bool, 1>();
-
         for (int64_t i = 0; i < T; ++i) {
             int64_t token = input_acc[i];
             mask_acc[i][pastT + i] = true;
@@ -460,24 +479,23 @@ public:
                 --update_T;
                 continue;
             }
-            
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
-                    j = stk_[top];
+                    j = stk[top];
                     top--;
                     mask_acc[i][j - remove_len] = true;
                 }
-                stk_[++top] = cur_length_ + i;
+                stk[++top] = cur_length_ + i;
             } else {
                 if (!vocab_.is_closing_non_terminal(token) && token != vocab_.pad) {
-                    stk_[++top] = cur_length_ + i;
+                    stk[++top] = cur_length_ + i;
                 } else {
                     label_acc[i] = false;
                 }
 
                 for (int64_t k = stk_beg; k <= top; ++k) {
-                    mask_acc[i][stk_[k] - remove_len] = true;
+                    mask_acc[i][stk[k] - remove_len] = true;
                 }
             }
 
@@ -502,7 +520,6 @@ public:
             }
             top_ = new_top;
         }
-
         return std::make_tuple(mask, label_mask);
     }
 };
@@ -511,11 +528,12 @@ class KProximal_TG_attention_bias : public TG_attention_bias {
 public:
     int64_t prox_k_;
     TG_Cache cached_label_;
+    bool is_aug_;
 
     KProximal_TG_attention_bias() = default;
-    KProximal_TG_attention_bias(const std::string& vocab_path, int64_t max_token_length, int64_t Proximal_lenK)
+    KProximal_TG_attention_bias(const std::string& vocab_path, int64_t max_token_length, int64_t Proximal_lenK, bool is_aug = false)
         : TG_attention_bias(vocab_path, max_token_length), 
-          prox_k_(Proximal_lenK), cached_label_(max_token_length*2) {}
+          prox_k_(Proximal_lenK), cached_label_(max_token_length*2), is_aug_(is_aug) {}
 
     void reset_state() {
         TG_attention_bias::reset_state();
@@ -545,6 +563,10 @@ public:
             }
         }
         if (!found) stk_beg = top + 1;
+        if (!update_state) {
+            std::memcpy(stk_copy_.data(), stk_.data(), (top+1) * sizeof(int64_t));
+        }
+        auto &stk = update_state ? stk_ : stk_copy_;
 
         auto label_mask = torch::ones_like(input_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
@@ -564,23 +586,27 @@ public:
             if (should_compose(token, last_token, input_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
-                    j = stk_[top];
+                    j = stk[top];
                     top--;
                     mask_acc[i][j - remove_len] = true;
                 }
-                stk_[++top] = cur_length_ + i;
+                stk[++top] = cur_length_ + i;
             } else {
                 if (!vocab_.is_closing_non_terminal(token) && token != vocab_.pad) {
-                    stk_[++top] = cur_length_ + i;
+                    stk[++top] = cur_length_ + i;
                 } else {
                     label_acc[i] = false;
                 }
-                
-                for (int64_t k = std::max(pastT + i - prox_k_, doc_begin); k < pastT + i; ++k) {
-                    mask_acc[i][k] = cached_label_[k - pastT + cur_length_];
-                }
+                if (is_aug_)
+                    for (int64_t k = std::max(pastT + i - prox_k_, doc_begin); k < pastT + i; ++k) {
+                        mask_acc[i][k] = true;
+                    }
+                else
+                    for (int64_t k = std::max(pastT + i - prox_k_, doc_begin); k < pastT + i; ++k) {
+                        mask_acc[i][k] = cached_label_[k - pastT + cur_length_];
+                    }
                 for (int64_t k = stk_beg; k <= top; ++k) {
-                    mask_acc[i][stk_[k] - remove_len] = true;
+                    mask_acc[i][stk[k] - remove_len] = true;
                 }
             }
             
@@ -588,11 +614,6 @@ public:
 
 
             last_token = token;
-            if (token == vocab_.eos) {
-                top = -1;
-                stk_beg = 0;
-                doc_begin = pastT + i + 1;
-            }
         }
 
         if (update_state) {
@@ -793,11 +814,11 @@ public:
             }
             
             last_token = token;
-            if (token == vocab_.eos) {
-                top = -1;
-                stk_beg = 0;
-                doc_begin = pastT + i + 1;
-            }
+            // if (token == vocab_.eos) {
+            //     top = -1;
+            //     stk_beg = 0;
+            //     doc_begin = pastT + i + 1;
+            // }
         }
 
         if (update_state) {
@@ -1004,7 +1025,7 @@ PYBIND11_MODULE(tg_mask, m) {
         ;
 
     py::class_<KProximal_TG_attention_bias, TG_attention_bias>(m, "KProximal_TG_attention_bias")
-        .def(py::init<const std::string&, int64_t, int64_t>(), py::arg("vocab_path"), py::arg("max_token_length"), py::arg("Proximal_lenK"))
+        .def(py::init<const std::string&, int64_t, int64_t, bool>(), py::arg("vocab_path"), py::arg("max_token_length"), py::arg("Proximal_lenK"), py::arg("is_aug") = false)
         .def(py::init<const KProximal_TG_attention_bias&>())
         .def("reset_state", &KProximal_TG_attention_bias::reset_state)
         .def("convert_input_to_TG_format", &KProximal_TG_attention_bias::convert_input_to_TG_format,

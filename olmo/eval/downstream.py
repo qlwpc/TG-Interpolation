@@ -16,7 +16,7 @@ from olmo.util import load_hf_dataset, load_oe_eval_requests
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
-from ..data.util import encode_TG_string
+from ..data.util import encode_TG_string, convert_TG_format
 from ..data.collator import DataCollator
 from ..config import PaddingDirection
 
@@ -176,9 +176,13 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         dataset_path: str,
         dataset_name: Union[str, Sequence[str], None] = None,
         model_ctx_len: int = 2048,
-        split="validation",
+        split="test",
         metric_type=None,  # Override default metric type
         prompts=[None],  # List of prompt variants to use
+        local_datasets=True,
+        transformer_grammar_type="",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
     ):
         super().__init__()
 
@@ -188,9 +192,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.model_ctx_len = model_ctx_len
         self.prompts = prompts
         self.current_prompt = None
+        self.split = split
         if metric_type is not None:
             self.metric_type = metric_type
-        self.log_instances = 0  # Set to > 0 to log the first few instances as a sanity check
+        self.log_instances = 5  # Set to > 0 to log the first few instances as a sanity check
+        self.generate_TG_attention_bias = generate_TG_attention_bias
+        self.transformer_grammar_type = transformer_grammar_type
+        print(f"vocab path is {vocab_path}")
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
 
         self.samples: List[Dict[str, Any]] = []
         dataset_names: Sequence[Optional[str]]
@@ -199,11 +208,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         else:
             dataset_names = dataset_name
 
-        dataset_list = []
-        for ds_name in dataset_names:
-            dataset = load_hf_dataset(self.dataset_path, ds_name, split)
-            dataset_list.append(dataset)
-        self.dataset = datasets.concatenate_datasets(dataset_list)
+        if not local_datasets:
+            dataset_list = []
+            for ds_name in dataset_names:
+                dataset = load_hf_dataset(self.dataset_path, ds_name, split)
+                dataset_list.append(dataset)
+            self.dataset = datasets.concatenate_datasets(dataset_list)
+        else:
+            self.load_local_datasets()
 
         # prep examples
         self.prep_examples()
@@ -213,6 +225,15 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def __len__(self):
         return len(self.samples)
+    
+    def convert_grammar_input(self, input_ids) -> List[int]:
+        if not isinstance(input_ids, np.ndarray):
+            input_ids = np.array(input_ids)
+        if self.transformer_grammar_type == "terminal":
+            input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+        elif self.transformer_grammar_type == "tree":
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+        return input_ids.tolist()
 
     def prep_examples(self):
         """Append doc_ids to each example so that they are processed together in the metric"""
@@ -233,15 +254,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 doc_text = self.doc_to_text(doc)
                 ctx = self.token_encode(doc_text)
                 dc = self.token_encode(self.doc_to_domain_conditional(doc))
-                if self.log_instances > 0:
-                    self.log_instances -= 1
-                    ds_name = self.dataset_name
-                    if isinstance(ds_name, list):
-                        ds_name = ds_name[0]
-                    log.info(
-                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}"
-                    )
+                dc = self.convert_grammar_input(dc)
 
                 for cont_id, continuation_str in enumerate(continuations):
                     cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
@@ -249,21 +262,31 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     continuation = self.token_encode(continuation_str)
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
-                    query = ctx + continuation[:-1]
+                    # when train, should keep last token
+                    if self.split=="train":
+                        query = ctx + continuation
+                    else:
+                        query = ctx + continuation[:-1]
+                        
                     query = query[-self.model_ctx_len :]
+                    query = self.convert_grammar_input(query)
+                    continuation = self.convert_grammar_input(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
-
+                    
                     # get domain conditional query
                     # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                    dc_query = dc + continuation[:-1]
+                    if self.split=="train":
+                        dc_query = dc + continuation
+                    else:
+                        dc_query = dc + continuation[:-1]
 
                     # form a sample
                     self.samples.append(
                         {
                             "doc_id": doc_id,
                             "cont_id": cont_id,
-                            "ctx": ctx,
+                            # "ctx": ctx,
                             "continuation": continuation,
                             "ctx_len": actual_ctx_len,
                             "dc_len": len(dc),
@@ -276,6 +299,16 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             "dc_query": dc_query,
                             "label_id": label_id,
                         }
+                    )
+                if self.log_instances > 0:
+                    self.log_instances -= 1
+                    ds_name = self.dataset_name
+                    if isinstance(ds_name, list):
+                        ds_name = ds_name[0]
+                    log.info(
+                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
+                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}\n" +
+                        f"input_ids is {self.token_decode(query)}"
                     )
 
                 doc_id += 1
@@ -306,8 +339,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         max_dc_query_len = 0
 
         for sample in data:
-            if len(sample["ctx"]) > max_ctx_len:
-                max_ctx_len = len(sample["ctx"])
+            # if len(sample["ctx"]) > max_ctx_len:
+            #     max_ctx_len = len(sample["ctx"])
 
             if len(sample["continuation"]) > max_cont_len:
                 max_cont_len = len(sample["continuation"])
@@ -330,13 +363,15 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         queries = []
         dc_queries = []
         label_ids = []
+        all_attention_bias = []
+        all_label_mask = []
 
         # pad according to max_lengths
         for sample in data:
             doc_ids.append(sample["doc_id"])
             cont_ids.append(sample["cont_id"])
 
-            ctxs.append(torch.LongTensor(self.pad_tokens_until_max(sample["ctx"], max_len=max_ctx_len)))
+            # ctxs.append(torch.LongTensor(self.pad_tokens_until_max(sample["ctx"], max_len=max_ctx_len)))
             continuations.append(
                 torch.LongTensor(self.pad_tokens_until_max(sample["continuation"], max_len=max_cont_len))
             )
@@ -347,17 +382,24 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             cont_str_lens.append(sample["cont_str_len"])
             cont_byte_lens.append(sample["cont_byte_len"])
 
-            queries.append(torch.LongTensor(self.pad_tokens_until_max(sample["query"], max_len=max_query_len)))
             dc_queries.append(
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
-
             label_ids.append(sample["label_id"])
+
+            input_ids = torch.LongTensor(self.pad_tokens_until_max(sample["query"], max_len=max_query_len))
+            queries.append(input_ids)
+            if self.generate_TG_attention_bias is not None:
+                attention_bias, label_mask = self.generate_TG_attention_bias(input_ids)
+                while len(attention_bias.shape) < 3:
+                    attention_bias = attention_bias.unsqueeze(0)
+                all_attention_bias.append(attention_bias)
+                all_label_mask.append(label_mask)
 
         batch = {
             "doc_id": torch.LongTensor(doc_ids),
             "cont_id": torch.LongTensor(cont_ids),
-            "ctx": torch.stack(ctxs),
+            # "ctx": torch.stack(ctxs),
             "continuation": torch.stack(continuations),
             "ctx_len": torch.LongTensor(ctx_lens),
             "dc_len": torch.LongTensor(dc_lens),
@@ -368,14 +410,20 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             "dc_input_ids": torch.stack(dc_queries),
             "label_id": torch.LongTensor(label_ids),
         }
+        if all_attention_bias:
+            batch["attention_bias"] = torch.stack(all_attention_bias)
+        if all_label_mask:
+            batch["label_mask"] = torch.stack(all_label_mask)
 
         return batch
 
     def token_encode(self, string: str) -> List[int]:
-        return self.tokenizer.encode(string, add_special_tokens=False)
+        ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
+        ids = self.vocab.convert_treenpy_to_TG(ids)
+        return ids.tolist()
 
     def token_decode(self, tokens: List[int]) -> str:
-        return self.tokenizer.decode(tokens)
+        return self.tokenizer.decode(tokens, skip_special_tokens=False)
 
     @abc.abstractmethod
     def doc_to_text(self, doc) -> str:
@@ -485,7 +533,6 @@ class XsumDataset(metaclass=abc.ABCMeta):
             ])
         else:
             passage_truncate_length = self.model_ctx_len - self.MAX_SUMMARY_LENGTH - len(self.prompts_TG_tokens) - 1 - 1
-            # print(f"length {passage_truncate_length} tokens is {self.tokenizer.decode(passage_TG_tokens[:passage_truncate_length].tolist())}")
             input_ids = np.concatenate([
                 np.array([self.vocab.bos]),
                 passage_TG_tokens[:passage_truncate_length],
@@ -503,6 +550,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
         else:
+            input_ids = torch.tensor(input_ids)
             attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
         
         if loss_tokens is not None:
@@ -540,7 +588,7 @@ class RougeMetric(Metric):
             # pred_summary = self.tokenizer.decode(predictions[b].tolist())
             passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
             print(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
-            self.predictions.append(torch.tensor(predictions[b], device=self.device))
+            self.predictions.append(predictions[b])
 
         for gold in references:
             self.references.append(torch.tensor(self.tokenizer.encode(gold, add_special_tokens=False), device=self.device))
@@ -1545,37 +1593,62 @@ class BoolQ(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "acc"
-
+    BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
     def __init__(
         self,
         tokenizer,
         dataset_path="boolq",
         dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
         )
 
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.BoolQPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["passage", "question"]:
+            with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+        
+
     def doc_to_text(self, doc):
-        return doc["passage"] + "\nQuestion: " + doc["question"] + "?\nAnswer:"
+        return doc["passage"] + "<|SEP|> (SQ (NP Question NP) : " + doc["question"] + " ? SQ) <|SEP|> (NP (NP Answer NP) : (NP"
 
     def doc_to_continuations(self, doc):
+        label = not doc["label"]
         del doc
         # add spaces in front of continuation
-        return [" yes", " no"]
+        if self.split=="train":
+            return [[" yes", " no"][label]]
+        else:
+            return [" yes", " no"]
 
     def doc_to_label(self, doc):
         # if doc['answer'] is True, return index of " yes" which is 0
-        if doc["answer"]:
+        if doc["label"]:
             return 0
         else:
             return 1
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "Answer:"
+        return "(NP (NP Answer NP) : (NP"
 
 
 class SciQ(ICLMultiChoiceTaskDataset):
@@ -1803,6 +1876,76 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
     def doc_to_domain_conditional(self, doc):
         return "Answer:"
 
+class CB(ICLMultiChoiceTaskDataset):
+    """Prompt: "premise\nQuestion:{hypothesis}. True, False or Neither?\nAnswer: {True/False/Neither}"
+    continuations: True, False, Neither.
+
+    "cause": "because",
+    "effect": "therefore",
+
+    implement PMI_DC
+    acc, random at 33%
+
+    {
+        'premise': 'It was a complex language. Not written down but handed down. One might say it was peeled down.',
+        'hypothesis': 'the language was peeled down',
+        'label': 0
+    }
+    """
+
+    metric_type = "acc"
+    CBPATH = "./dataset/SuperGLUE/CB/"
+    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="CB",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.CBPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "hypothesis"]:
+            with open(os.path.join(self.CBPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+    
+    def doc_to_text(self, doc):
+        return doc["premise"] + "<|SEP|> (FRAG (NP Question NP) : " + doc["hypothesis"] + " . FRAG) (FRAG True, False or Neither ? FRAG) <|SEP|> (NP (NP Answer NP) : (NP"
+
+    def doc_to_continuations(self, doc):
+        label = self.LABEL_DICT[doc["label"]]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" True", " False", " Neither"][label]]
+        else:
+            return [" True", " False", " Neither"]
+
+    def doc_to_label(self, doc):
+        return self.LABEL_DICT[doc["label"]]
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "(NP (NP Answer NP) : (NP"
 
 class COPA(ICLMultiChoiceTaskDataset):
     """Prompt: "PREMISE.strip()[:-1] because/therefore"
@@ -1871,34 +2014,58 @@ class RTE(ICLMultiChoiceTaskDataset):
     }
     """
 
-    metric_type = "len_norm"
-
+    metric_type = "acc"
+    RTEPATH = "./dataset/SuperGLUE/RTE/"
     def __init__(
         self,
         tokenizer,
-        dataset_path="glue",
-        dataset_name="rte",
+        dataset_path="rte",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
         )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.RTEPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "hypothesis"]:
+            with open(os.path.join(self.RTEPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
 
     def doc_to_text(self, doc):
-        return doc["sentence1"] + "\nQuestion: " + doc["sentence2"] + " True or False?\nAnswer:"
+        return doc["premise"] + "<|SEP|> (S (NP Question NP) : " + doc["hypothesis"] + " S) (ADJP (ADJP True or False ADJP) ? ADJP) <|SEP|> (NP (NP Answer NP) : (NP"
 
     def doc_to_continuations(self, doc):
+        label = doc["label"]=="not_entailment"
         del doc
         # add spaces in front of continuation
-        return [" True", " False"]
+        if self.split=="train":
+            return [[" True", " False"][label]]
+        else:
+            return [" True", " False"]
 
     def doc_to_label(self, doc):
-        return doc["label"]
+        return doc["label"]=="not_entailment"
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "Answer:"
+        return "(NP (NP Answer NP) : (NP"
 
 
 class CommitmentBank(ICLMultiChoiceTaskDataset):
@@ -2500,7 +2667,15 @@ TG_task_map = {
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}), 
     "BLiMP_default": (BLiMPApproximationDataset, {"dataset_path": BLiMP_PATH}), 
-    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"})
+    "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"}),
+    "xsum_valid": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge", "split":"validation"})
+}
+
+Super_GLUE = {
+    "boolq": BoolQ,
+    "cb": CB,
+    "copa": COPA,
+    "rte": RTE,
 }
 
 label_to_task_map = {
@@ -2508,14 +2683,11 @@ label_to_task_map = {
     "hellaswag": HellaSwag,
     "winogrande": WinoGrande,
     "openbook_qa": OpenBookQA,
-    "boolq": BoolQ,
     "sciq": SciQ,
     "arc_easy": ArcEasy,
     "arc_easy_ppl": ArcEasyCELoss,
     "arc_challenge": ArcChallenge,
     "basic_arithmetic": BasicArithmetic,
-    "copa": COPA,
-    "rte": RTE,
     "commitment_bank": CommitmentBank,
     "mrpc": MRPC,
     "sst2": SST2,
@@ -3265,4 +3437,5 @@ label_to_task_map = {
     **TG_task_map,
     **label_to_task_map,
     **label_to_task_map_new,
+    **Super_GLUE,
 }
