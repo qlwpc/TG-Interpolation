@@ -27,6 +27,7 @@ from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
 from .aliases import PathOrStr
 from .exceptions import OLMoConfigurationError
 from .util import StrEnum
+from enum import Enum
 
 __all__ = [
     "ActivationType",
@@ -183,6 +184,10 @@ class LayerNormType(StrEnum):
     probably the fastest implementation.
     """
 
+class BeamSearchType(Enum):
+    default = 0
+    word_sync = 1
+    word_sync_dfs = 2
 
 class ActivationType(StrEnum):
     gelu = "gelu"
@@ -488,7 +493,7 @@ class ModelConfig(BaseConfig):
 
     transformer_grammar_type : str = "terminal"
     """
-    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight"] 
+    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle"] 
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
 

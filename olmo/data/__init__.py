@@ -11,30 +11,9 @@ from ..torch_util import barrier, get_global_rank, get_world_size
 from .collator import DataCollator
 from .iterable_dataset import IterableDataset
 from .memmap_dataset import MemMapDataset
-from .tg_mask import TG_attention_bias, KProximal_TG_attention_bias, Height_TG_attention_bias
+from .tg_mask import TG_attention_bias, KProximal_TG_attention_bias, Height_TG_attention_bias, SentencepieceVocab
 import torch 
 __all__ = ["MemMapDataset", "DataCollator", "IterableDataset", "build_eval_dataloader", "build_train_dataloader", "SentencepieceVocab", "get_TG_generate_bias_func"]
-
-class ChangeHead_bias:
-    def __init__(self, vocab_path:str = None, max_token_length:int = 2048, type:str = None) -> None:
-        if type=="mixA":
-            self.HeadA = TG_attention_bias(vocab_path, max_token_length)
-            self.HeadB = KProximal_TG_attention_bias(vocab_path, max_token_length, max_token_length)
-        elif type=="mixB":
-            self.HeadA = KProximal_TG_attention_bias(vocab_path, max_token_length, 200)
-            self.HeadB = Height_TG_attention_bias(vocab_path, max_token_length, 5)
-
-    def reset_state(self) -> None:
-        self.HeadA.reset_state()
-        self.HeadB.reset_state()
-    
-    def __call__(self, input_ids:torch.Tensor, update_state=False) -> Tuple[torch.Tensor, torch.Tensor]:
-        maskA, label_mask = self.HeadA(input_ids, update_state)
-        maskB, _  = self.HeadB(input_ids, update_state)
-        maskA = maskA.unsqueeze(0).expand(6, -1, -1)
-        maskB = maskB.unsqueeze(0).expand(6, -1, -1)
-        mask = torch.cat([maskA, maskB], dim=0)
-        return mask, label_mask
         
 class Soft_Alibilike_bias:
     def __init__(self, vocab_path:str = None, max_token_length:int = 2048, type:str = None) -> None:
@@ -63,10 +42,38 @@ class HeadMixingBias:
     def __call__(self, input_ids:torch.Tensor, update_state=False) -> Tuple[torch.Tensor, torch.Tensor]:
         masks, label_mask = [], None
         for gen_TG_bias, head_config in zip(self.TG_biases, self.config):
-            mask, label_mask = gen_TG_bias(input_ids, update_state)
+            mask, label_mask_head = gen_TG_bias(input_ids, update_state)
             masks.append(mask.unsqueeze(0).expand(head_config.n_heads, -1, -1))
+            if label_mask_head is not None:
+                label_mask = label_mask_head
         mask = torch.cat(masks, dim=0)
         return mask, label_mask
+
+class TGCausalBias:
+    def __init__(self, vocab_path:str, max_length:int) -> None:
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.max_length = max_length
+        self.cur_length = 0
+        self.causal_cache = None
+    
+    def reset_state(self) -> None:
+        self.cur_length = 0
+
+    def __call__(self, input_ids:torch.Tensor, update_state=False) -> Tuple[torch.Tensor, torch.Tensor]:
+        pads_cnt = (input_ids == self.vocab.pad).sum().item()
+        mask = None
+        T = input_ids.shape[0]
+        remove_len = (self.cur_length + T - self.max_length) if self.cur_length + T > self.max_length else 0
+        pastT = (self.max_length - T)  if self.cur_length + T > self.max_length else self.cur_length
+        update_T = T - pads_cnt
+        if self.causal_cache is None:
+            self.causal_cache = torch.tril(
+                torch.ones(self.max_length, self.max_length, dtype=torch.bool),
+            )
+        mask = self.causal_cache[pastT:pastT+T, :pastT+T]
+        if update_state:
+            self.cur_length += - remove_len + update_T
+        return mask, None
 
 #TODO: promote parameter forwarding 
 def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int] = None, TG_type:Optional[str]=None) -> TG_attention_bias:
@@ -80,20 +87,12 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
         generate_TG_attention_bias = HeadMixingBias(train_config.model.mix_head_type, train_config, max_length)
     elif TG_type=="tg":
         generate_TG_attention_bias = TG_attention_bias(vocab_path, max_length)
-    elif TG_type=="tgproximal":
-        generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, train_config.model.tg_proximal_k)
-    elif TG_type=="tgheight":
-        generate_TG_attention_bias = Height_TG_attention_bias(vocab_path, max_length, train_config.model.tg_height_h)
-    elif TG_type=="tgnomask":
-        generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, max_length)
-    elif TG_type=="mixA":
-        generate_TG_attention_bias = ChangeHead_bias(vocab_path, max_length, "mixA")
-    elif TG_type=="mixB":
-        generate_TG_attention_bias = ChangeHead_bias(vocab_path, max_length, "mixB")
-    elif TG_type=="soft_prox":
-        generate_TG_attention_bias = Soft_Alibilike_bias(vocab_path, max_length)
-    elif TG_type=="tgheightprox":
-        generate_TG_attention_bias = Height_TG_attention_bias(vocab_path, max_length, train_config.model.tg_height_h, train_config.model.tg_proximal_k)
+    elif TG_type[0:10]=="tgproximal":
+        generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, train_config.model.tg_proximal_k, TG_type[-3:]=="aug")
+    elif TG_type[0:8]=="tgnomask":
+        generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, max_length, TG_type[-3:]=="aug")
+    elif TG_type=="tgtree":
+        generate_TG_attention_bias = TGCausalBias(vocab_path, max_length)
     
     return generate_TG_attention_bias
 
@@ -187,7 +186,7 @@ def build_train_dataloader(
         )
     else:
         task_kwargs = {}
-        from ..eval.downstream import label_to_task_map
+        from ..eval.downstream import label_to_task_map, Super_GLUE
         task_class = label_to_task_map[train_config.finetune_task]
         if isinstance(task_class, tuple):
             task_class, task_kwargs = task_class
@@ -198,6 +197,8 @@ def build_train_dataloader(
                              vocab_path=train_config.tokenizer.vocabulary,
                              split="train",
                              **task_kwargs)  # type: ignore
+        if train_config.finetune_task in Super_GLUE:
+            collator = dataset.collate_fn
     
     work_dir = Path(train_config.save_folder) / "train_data"
     if get_global_rank() == 0:

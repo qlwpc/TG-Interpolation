@@ -15,21 +15,27 @@ def cartesian_product_with_underscore(sets):
         # 将元组中的字符串用下划线连接
         yield '_'.join(combination)
 
+from convert_TG_and_tokenize import convert_TG_format
+
 # 示例用法
 if __name__ == "__main__":
+
+    with open("tmp_out.txt", "r") as file:
+        input = "".join(file.readlines())
+    print(convert_TG_format(input))
     # 示例字符串集合
-    sets = [
-        ['ReCoRD'],
-        ['test', 'val', 'train'],
-        ['query', 'text'],
-    ]
+    # sets = [
+    #     ['ReCoRD'],
+    #     ['test', 'val', 'train'],
+    #     ['query', 'text'],
+    # ]
     
-    # 生成所有组合
-    results = list(cartesian_product_with_underscore(sets))
+    # # 生成所有组合
+    # results = list(cartesian_product_with_underscore(sets))
     
-    # 打印结果
-    for i, result in enumerate(results, 1):
-        print(f"{result}", end=",")
-    print("")
-    # 输出数量
-    # print(f"\n总共生成了 {len(results)} 种组合")
+    # # 打印结果
+    # for i, result in enumerate(results, 1):
+    #     print(f"{result}", end=",")
+    # print("")
+    # # 输出数量
+    # # print(f"\n总共生成了 {len(results)} 种组合")

@@ -39,7 +39,8 @@ from .config import (
     ShardedCheckpointerType,
     SpeedMonitorConfig,
     TrainConfig,
-    EvaluatorType
+    EvaluatorType,
+    BeamSearchType
 )
 from .data import IterableDataset
 from .eval import Evaluator
@@ -776,8 +777,13 @@ class Trainer:
     def train_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Split into micro-batches.
         micro_batches = self.split_batch(batch)
-        batch_size_in_loss_tokens = (self.get_labels(batch, self.cfg.model.pad_token_id) != self.cfg.model.pad_token_id).sum().item()
-        # batch_size_in_tokens = batch["input_ids"].numel()  # fixed: since TG or finetune task exist pad/non-loss tokens
+        if self.cfg.finetune_task is not None:
+            global_batch_size_in_loss_tokens = (self.get_labels(batch, self.cfg.model.pad_token_id) != self.cfg.model.pad_token_id).sum()
+            batch_size_in_loss_tokens = global_batch_size_in_loss_tokens.item()
+            dist.all_reduce(global_batch_size_in_loss_tokens)
+            device_loss_weight = get_world_size() * batch_size_in_loss_tokens / global_batch_size_in_loss_tokens.item()
+        else:
+            batch_size_in_loss_tokens = batch["input_ids"].numel()  # fixed: since TG or finetune task exist pad/non-loss tokens
 
         # In case this helps with memory utilization.
         del batch
@@ -815,6 +821,8 @@ class Trainer:
                         z_batch_loss += z_loss.detach()
 
                 # Run backward pass.
+                if self.cfg.finetune_task is not None:
+                    loss *= device_loss_weight
                 loss.backward()
 
             # Remove output hooks
@@ -1037,19 +1045,24 @@ class Trainer:
                     predictions = self.dist_model.module.generate(batch["input_ids"], 
                                                                    max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                                                                    beam_size=6).token_ids
-                    predictions = predictions[:, 0, :]
+                    # predictions = predictions[0, 0, :].cpu().numpy()
+                    # predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
+                    # predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
+                    predictions = predictions[:, 0, :].to(self.device)
                 else:
                     # currently only support eval_batch_size==1
                     predictions = self.dist_model.module.word_sync_beam_search(
                             vocab = evaluator.eval_loader.dataset.vocab,
                             past_input = batch["input_ids"][0],
-                            max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH // 2,
+                            max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH//2,
                             max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                             beam_size=6,
+                            generate_TG_bias=self.generate_TG_attention_bias, #get_TG_generate_bias_func(self.cfg),
+                            strategy=BeamSearchType.word_sync_dfs
                         )
                     predictions = predictions[0]["input_ids"].numpy()
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
-                    predictions = np.expand_dims(predictions, axis=0)
+                    predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
 
         
         evaluator.update_metrics(
@@ -1138,6 +1151,7 @@ class Trainer:
         self.optim.zero_grad(set_to_none=True)
         self.dist_model.eval()
         eval_metrics = {}
+        self.generate_TG_attention_bias = get_TG_generate_bias_func(self.cfg)
         for evaluator, eval_config in zip(self.evaluators, self.cfg.evaluators):
             log.info(f"Running evaluation for '{evaluator.label}'...")
             # Reset metrics.
@@ -1168,7 +1182,7 @@ class Trainer:
                     self.TG_doc_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "syntactic_generalization":
                     self.SG_eval_step(eval_batch, evaluator)
-                elif evaluator.label == "xsum":
+                elif evaluator.type == EvaluatorType.rouge:
                     self.summarization_eval_step(eval_batch, evaluator)
                 else:
                     self.eval_step(eval_batch, evaluator)

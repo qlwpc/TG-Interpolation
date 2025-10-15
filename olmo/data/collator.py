@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from ..config import PaddingDirection, TrainConfig
-
+from .tg_mask import SentencepieceVocab
 __all__ = ["DataCollator"]
 
 
@@ -16,10 +16,15 @@ class DataCollator:
     pad_direction: PaddingDirection
     pad_token_id: int
     generate_attenion_mask: bool
+    shuffle_tree: bool = False
 
     @classmethod
     def from_train_config(cls, config: TrainConfig) -> DataCollator:
-        return cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, generate_attention_mask=False)
+        obj = cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, 
+                   generate_attention_mask=False, shuffle_tree=config.model.transformer_grammar_type=="tree_shuffle")
+        if obj.shuffle_tree:
+            obj.vocab = SentencepieceVocab.from_vocab_file(config.tokenizer.vocabulary)
+        return obj
 
     def __call__(self, items: Union[List[Dict[str, Any]], List[torch.Tensor]]) -> Dict[str, Any]:
         assert items
@@ -38,6 +43,8 @@ class DataCollator:
 
         for x in items:
             input_ids = x["input_ids"] if isinstance(x, dict) else x
+            if self.shuffle_tree:
+                input_ids = self.vocab.random_shuffle_tree(input_ids)
             if not isinstance(input_ids, torch.Tensor):
                 input_ids = torch.tensor(input_ids)
 

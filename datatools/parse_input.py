@@ -34,7 +34,7 @@ def count_lines_linux_style(filename):
 # nlp.add_pipe("set_custom_boundaries", before="parser")
 
 def preprocess_text(text:str) -> str:
-    return re.sub(r' $', '', re.sub(r'( )?\n +', '\n', re.sub(r'( |　| | | | |\s|​)+', ' ', text)))
+    return re.sub(r' $', '', re.sub(r'( )?\n +', '\n', re.sub(r'[^\S\n]+', ' ', text)))
 
 def split_long_sentence(tokens, max_len=512):
     """
@@ -144,6 +144,10 @@ def prepare_dataset(config:str):
     if config[0:3]=="str":
         prepared_ds.append(config[3:])
         filename = "tmp_parse.txt"
+    elif config[0:4]=="file":
+        with open(config[4:], 'r') as file:
+            prepared_ds.append("".join(file.readlines()))
+        filename = f"tmp_out.txt"
     elif config[0:4]=="xsum":
         ds = load_dataset("EdinburghNLP/xsum")
         filename = os.path.join("/public/home/wangpch/TG-Interpolation/dataset/Xsum", config + ".txt")
@@ -216,6 +220,8 @@ if __name__=="__main__":
     config = result_list
     for split in config:
         filename, ds = prepare_dataset(split)
+        print(f"len dataset is {len(ds)}")
+        # exit(0)
         # ds = load_dataset("permutans/fineweb-bbc-news", split)
         # ds = ds["train"]
         totallen = len(ds)
