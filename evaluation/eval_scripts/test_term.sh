@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -c 1
+#SBATCH -c 8
 #SBATCH --gres=gpu:1
 
 workspace=${HOME}/TG-Interpolation
@@ -10,10 +10,10 @@ export PYTHONPATH=${PYTHONPATH}:${workspace}
 nvidia-smi
 wandb offline
 cd ${workspace}
-run_name=Terminal_small
+run_name=Terminal_SG
 torchrun --nproc-per-node=1 --master_port 15590 scripts/train.py \
   ${workspace}/evaluation/eval_configs/terminal.yaml \
   --run_name=${run_name} \
   --save_folder=${workspace}/saved_models/test_models/${run_name} \
   --workspace=${workspace} \
-  --load_path=/home/wangpch/TG-Interpolation/saved_models/Terminal_test/step5142-unsharded
+  --load_path=/data/home/scyb223/TG-Interpolation/saved_models/Terminal-lr00707-bs144/step34115-unsharded

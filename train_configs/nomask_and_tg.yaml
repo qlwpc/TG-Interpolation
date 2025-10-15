@@ -56,7 +56,7 @@ compile: null
 
 optimizer:
   name: adamw
-  learning_rate: 6.0e-4
+  learning_rate: 0.0076
   weight_decay: 0.1
   eps: 1e-8
   betas:
@@ -71,8 +71,8 @@ scheduler:
   warmup_min_lr: 0
 
 tokenizer:
-  identifier: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
-  vocabulary: ${workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  identifier: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  vocabulary: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
   truncate_direction: right
 
 save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
@@ -80,15 +80,15 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 2000
+save_interval_unsharded: 10000
 save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
 
 max_duration: 1ep
 stop_at: 2000000000
-global_train_batch_size: 128
-device_train_microbatch_size: 2
+global_train_batch_size: 224
+device_train_microbatch_size: 28
 
 precision: amp_bf16
 distributed_strategy: ddp
@@ -112,14 +112,14 @@ evaluators:
       pin_memory: true
       drop_last: false
       paths:
-        - ${workspace}/dataset/bbc-news/tg/dev.npy
+        - /dev/shm/dataset/bbc-news/tg/dev.npy
 data:
   pad_direction: right
-  num_workers: 0
+  num_workers: 1
   drop_last: true
   pin_memory: true
-  prefetch_factor: 6
+  prefetch_factor: 3
   persistent_workers: true
   timeout: 0
   paths: 
-    - ${workspace}/dataset/bbc-news/tg/dev.npy
+    - /dev/shm/dataset/bbc-news/tg/train.npy
