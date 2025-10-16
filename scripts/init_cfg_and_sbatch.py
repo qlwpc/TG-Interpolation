@@ -37,8 +37,13 @@ class SBATCH:
 
 class TORCHRUN:
     def __init__(self, config_path, scripts="scripts/train.py", **kwargs):
+        self.torchrun = ["torchrun  \\", self.set_param("--master_port", kwargs["--master_port"]), 
+                                        self.set_param("--nproc-per-node", kwargs["--nproc-per-node"]),
+                                        scripts + "   \\",
+                                        str(config_path)+ "   \\"]
         self.configs = kwargs
-        self.run = f"torchrun {scripts}"
+        self.configs.pop("--master_port")
+        self.configs.pop("--nproc-per-node")
         self.config_path = config_path
     
     def set_param(self, key, value) -> str:
@@ -46,7 +51,7 @@ class TORCHRUN:
         return f"      {split.join([key, str(value)])} \\"
 
     def __str__(self):
-        return "\n".join([self.run + "  \\", str(self.config_path) + "  \\"] + [self.set_param(key, value) for key,value in self.configs.items()])
+        return "\n".join(self.torchrun + [self.set_param(key, value) for key,value in self.configs.items()])
 
 Device_args = {
     "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-35]"}, 
@@ -110,7 +115,7 @@ def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:st
     
     timestamp : datetime = datetime.now()
     sbatch_args = {"-N" : 1, **Device_args[Device]}
-    run_args = {"--runname": "${run_name}", 
+    run_args = {"--run_name": "${run_name}", 
                 "--workspace" : "${workspace}"}
 
     input_format = None
@@ -124,7 +129,7 @@ def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:st
     sbatch_args["-t"] = "120:00:00"
     sbatch_args["--gres"] = f"gpu:{n_tasks}"
     run_args["--nproc-per-node"] = n_tasks
-    run_args["--master-port"] = f"1{timestamp.minute:02d}{timestamp.second:02d}"
+    run_args["--master_port"] = f"1{timestamp.minute:02d}{timestamp.second:02d}"
     run_args["--save_folder"] = "${workspace}/saved_models/${run_name}" if task[:8]=="pretrain" else "${workspace}/saved_models/test_models/${run_name}"
     if load_path is not None:
         run_args["--load_path"] = load_path
@@ -217,6 +222,6 @@ if __name__ == "__main__":
     Device = "H800"
     modelname = "tgnomask_aug"
     task = "pretrain_tg"
-    run_name = "test"
+    run_name = "TGnomask_aug_pretrain"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name)

@@ -310,7 +310,7 @@ public:
     template <typename T>
     py::array_t<T> random_shuffle_tree_impl(py::array_t<T> TG_tree) {
         //TODO
-        return tree;
+        return TG_tree;
     }
 
     py::array random_shuffle_tree(py::array TG_tree) {
@@ -460,11 +460,10 @@ public:
             }
         }
         if (!found) stk_beg = top + 1;
-        if (!update_state) {
+        if (!update_state && top>=0) {
             std::memcpy(stk_copy_.data(), stk_.data(), (top+1) * sizeof(int64_t));
         }
-        auto &stk = update_state ? stk_ : stk_copy_;
-
+        auto stk = update_state ? stk_.data() : stk_copy_.data();
         auto label_mask = torch::ones_like(input_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
 
@@ -563,10 +562,10 @@ public:
             }
         }
         if (!found) stk_beg = top + 1;
-        if (!update_state) {
+        if (!update_state && top>=0) {
             std::memcpy(stk_copy_.data(), stk_.data(), (top+1) * sizeof(int64_t));
         }
-        auto &stk = update_state ? stk_ : stk_copy_;
+        auto stk = update_state ? stk_.data() : stk_copy_.data();
 
         auto label_mask = torch::ones_like(input_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
@@ -999,6 +998,7 @@ PYBIND11_MODULE(tg_mask, m) {
                 return py::make_tuple(
                     obj.vocab_,          // SentencepieceVocab
                     obj.stk_,            // std::vector<int64_t>
+                    obj.stk_copy_,       // std::vector<int64_t>
                     obj.cached_input_,   // 假设 TG_Cache 已支持序列化
                     obj.max_length_,     // int64_t
                     obj.last_token_,     // int64_t
@@ -1007,17 +1007,18 @@ PYBIND11_MODULE(tg_mask, m) {
                 );
             },
             [](py::tuple t) { // __setstate__
-                if (t.size() != 7) 
+                if (t.size() != 8) 
                     throw std::runtime_error("Invalid state for TG_attention_bias!");
     
                 TG_attention_bias new_obj;
                 new_obj.vocab_ = t[0].cast<SentencepieceVocab>();
                 new_obj.stk_ = t[1].cast<std::vector<int64_t>>();
-                new_obj.cached_input_ = t[2].cast<TG_Cache>();
-                new_obj.max_length_ = t[3].cast<int64_t>();
-                new_obj.last_token_ = t[4].cast<int64_t>();
-                new_obj.top_ = t[5].cast<int64_t>();
-                new_obj.cur_length_ = t[6].cast<int64_t>();
+                new_obj.stk_copy_ = t[2].cast<std::vector<int64_t>>();
+                new_obj.cached_input_ = t[3].cast<TG_Cache>();
+                new_obj.max_length_ = t[4].cast<int64_t>();
+                new_obj.last_token_ = t[5].cast<int64_t>();
+                new_obj.top_ = t[6].cast<int64_t>();
+                new_obj.cur_length_ = t[7].cast<int64_t>();
     
                 return new_obj;
             }
@@ -1039,29 +1040,33 @@ PYBIND11_MODULE(tg_mask, m) {
                 return py::make_tuple(
                     obj.vocab_,          // SentencepieceVocab
                     obj.stk_,            // std::vector<int64_t>
+                    obj.stk_copy_,       // std::vector<int64_t>
                     obj.cached_input_,   // 假设 TG_Cache 已支持序列化
                     obj.max_length_,     // int64_t
                     obj.last_token_,     // int64_t
                     obj.top_,            // int64_t
-                    obj.cur_length_,     // int64_t
+                    obj.cur_length_,      // int64_t
                     obj.prox_k_, 
-                    obj.cached_label_
+                    obj.cached_label_,
+                    obj.is_aug_
                 );
             },
             [](py::tuple t) { // __setstate__
-                if (t.size() != 9) 
+                if (t.size() != 11) 
                     throw std::runtime_error("Invalid state for KProximal_TG_attention_bias!");
 
                 KProximal_TG_attention_bias new_obj;
                 new_obj.vocab_ = t[0].cast<SentencepieceVocab>();
                 new_obj.stk_ = t[1].cast<std::vector<int64_t>>();
-                new_obj.cached_input_ = t[2].cast<TG_Cache>();
-                new_obj.max_length_ = t[3].cast<int64_t>();
-                new_obj.last_token_ = t[4].cast<int64_t>();
-                new_obj.top_ = t[5].cast<int64_t>();
-                new_obj.cur_length_ = t[6].cast<int64_t>();
-                new_obj.prox_k_     = t[7].cast<int64_t>();
-                new_obj.cached_label_ = t[8].cast<TG_Cache>();
+                new_obj.stk_copy_ = t[2].cast<std::vector<int64_t>>();
+                new_obj.cached_input_ = t[3].cast<TG_Cache>();
+                new_obj.max_length_ = t[4].cast<int64_t>();
+                new_obj.last_token_ = t[5].cast<int64_t>();
+                new_obj.top_ = t[6].cast<int64_t>();
+                new_obj.cur_length_ = t[7].cast<int64_t>();
+                new_obj.prox_k_     = t[8].cast<int64_t>();
+                new_obj.cached_label_ = t[9].cast<TG_Cache>();
+                new_obj.is_aug_     = t[10].cast<bool>();
     
                 return new_obj;
             }
