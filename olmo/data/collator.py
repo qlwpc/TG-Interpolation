@@ -15,7 +15,7 @@ __all__ = ["DataCollator"]
 class DataCollator:
     pad_direction: PaddingDirection
     pad_token_id: int
-    generate_attenion_mask: bool
+    generate_attenion_mask: bool = False
     shuffle_tree: bool = False
 
     @classmethod

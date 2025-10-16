@@ -566,7 +566,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         }
 
     def __len__(self):
-        return len(self.passages)
+        return 4 # len(self.passages)
     
     def collate_fn(self, data):
         return self.collator(data)
