@@ -9,6 +9,7 @@
 #include <regex>
 #include <limits>
 #include <tuple>
+#include <random>
 #include <exception>
 
 namespace py = pybind11;
@@ -307,10 +308,47 @@ public:
             throw std::runtime_error("Unsupported data type");
     }
 
+    std::vector<int> select_from_range(int n, int k, std::mt19937 &gen) {
+        std::vector<int> result;
+        std::vector<int> range(n);
+        std::iota(range.begin(), range.end(), 0);
+        
+        std::sample(range.begin(), range.end(), 
+                    std::back_inserter(result),
+                    k, gen);
+        return result;
+    }
+
     template <typename T>
     py::array_t<T> random_shuffle_tree_impl(py::array_t<T> TG_tree) {
-        //TODO
-        return TG_tree;
+        auto buf_TG = TG_tree.template unchecked<1>();
+        size_t N = TG_tree.size();
+        int64_t NT_k = 0;
+        uint32_t seed = 0;
+        std::uniform_int_distribution<int> dist(opening_non_terminals.first, closing_non_terminals.second - 1);
+        for (size_t i = 0; i < buf_TG.shape(0); ++i) 
+        {
+            if (is_non_terminal(buf_TG[i])) 
+                NT_k++;
+            seed = seed*131 + buf_TG[i];
+        }
+        auto engine = std::mt19937{seed};
+        auto random_positions = select_from_range(N, NT_k, engine);
+        auto shuffle_tree = py::array_t<T>(N);
+        auto buf_tree = shuffle_tree.template mutable_unchecked<1>();
+
+        for (int i=0,j=0,p=0;i<N;++i)
+        {
+            if (j<NT_k && random_positions[j] == i) 
+                buf_tree[i] = dist(engine), ++j;
+            else
+            {
+                while(p<N && is_non_terminal(buf_TG[p])) ++p;
+                buf_tree[i] = buf_TG[p], ++p;
+            }
+        }
+
+        return shuffle_tree;
     }
 
     py::array random_shuffle_tree(py::array TG_tree) {
@@ -1153,6 +1191,8 @@ PYBIND11_MODULE(tg_mask, m) {
             py::arg("tree"), "Convert tree/TG sequence to terminal format")
         .def("convert_TGnpy_to_tree", &SentencepieceVocab::convert_TGnpy_to_tree, 
             py::arg("TG_tree"), "Convert TG sequence to tree format")
+        .def("random_shuffle_tree", &SentencepieceVocab::random_shuffle_tree,
+                py::arg("TG_tree"), "Convert Tree sequence to Random_tree format")
         // Add other property readers...
         .def(py::pickle(
             [](const SentencepieceVocab &v) { // __getstate__
