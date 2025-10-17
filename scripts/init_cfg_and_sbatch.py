@@ -76,6 +76,7 @@ Models = {
     "terminal": {"model.transformer_grammar_type": "terminal"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
+    "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
 }
 
 test_only_params = {"eval_on_load": True, "eval_no_save": True}
@@ -83,7 +84,7 @@ finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True}
 
 train_params = {
     "pretrain_tg": {"global_train_batch_size": 280, "device_train_microbatch_size": 30, "optimizer.learning_rate": 0.0076}, 
-    "pretrain_tree": {},
+    "pretrain_tree": {"global_train_batch_size": 244, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.007}, 
     "pretrain_terminal": {},
     "xsum_finetune": {"finetune_task": "xsum", "epoch":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
                       "optimizer.t_warmup": 100, "optimizer.min_lr": 1e-6, "device_eval_batch_size": 1, **finetune_params},
