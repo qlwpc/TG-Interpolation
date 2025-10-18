@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime
 
 
-from olmo.config import TrainConfig, EvaluatorConfig, EvaluatorType
+from olmo.config import TrainConfig, EvaluatorConfig, EvaluatorType, TGConfig
 from olmo.exceptions import OLMoCliError
 from olmo.util import clean_opt, prepare_cli_environment
 
@@ -77,6 +77,10 @@ Models = {
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
+    "nomask_mix_tree" : {"model.transformer_grammar_type": "mixing"},
+}
+mixing = {
+    "nomask_mix_tree" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tgnomask", n_heads=6)]
 }
 
 test_only_params = {"eval_on_load": True, "eval_no_save": True}
@@ -86,6 +90,7 @@ train_params = {
     "pretrain_tg": {"global_train_batch_size": 280, "device_train_microbatch_size": 30, "optimizer.learning_rate": 0.0076}, 
     "pretrain_tree": {"global_train_batch_size": 244, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.007}, 
     "pretrain_terminal": {},
+    "pretrain_mix": {"global_train_batch_size": 224, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.0076}, 
     "xsum_finetune": {"finetune_task": "xsum", "epoch":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
                       "optimizer.t_warmup": 100, "optimizer.min_lr": 1e-6, "device_eval_batch_size": 1, **finetune_params},
     "xsum_test": {**test_only_params,},
@@ -95,6 +100,7 @@ train_params = {
 
 GPU_tasks = {
     "pretrain_tg": 8,
+    "pretrain_mix": 8,
     "pretrain_tree": 4,
     "pretrain_terminal": 4,
     "docppl": 1,
@@ -204,6 +210,9 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     
+    if task[-3:]=="mix":
+        cfg.model.mix_head_type = mixing[modelname]
+
     cfg.evaluators = Evaltasks[task]
     cfg.device_eval_batch_size = "${device_train_microbatch_size}"
     log.info("Configuration:")
@@ -221,8 +230,8 @@ if __name__ == "__main__":
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "H800"
-    modelname = "tgnomask_aug"
-    task = "pretrain_tg"
-    run_name = "TGnomask_aug_pretrain"
+    modelname = "nomask_mix_tree"
+    task = "pretrain_mix"
+    run_name = "TGnomask_mix_tree_pretrain"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name)
