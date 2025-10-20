@@ -1947,7 +1947,7 @@ class OLMo(nn.Module):
         k_fast_track = ks = k_word // 10
         """
         # from tokenizers import Tokenizer
-        # tmptokenizer:Tokenizer = Tokenizer.from_file("/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+        # tmptokenizer:Tokenizer = Tokenizer.from_file("./dataset/bbc-news/TG_GPT2_tokenizer.json")
 
         first_step = past_input is not None
         Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
@@ -2023,7 +2023,7 @@ class OLMo(nn.Module):
         }
         kv_cache = None
         past_kv_cache = None
-        kn = beam_size * 10        # sub-beam size kn
+        kn = beam_size if tag_start is not None else 10*beam_size       # sub-beam size kn
         ks = max(beam_size // 10, 1) # fast-shift ks terminal into next_beams
         NT_start = vocab.opening_non_terminals[0]
         NT_end = vocab.closing_non_terminals[1]
@@ -2067,11 +2067,12 @@ class OLMo(nn.Module):
                 if not first_step:
                     retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]>=max_length - 1 - (generate_TG_bias is not None), 
                                                     data["input_ids"][torch.arange(len(beams)), data["last_token_index"]]==self.config.eos_token_id))
-                    if j==0 and len(retain_indices) == len(beams):
+                    if j==0 and len(retain_indices) == len(beams) and eval_input_ids is None:
                         return beams
                     log_probs[retain_indices, :] = torch.finfo(log_probs.dtype).min
-                    for index in retain_indices:
-                        next_beams.append(beams[index])
+                    if strategy==BeamSearchType.default:
+                        for index in retain_indices:
+                            next_beams.append(beams[index])
                 flag_next_set = set()
                 C = logits.shape[-1]
                 # if data.get("Stop_Add_NT") is not None:
@@ -2093,7 +2094,7 @@ class OLMo(nn.Module):
                     topks_term_indices = topks_term_indices * C + token
 
                 def add_next_beams(beam_index, token_index, log_prob):
-                    if (beam_index, token_index) in flag_next_set:
+                    if (beam_index, token_index) in flag_next_set or log_prob < -3e33 or math.isnan(log_prob):
                         return
                     if strategy == BeamSearchType.word_sync_dfs:
                         if topk_threshold and log_prob < next_beams[kn - 1]["logprob"]:
@@ -2135,7 +2136,7 @@ class OLMo(nn.Module):
                     return
 
                 # prepare fast shift
-                if strategy==BeamSearchType.word_sync:
+                if strategy==BeamSearchType.word_sync or tag_start is not None:
                     topks_term_log_probs = topks_term_log_probs.tolist()
                     topks_term_indices = topks_term_indices.tolist()
                     for k in range(len(topks_term_indices)):
@@ -2162,6 +2163,9 @@ class OLMo(nn.Module):
             
             next_beams.sort(key=lambda x: x["logprob"], reverse=True)
             beams = next_beams[:beam_size]
+            # print("i={i}")
+            # for kkk in range(len(beams)):
+            #     print(f"{tmptokenizer.decode(beams[kkk]['input_ids'].tolist(), skip_special_tokens=False)}")
             topk_threshold = False
             if i==tag_start or i==tag_end:
                 logprob = [beam["logprob"] for beam in beams]

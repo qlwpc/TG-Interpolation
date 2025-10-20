@@ -1026,9 +1026,11 @@ class Trainer:
                         surprisal = self.dist_model.module.word_sync_beam_search(
                             vocab=evaluator.eval_loader.dataset.vocab,
                             eval_input_ids=sent["input_ids"][0],
-                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=10*sent["input_ids"].shape[1] + 10),
+                            max_length = 5*sent["input_ids"].shape[1],
+                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=5*sent["input_ids"].shape[1] + 10),
                             tag_start=sent["tag_start"],
                             tag_end=sent["tag_end"],
+                            strategy = BeamSearchType.word_sync_dfs
                         )
                         
                         score_dict[sent["condition_name"]] = surprisal
