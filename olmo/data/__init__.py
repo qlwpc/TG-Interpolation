@@ -138,7 +138,8 @@ def build_eval_dataloader(
     shuffle: bool = True,
 ) -> DataLoader:
     dataset = build_memmap_dataset(train_config, data_config, include_instance_metadata=True)
-    collator = DataCollator(pad_direction=data_config.pad_direction, pad_token_id=train_config.model.pad_token_id)
+    collator = DataCollator(pad_direction=data_config.pad_direction, pad_token_id=train_config.model.pad_token_id, 
+                            generate_attention_mask=False, shuffle_tree=False)
     if data_config.drop_last:
         # Make sure batch size is small enough.
         samples_per_device = len(dataset) // get_world_size()
@@ -175,12 +176,7 @@ def build_train_dataloader(
     include_instance_metadata: bool = False,
 ) -> DataLoader:
     assert train_config.device_train_batch_size is not None
-    collator = DataCollator(
-        pad_direction=train_config.data.pad_direction, 
-        pad_token_id=train_config.model.pad_token_id, 
-        generate_attenion_mask=train_config.data.generate_attention_mask,
-        shuffle_tree=train_config.model.transformer_grammar_type=="tree_shuffle"
-    )
+    collator = DataCollator.from_train_config(train_config)
     if train_config.finetune_task is None:
         dataset = build_memmap_dataset(
             train_config, train_config.data, include_instance_metadata=include_instance_metadata

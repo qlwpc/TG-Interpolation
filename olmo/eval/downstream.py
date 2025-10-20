@@ -467,7 +467,8 @@ class XsumDataset(metaclass=abc.ABCMeta):
 
         self.tokenizer = tokenizer
         self.transformer_grammar_type = transformer_grammar_type
-        self.collator = DataCollator(pad_direction=PaddingDirection.left, pad_token_id=self.tokenizer.pad_token_id, generate_attenion_mask=True)
+        self.collator = DataCollator(pad_direction=PaddingDirection.left, pad_token_id=self.tokenizer.pad_token_id, 
+                                        generate_attention_mask=True, shuffle_tree=(transformer_grammar_type=="tree_shuffle"))
         self.MAX_SUMMARY_LENGTH = 150
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len

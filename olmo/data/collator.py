@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
 import torch
+import numpy as np
 import torch.nn.functional as F
 
 from ..config import PaddingDirection, TrainConfig
@@ -15,13 +16,13 @@ __all__ = ["DataCollator"]
 class DataCollator:
     pad_direction: PaddingDirection
     pad_token_id: int
-    generate_attenion_mask: bool = False
-    shuffle_tree: bool = False
+    generate_attention_mask: bool
+    shuffle_tree: bool
 
     @classmethod
     def from_train_config(cls, config: TrainConfig) -> DataCollator:
         obj = cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, 
-                   generate_attention_mask=False, shuffle_tree=config.model.transformer_grammar_type=="tree_shuffle")
+                   generate_attention_mask=config.data.generate_attention_mask, shuffle_tree=config.model.transformer_grammar_type=="tree_shuffle")
         if obj.shuffle_tree:
             obj.vocab = SentencepieceVocab.from_vocab_file(config.tokenizer.vocabulary)
         return obj
@@ -44,6 +45,8 @@ class DataCollator:
         for x in items:
             input_ids = x["input_ids"] if isinstance(x, dict) else x
             if self.shuffle_tree:
+                if not isinstance(input_ids, np.ndarray):
+                    input_ids = input_ids.numpy()
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
             if not isinstance(input_ids, torch.Tensor):
                 input_ids = torch.tensor(input_ids)
@@ -65,7 +68,7 @@ class DataCollator:
 
             # Pad attention mask.
             attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
-            if attention_mask is not None or self.generate_attenion_mask:
+            if attention_mask is not None or self.generate_attention_mask:
                 if attention_mask is None:
                     attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
                     attention_mask.masked_fill_(input_ids == self.pad_token_id, False)
