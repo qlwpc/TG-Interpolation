@@ -178,7 +178,8 @@ def build_train_dataloader(
     collator = DataCollator(
         pad_direction=train_config.data.pad_direction, 
         pad_token_id=train_config.model.pad_token_id, 
-        generate_attenion_mask=train_config.data.generate_attention_mask
+        generate_attenion_mask=train_config.data.generate_attention_mask,
+        shuffle_tree=train_config.model.transformer_grammar_type=="tree_shuffle"
     )
     if train_config.finetune_task is None:
         dataset = build_memmap_dataset(
