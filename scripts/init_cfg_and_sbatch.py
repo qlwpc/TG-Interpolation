@@ -56,7 +56,7 @@ class TORCHRUN:
 
 Device_args = {
     "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-35]"}, 
-    "SIST_TITAN" :    {"-c": 4, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
+    "SIST_TITAN" :    {"-c": 2, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
     "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "shangHAI", "-A": "tukw-shangHAI"},
     "SIST_normal":    {},
     "RTX3090":        {"-c": 1, "--mem-per-cpu": 1, },
@@ -78,10 +78,12 @@ Models = {
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
-    "nomask_mix_tree" : {"model.transformer_grammar_type": "mixing"},
+    "tree_mix_tg" : {"model.transformer_grammar_type": "mixing"},
+    "nomask_mix_tg" : {"model.transformer_grammar_type": "mixing"},
 }
 mixing = {
-    "nomask_mix_tree" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tgnomask", n_heads=6)]
+    "tree_mix_tg" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tg", n_heads=6)],
+    "nomask_mix_tg" : [TGConfig(grammar_type="tg", n_heads=6), TGConfig(grammar_type="tgnomask", n_heads=6)]
 }
 
 test_only_params = {"eval_on_load": True, "eval_no_save": True}
@@ -109,7 +111,7 @@ GPU_tasks = {
     "xsum_finetune": 4,
     "xsum_test": 4,
     "blimp": 4,
-    "SG": 4,
+    "SG": 2,
 }
 
 Evaltasks = {
@@ -172,7 +174,7 @@ date
 
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
-    script_filename = f"sbatch_{run_name}.sh"
+    script_filename = f"{run_name}.sh"
     
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
@@ -212,7 +214,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     
-    if task[-3:]=="mix":
+    if cfg.model.transformer_grammar_type=="mixing":
         cfg.model.mix_head_type = mixing[modelname]
 
     cfg.evaluators = Evaltasks[task]
@@ -232,10 +234,10 @@ if __name__ == "__main__":
         save_path, args_list = sys.argv[1], sys.argv[2:]
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "SIST_A40"
-    modelname = "tree_shuffle"
-    task = "docppl"
-    run_name = "tree_shuffle_test_ppl"
-    load_path = "/public/home/wangpch/TG-Interpolation/saved_models/Tree_shuffle_pretrain"
+    Device = "SIST_TITAN"
+    modelname = "nomask_mix_tg"
+    task = "SG"
+    run_name = "nomaskmixtg_test_SG"
+    load_path = "/public/home/wangpch/TG-Interpolation/saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)
