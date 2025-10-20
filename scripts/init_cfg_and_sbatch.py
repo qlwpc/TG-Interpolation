@@ -41,7 +41,7 @@ class TORCHRUN:
         self.torchrun = ["torchrun  \\", self.set_param("--master_port", kwargs["--master_port"]), 
                                         self.set_param("--nproc-per-node", kwargs["--nproc-per-node"]),
                                         scripts + "   \\",
-                                        str(config_path)+ "   \\"]
+                                        str(config_path.resolve())+ "   \\"]
         self.configs = kwargs
         self.configs.pop("--master_port")
         self.configs.pop("--nproc-per-node")
@@ -94,6 +94,7 @@ train_params = {
     "pretrain_mix": {"global_train_batch_size": 224, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.0076}, 
     "xsum_finetune": {"finetune_task": "xsum", "epoch":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
                       "optimizer.t_warmup": 100, "optimizer.min_lr": 1e-6, "device_eval_batch_size": 1, **finetune_params},
+    "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
     "blimp": {**test_only_params, },
     "SG": {**test_only_params, },
@@ -205,7 +206,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         Evallist[0].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/dev.npy"]
         Evallist[1].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/test.npy"]
         Evallist[0].data.pin_memory = Evallist[1].data.pin_memory = True
-        Evallist[0].data.generate_doc_lengths = Evallist[1].data.generate_doc_lengths = True
+        Evallist[0].data.generate_doc_lengths = Evallist[1].data.generate_doc_lengths = (input_format!="tg")
         Evaltasks[task] = Evallist
         cfg.model.flex_attention = True
     elif task=="docppl":
@@ -216,6 +217,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
 
     cfg.evaluators = Evaltasks[task]
     cfg.device_eval_batch_size = "${device_train_microbatch_size}"
+    cfg.wandb.name = "${run_name}"
     log.info("Configuration:")
     log.info(cfg)
     cfg.save(save_path)
@@ -230,10 +232,10 @@ if __name__ == "__main__":
         save_path, args_list = sys.argv[1], sys.argv[2:]
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "SIST_TITAN"
-    modelname = "tree"
-    task = "SG"
-    run_name = "tree_test_SG"
-    load_path = "/home/wangpch/TG-Interpolation/saved_models/TG_test/step55457-unsharded"
+    Device = "SIST_A40"
+    modelname = "tree_shuffle"
+    task = "docppl"
+    run_name = "tree_shuffle_test_ppl"
+    load_path = "/public/home/wangpch/TG-Interpolation/saved_models/Tree_shuffle_pretrain"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)

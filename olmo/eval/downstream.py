@@ -763,6 +763,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         generate_TG_attention_bias: Optional[TG_attention_bias] = None,
         vocab_path: str = None,
         device_eval_batch_size: int = 60, 
+        **kwargs
     ):
         super().__init__()
         self.tokenizer = tokenizer
@@ -1030,6 +1031,7 @@ class SGDataset(metaclass=abc.ABCMeta):
         split="validation",
         metric_type="SG",
         vocab_path: str = None,
+        **kwargs
     ):
         self.task_list = ["center_embed", "center_embed_mod", "cleft", "cleft_modifier", "fgd_subject", "fgd_object", "fgd_pp", "fgd-embed3", \
             "fgd-embed4", "fgd_hierarchy", "mvrr", "mvrr_mod", "npi_orc_any", "npi_orc_ever", "npi_src_any", \

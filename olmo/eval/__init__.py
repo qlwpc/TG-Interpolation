@@ -75,14 +75,14 @@ def build_downstream_evaluator(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
-            device_eval_batch_size = train_config.device_eval_batch_size
+            device_eval_batch_size = eval_batch_size
         )
     elif eval_cfg.type == EvaluatorType.tg_doc:
         metric = TGPerplexityDocumentLevelMetric(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
-            device_eval_batch_size = train_config.device_eval_batch_size,
+            device_eval_batch_size = eval_batch_size,
             dataset_length=len(ds_eval_dataset)
         )
     elif eval_cfg.label == "syntactic_generalization":
@@ -95,7 +95,7 @@ def build_downstream_evaluator(
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP_default":
-        assert(300 % train_config.device_eval_batch_size == 0)
+        assert(300 % eval_batch_size == 0)
 
     evaluator = Evaluator(
         label=eval_cfg.label,
