@@ -102,7 +102,7 @@ class DataCollator:
 
             # Pad label mask.
             label_mask = x.get("label_mask") if isinstance(x, dict) else None
-            if self.shuffle_tree == "tree_shufffle_mask":
+            if self.shuffle_tree == "tree_shuffle_mask":
                 label_mask = self.vocab.get_non_terminal_mask(input_ids)
             if label_mask is not None:
                 if not isinstance(label_mask, torch.Tensor):
