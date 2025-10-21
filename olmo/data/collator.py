@@ -17,12 +17,12 @@ class DataCollator:
     pad_direction: PaddingDirection
     pad_token_id: int
     generate_attention_mask: bool
-    shuffle_tree: bool
+    shuffle_tree: str
 
     @classmethod
     def from_train_config(cls, config: TrainConfig) -> DataCollator:
         obj = cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, 
-                   generate_attention_mask=config.data.generate_attention_mask, shuffle_tree=config.model.transformer_grammar_type=="tree_shuffle")
+                   generate_attention_mask=config.data.generate_attention_mask, shuffle_tree=config.model.transformer_grammar_type)
         if obj.shuffle_tree:
             obj.vocab = SentencepieceVocab.from_vocab_file(config.tokenizer.vocabulary)
         return obj
@@ -44,7 +44,7 @@ class DataCollator:
 
         for x in items:
             input_ids = x["input_ids"] if isinstance(x, dict) else x
-            if self.shuffle_tree:
+            if self.shuffle_tree[:12] == "tree_shuffle":
                 if not isinstance(input_ids, np.ndarray):
                     input_ids = input_ids.numpy()
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
@@ -102,6 +102,8 @@ class DataCollator:
 
             # Pad label mask.
             label_mask = x.get("label_mask") if isinstance(x, dict) else None
+            if self.shuffle_tree == "tree_shufffle_mask":
+                label_mask = self.vocab.get_non_terminal_mask(input_ids)
             if label_mask is not None:
                 if not isinstance(label_mask, torch.Tensor):
                     label_mask = torch.tensor(label_mask)
