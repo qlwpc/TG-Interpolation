@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
+sys.path.append(os.path.expanduser("~/TG-Interpolation"))
 
 from olmo.config import TrainConfig, EvaluatorConfig, EvaluatorType, TGConfig
 from olmo.exceptions import OLMoCliError
@@ -78,6 +79,7 @@ Models = {
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
+    "tree_shuffle_mask": {"model.transformer_grammar_type": "tree_shuffle_mask"},
     "tree_mix_tg" : {"model.transformer_grammar_type": "mixing"},
     "nomask_mix_tg" : {"model.transformer_grammar_type": "mixing"},
 }
@@ -117,7 +119,8 @@ GPU_tasks = {
 Evaltasks = {
     "pretrain": [EvaluatorConfig(label="TG-ppl-validation")],
     "docppl": [EvaluatorConfig(label="tg_approx_doc", type=EvaluatorType.tg_doc, device_eval_batch_size=60)],
-    "xsum": [EvaluatorConfig(label="rouge", type=EvaluatorType.rouge)],
+    "xsum_test": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
+    "xsum_finetune": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
     "blimp": [EvaluatorConfig(label="blimp_default", type=EvaluatorType.downstream)],
 }
@@ -234,10 +237,10 @@ if __name__ == "__main__":
         save_path, args_list = sys.argv[1], sys.argv[2:]
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "SIST_TITAN"
-    modelname = "nomask_mix_tg"
+    Device = "RTX3090"
+    modelname = "terminal"
     task = "SG"
-    run_name = "nomaskmixtg_test_SG"
-    load_path = "/public/home/wangpch/TG-Interpolation/saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded"
+    run_name = "treeshuffle_test_SG"
+    load_path = "/home/wangpch/TG-Interpolation/saved_models/Tree_shuffle_pretrain/step49440-unsharded"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)

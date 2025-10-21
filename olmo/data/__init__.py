@@ -139,7 +139,7 @@ def build_eval_dataloader(
 ) -> DataLoader:
     dataset = build_memmap_dataset(train_config, data_config, include_instance_metadata=True)
     collator = DataCollator(pad_direction=data_config.pad_direction, pad_token_id=train_config.model.pad_token_id, 
-                            generate_attention_mask=False, shuffle_tree=False)
+                            generate_attention_mask=False, shuffle_tree=train_config.model.transformer_grammar_type)
     if data_config.drop_last:
         # Make sure batch size is small enough.
         samples_per_device = len(dataset) // get_world_size()

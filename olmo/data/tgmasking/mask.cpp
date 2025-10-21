@@ -362,6 +362,19 @@ public:
         else
             throw std::runtime_error("Unsupported data type");
     }
+
+    torch::Tensor get_non_terminal_mask(torch::Tensor input_ids) {
+        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_acc = label_mask.accessor<bool, 1>();
+        int64_t T = input_ids.size(0);
+        for (int64_t i=0;i<T;++i) {
+            int64_t token = input_acc[i];
+            if (is_non_terminal(token))
+                label_acc[i] = false;
+        }
+        return label_mask;
+    }
 };
 
 
@@ -1193,6 +1206,8 @@ PYBIND11_MODULE(tg_mask, m) {
             py::arg("TG_tree"), "Convert TG sequence to tree format")
         .def("random_shuffle_tree", &SentencepieceVocab::random_shuffle_tree,
                 py::arg("TG_tree"), "Convert Tree sequence to Random_tree format")
+        .def("get_non_terminal_mask", &SentencepieceVocab::get_non_terminal_mask, 
+            py::arg("input_ids"), "Generate tree Sequence Non terminal mask")
         // Add other property readers...
         .def(py::pickle(
             [](const SentencepieceVocab &v) { // __getstate__
