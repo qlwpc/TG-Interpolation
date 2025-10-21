@@ -68,7 +68,7 @@ Device_args = {
 
 INPUTFORMAT = {
     "terminal": ["terminal"],
-    "tree": ["tree", "tree_shuffle"], 
+    "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug"]
 }
 
@@ -237,10 +237,10 @@ if __name__ == "__main__":
         save_path, args_list = sys.argv[1], sys.argv[2:]
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "RTX3090"
-    modelname = "terminal"
-    task = "SG"
-    run_name = "treeshuffle_test_SG"
-    load_path = "/home/wangpch/TG-Interpolation/saved_models/Tree_shuffle_pretrain/step49440-unsharded"
+    Device = "H800"
+    modelname = "tree_shuffle_mask"
+    task = "pretrain_tree"
+    run_name = "treeshufflemask_pretrain"
+    load_path = None
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)
