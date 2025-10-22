@@ -1,9 +1,12 @@
-from typing import Generator, List, NamedTuple
+from typing import Generator, List, NamedTuple, Iterator
 
 import numpy as np
 import torch
 from nltk import Tree
 import re
+
+import torch.distributed as dist
+from torch.utils.data import Sampler
 
 
 def find_end_first_consecutive_true(arr: np.ndarray) -> int:
@@ -180,3 +183,44 @@ def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndar
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))
     ids[ids == 50261] = 198  # change <SEP>(50261) to \n (198)
     return ids
+
+
+
+class SequentialDistributedSampler(Sampler):
+    def __init__(self, dataset, num_replicas=None, rank=None, 
+                 shuffle=False, drop_last=False):
+        if num_replicas is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            num_replicas = dist.get_world_size()
+        if rank is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            rank = dist.get_rank()
+        if rank >= num_replicas or rank < 0:
+            raise ValueError(
+                f"Invalid rank {rank}, rank should be in the interval [0, {num_replicas - 1}]"
+            )
+        
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.epoch = 0
+        self.num_samples = len(self.dataset) // self.num_replicas
+        self.total_size = self.num_samples * self.num_replicas
+        
+    def __iter__(self):
+        # 确定当前rank的起始位置
+        start_idx = self.rank * self.num_samples
+        end_idx = start_idx + self.num_samples
+        
+        # 生成当前rank的索引序列
+        indices = list(range(start_idx, end_idx))
+        
+        return iter(indices)
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def set_epoch(self, epoch):
+        self.epoch = epoch

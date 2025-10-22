@@ -1060,7 +1060,7 @@ class Trainer:
                             max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                             beam_size=6,
                             generate_TG_bias=self.generate_TG_attention_bias, #get_TG_generate_bias_func(self.cfg),
-                            strategy=BeamSearchType.word_sync_dfs
+                            strategy=BeamSearchType.default
                         )
                     predictions = predictions[0]["input_ids"].numpy()
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)

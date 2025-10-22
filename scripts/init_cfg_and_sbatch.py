@@ -96,8 +96,8 @@ train_params = {
     "pretrain_tree": {"global_train_batch_size": 244, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.007}, 
     "pretrain_terminal": {},
     "pretrain_mix": {"global_train_batch_size": 224, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.0076}, 
-    "xsum_finetune": {"finetune_task": "xsum", "epoch":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
-                      "optimizer.t_warmup": 100, "optimizer.min_lr": 1e-6, "device_eval_batch_size": 1, **finetune_params},
+    "xsum_finetune": {"finetune_task": "xsum", "max_duration":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
+                      "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
     "blimp": {**test_only_params, },
@@ -122,7 +122,7 @@ Evaltasks = {
     "xsum_test": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "xsum_finetune": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
-    "blimp": [EvaluatorConfig(label="blimp_default", type=EvaluatorType.downstream)],
+    "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=100)],
 }
 
 def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
@@ -237,10 +237,10 @@ if __name__ == "__main__":
         save_path, args_list = sys.argv[1], sys.argv[2:]
     except IndexError:
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "H800"
-    modelname = "tree_shuffle_mask"
-    task = "pretrain_tree"
-    run_name = "treeshufflemask_pretrain"
-    load_path = None
+    Device = "RTX3090"
+    modelname = "tree_mix_tg"
+    task = "xsum_finetune"
+    run_name = "tgtree_mix_tg_xsum"
+    load_path = "/home/wangpch/TG-Interpolation/saved_models/tgtree_mix_tg_pretrain/step69817-unsharded"
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)

@@ -2023,7 +2023,7 @@ class OLMo(nn.Module):
         }
         kv_cache = None
         past_kv_cache = None
-        kn = beam_size if tag_start is not None else 10*beam_size       # sub-beam size kn
+        kn = beam_size if eval_input_ids is not None else 10*beam_size       # sub-beam size kn
         ks = max(beam_size // 10, 1) # fast-shift ks terminal into next_beams
         NT_start = vocab.opening_non_terminals[0]
         NT_end = vocab.closing_non_terminals[1]
@@ -2070,7 +2070,7 @@ class OLMo(nn.Module):
                     if j==0 and len(retain_indices) == len(beams) and eval_input_ids is None:
                         return beams
                     log_probs[retain_indices, :] = torch.finfo(log_probs.dtype).min
-                    if strategy==BeamSearchType.default:
+                    if strategy==BeamSearchType.default or eval_input_ids is None:
                         for index in retain_indices:
                             next_beams.append(beams[index])
                 flag_next_set = set()
@@ -2094,7 +2094,7 @@ class OLMo(nn.Module):
                     topks_term_indices = topks_term_indices * C + token
 
                 def add_next_beams(beam_index, token_index, log_prob):
-                    if (beam_index, token_index) in flag_next_set or log_prob < -3e33 or math.isnan(log_prob):
+                    if (beam_index, token_index) in flag_next_set or math.isnan(log_prob):
                         return
                     if strategy == BeamSearchType.word_sync_dfs:
                         if topk_threshold and log_prob < next_beams[kn - 1]["logprob"]:
