@@ -8,6 +8,7 @@ from ..config import EvaluatorConfig, EvaluatorType, TrainConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
+from ..data.util import SequentialDistributedSampler
 from .downstream import ICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
@@ -37,7 +38,7 @@ def build_downstream_evaluator(
     task_class = label_to_task_map[eval_cfg.label]
     if isinstance(task_class, tuple):
         task_class, task_kwargs = task_class
-        if eval_cfg.type == EvaluatorType.tg_doc:
+        if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label=="BLiMP":
             task_kwargs["device_eval_batch_size"] = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
     task_kwargs["vocab_path"] = train_config.tokenizer.vocabulary
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
@@ -46,6 +47,12 @@ def build_downstream_evaluator(
     data_config = eval_cfg.data
     if is_unit_test:
         ds_eval_sampler = None
+    elif eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent] or eval_cfg.label == "BLiMP":
+        ds_eval_sampler = SequentialDistributedSampler(
+            ds_eval_dataset,
+            num_replicas=get_world_size(),
+            rank=get_global_rank(),
+        )
     else:
         ds_eval_sampler = DistributedSampler(
             ds_eval_dataset,
@@ -87,14 +94,18 @@ def build_downstream_evaluator(
         )
     elif eval_cfg.label == "syntactic_generalization":
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type)
-    elif eval_cfg.label == "BLiMP_default":
-        metric = BLiMPMetric(metric_type=ds_eval_dataset.metric_type)
+    elif eval_cfg.label == "BLiMP":
+        metric = BLiMPMetric(vocab_path=train_config.tokenizer.vocabulary,
+                             metric_type=ds_eval_dataset.metric_type, 
+                             dataset_name=train_config.model.transformer_grammar_type,
+                             device_eval_batch_size = eval_batch_size,
+                             dataset_length=len(ds_eval_dataset))
     elif eval_cfg.type == EvaluatorType.rouge:
         metric = RougeMetric(tokenizer=tokenizer)
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type)
 
-    if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP_default":
+    if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
         assert(300 % eval_batch_size == 0)
 
     evaluator = Evaluator(

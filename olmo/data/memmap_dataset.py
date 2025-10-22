@@ -91,7 +91,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         self._pad_token_id = pad_token_id
         self._eos_token_id = eos_token_id
         self.instance_filter_config = instance_filter_config
-        self._generate_TG_attention_bias = generate_TG_attention_bias
+        self.generate_TG_attention_bias = generate_TG_attention_bias
 
     @property
     def chunk_size(self) -> int:
@@ -199,8 +199,8 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         # Read the data from file.
         input_ids = self._read_chunk_from_memmap(self._memmap_paths[memmap_index], memmap_local_index)
         out: Dict[str, Any] = {"input_ids": input_ids}
-        if self._generate_TG_attention_bias is not None:
-            out["attention_bias"], out["label_mask"] = self._generate_TG_attention_bias(input_ids)
+        if self.generate_TG_attention_bias is not None:
+            out["attention_bias"], out["label_mask"] = self.generate_TG_attention_bias(input_ids)
         
         if self.instance_filter_config is not None:
             out["instance_mask"] = self._validate_instance(input_ids)

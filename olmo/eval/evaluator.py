@@ -27,7 +27,7 @@ class Evaluator:
                 metric.reset()
 
     def compute_metrics(self) -> Dict[str, float]:
-        if self.label == "syntactic_generalization" or self.type == EvaluatorType.rouge:
+        if self.label in ["syntactic_generalization","BLiMP"] or self.type == EvaluatorType.rouge:
             return self.eval_metric.compute()
         elif self.type == EvaluatorType.downstream or self.type in [EvaluatorType.tg_sent, EvaluatorType.tg_doc]:
             assert isinstance(self.eval_metric, Metric)
@@ -74,7 +74,7 @@ class Evaluator:
     ) -> None:
         if self.label == "syntactic_generalization":
             self.eval_metric.update(batch, ce_loss)
-        elif self.label == "BLiMP_default":
+        elif self.label == "BLiMP":
             self.eval_metric.update(batch, logits)
         elif self.type == EvaluatorType.rouge:
             self.eval_metric.update(batch, ce_loss, logits)
