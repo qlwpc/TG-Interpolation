@@ -4,6 +4,7 @@ Run this to initialize a new training config to a file.
 import logging
 import sys
 import os
+import subprocess
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
@@ -69,13 +70,14 @@ Device_args = {
 INPUTFORMAT = {
     "terminal": ["terminal"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
-    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug"]
+    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"]
 }
 
 Models = {
     "tg": {"model.transformer_grammar_type": "tg", },
     "tree": {"model.transformer_grammar_type": "tree"},
     "terminal": {"model.transformer_grammar_type": "terminal"},
+    "tgtree": {"model.transformer_grammar_type": "tgtree"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
@@ -98,6 +100,8 @@ train_params = {
     "pretrain_mix": {"global_train_batch_size": 224, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.0076}, 
     "xsum_finetune": {"finetune_task": "xsum", "max_duration":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
+    "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
+               "global_train_batch_size": 40, "device_train_batch_size":10,  **finetune_params},
     "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
     "blimp": {**test_only_params, },
@@ -122,7 +126,7 @@ Evaltasks = {
     "xsum_test": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "xsum_finetune": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
-    "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=100)],
+    "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=150)],
 }
 
 def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
@@ -228,6 +232,70 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     cfg.save(save_path)
     log.info(f"Config saved to {save_path}")
 
+model_paths = {
+    "tree_mix_tg" : "/saved_models/tgtree_mix_tg_pretrain/step69817-unsharded",
+    "terminal": "/saved_models/Terminal-lr005-bs144/step34115-unsharded", 
+    "tgtree": "/saved_models/TGtree/step69817-unsharded",
+    "tgnomask_aug": "/saved_models/TGnomask_aug_pretrain/step55853-unsharded",
+    "tgnomask": "/saved_models/nomask_test/step55853-unsharded",
+    "nomask_mix_tg": "/saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded",
+    "tg": "/saved_models/TG_test/step55457-unsharded",
+    "tree": "/saved_models/Tree_test/step49440-unsharded",
+    "tree_shuffle": "/saved_models/Tree_shuffle_pretrain/step49440-unsharded",
+    "tree_shuffle_mask": "/saved_models/treeshufflemask_pretrain/step49440-unsharded",
+}
+
+
+
+def robust_directory_check(directory_path, script_path="~/TG-Interpolation/datatools/rsync.sh"):
+    directory_path = os.path.abspath(directory_path)
+    if os.path.isdir(directory_path):
+        return True
+    print("✗ 目标目录不存在，准备rsync...")
+    script_path = os.path.expanduser(script_path)
+    dirs = directory_path.split("/")
+    command = ["bash", script_path] + dirs[-2:]
+    try:
+        env = os.environ.copy()
+        env['TARGET_DIR'] = directory_path
+        result = subprocess.Popen(
+            command,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            text=True,
+        )
+        result.wait()
+        print("✓ 执行成功")
+        if result.stdout:
+            print(f"脚本输出:\n{result.stdout}")
+        if os.path.isdir(directory_path):
+            print("✓ 目录创建成功")
+            return True
+        else:
+            print("✗ 脚本执行成功但目录仍未创建")
+            return False
+            
+    except subprocess.CalledProcessError as e:
+        print(f"✗ 脚本执行失败 (返回码: {e.returncode})")
+        print(f"错误信息: {e.stderr}")
+        return False
+    except FileNotFoundError:
+        print(f"✗ 脚本文件不存在: {script_path}")
+        return False
+    except subprocess.TimeoutExpired:
+        print("✗ 脚本执行超时")
+        return False
+
+
+class TaskInfo:
+    def __init__(self, modelname, run_name, load_path):
+        self.modelname = modelname
+        self.run_name = run_name
+        self.load_path = load_path
+    
+    def check_model_path(self):
+        robust_directory_check(self.load_path)
+    
 
 
 if __name__ == "__main__":
@@ -239,8 +307,11 @@ if __name__ == "__main__":
         raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "RTX3090"
     modelname = "tree_mix_tg"
-    task = "xsum_finetune"
-    run_name = "tgtree_mix_tg_xsum"
-    load_path = "/home/wangpch/TG-Interpolation/saved_models/tgtree_mix_tg_pretrain/step69817-unsharded"
+    task = "SG"
+    run_name = "debug_SG_mixtgtree"
+    load_path = True
+    if load_path is not None:
+        load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
+        robust_directory_check(load_path)
     generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
     generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)

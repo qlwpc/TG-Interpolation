@@ -181,7 +181,7 @@ def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndar
     else:
         TG_str = input
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))
-    ids[ids == 50261] = 198  # change <SEP>(50261) to \n (198)
+    ids[ids == 50261] = 198  # change <|SEP|>(50261) to \n (198)
     return ids
 
 

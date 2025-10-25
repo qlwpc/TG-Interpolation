@@ -231,7 +231,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = np.array(input_ids)
         if self.transformer_grammar_type == "terminal":
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
-        elif self.transformer_grammar_type == "tree":
+        elif self.transformer_grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
 
@@ -546,7 +546,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_treenpy_to_terminal(loss_tokens)
-        elif self.transformer_grammar_type == "tree":
+        elif self.transformer_grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
@@ -680,7 +680,7 @@ class TGPerplexitySentenceLevelMetric(Metric):
         self.loglikelihoods = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
-        logits_for_loss = lm_logits[..., :-1, :].contiguous()
+        logits_for_loss = lm_logits[..., :-1, :].to(dtype=torch.float32).contiguous()
         # print_tensor_data(batch["input_ids"])
         # print_tensor_data(batch["attention_bias"])
         # shape: (batch_size * seq_len, vocab_size)
@@ -1148,7 +1148,14 @@ class BLiMPMetric(Metric):
         self.metric_type = metric_type
         self.task_dict = BLiMP_TASK_DICT
         self.task_list = BLiMP_TASK_LIST
-
+        torch.set_printoptions(
+            precision=6,      # 小数位数
+            threshold=10000,  # 显示的元素数量阈值
+            edgeitems=3,      # 每维开头和结尾显示的元素数
+            linewidth=140,    # 每行字符数
+            profile='default', # 打印配置
+            sci_mode=False    # 禁用科学计数法
+        )
         self.pair_per_task = pair_per_task
         self.device_eval_batch_size = device_eval_batch_size 
         self.dataset_length = dataset_length
@@ -1168,11 +1175,10 @@ class BLiMPMetric(Metric):
             self.loglikelihoods = torch.zeros((self.dataset_length//self.SENT_SIZE, self.SENT_SIZE), dtype=torch.float32, device=self.device)
 
     def update(self, batch: Dict[str, Any], lm_logits:torch.Tensor):
-        logits_for_loss = lm_logits[..., :-1, :].contiguous()
-        tokenizer = Tokenizer.from_file("/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
-        print(self.device)
-        print(tokenizer.decode(batch["input_ids"][0].tolist(), skip_special_tokens=False))
-        print(tokenizer.decode(batch["input_ids"][1].tolist(), skip_special_tokens=False))
+        logits_for_loss = lm_logits[..., :-1, :].to(dtype=torch.float32).contiguous()
+        # tokenizer = Tokenizer.from_file("/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+        # print(self.device)
+        
         # print_tensor_data(batch["input_ids"])
         # print_tensor_data(batch["attention_bias"])
         # shape: (batch_size * seq_len, vocab_size)
@@ -1192,12 +1198,13 @@ class BLiMPMetric(Metric):
         labels = labels.view(-1)
         ce_loss = F.cross_entropy(
             logits_for_loss, labels, ignore_index=self.vocab.pad, reduction="none")
-        # print_tensor_data(ce_loss.view(batch["input_ids"].shape[0], -1))
-        ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
         
         # for sent_id, loglikelihood in zip(batch["sent_id"], ce_loss):
         sample_id = batch["sent_id"] % self.SENT_SIZE
         sent_id = batch["sent_id"] // self.SENT_SIZE
+        
+        
+        ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
         if self.SENT_SIZE==1:
             self.loglikelihoods[sent_id : sent_id + self.device_eval_batch_size] = ce_loss
         else:
@@ -1215,7 +1222,7 @@ class BLiMPMetric(Metric):
         if self.SENT_SIZE!=1:
             loglikelihoods = torch.logsumexp(-self.loglikelihoods, dim=1)
         else:
-            loglikelihoods = self.loglikelihoods
+            loglikelihoods = -self.loglikelihoods
         
         for task_id, task in enumerate(self.task_list):
             id_bias = task_id * self.pair_per_task * 2
@@ -1223,6 +1230,9 @@ class BLiMPMetric(Metric):
             for pair_id in range(self.pair_per_task):
                 p_good = loglikelihoods[id_bias + pair_id * 2]
                 p_bad = loglikelihoods[id_bias + pair_id * 2 + 1]
+                if p_good==p_bad or (not (p_good>p_bad) and not (p_bad>p_good)):
+                    print(f"index is {id_bias + pair_id * 2}, prob is {p_good}")
+
                 if p_good > p_bad:
                     cnt_dict[task] += 1
 
@@ -1342,7 +1352,6 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             batch["attention_bias"] = torch.stack(all_attention_bias)
         if all_label_mask:
             batch["label_mask"] = torch.stack(all_label_mask)
-        print(f" batch = {sent_ids}")
         return batch
 
     def token_encode(self, string: str) -> List[int]:

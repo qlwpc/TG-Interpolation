@@ -1940,6 +1940,7 @@ class OLMo(nn.Module):
         tag_start : Optional[int] = None,
         tag_end : Optional[int] = None,
         strategy : BeamSearchType = BeamSearchType.default,
+        transformer_grammar_type: str = "",
     ) -> OLMoOutput | float:
         """
         Word sync beam search for the model.
@@ -1949,6 +1950,7 @@ class OLMo(nn.Module):
         # from tokenizers import Tokenizer
         # tmptokenizer:Tokenizer = Tokenizer.from_file("./dataset/bbc-news/TG_GPT2_tokenizer.json")
 
+        is_TG_input = (generate_TG_bias is not None) or transformer_grammar_type=="tgtree"
         first_step = past_input is not None
         Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
         istart = 0
@@ -2065,7 +2067,7 @@ class OLMo(nn.Module):
 
                 # manage max_length and eos tokens
                 if not first_step:
-                    retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]>=max_length - 1 - (generate_TG_bias is not None), 
+                    retain_indices = torch.nonzero(torch.bitwise_or(data["last_token_index"]>=max_length - 1 - is_TG_input, 
                                                     data["input_ids"][torch.arange(len(beams)), data["last_token_index"]]==self.config.eos_token_id))
                     if j==0 and len(retain_indices) == len(beams) and eval_input_ids is None:
                         return beams
@@ -2094,7 +2096,7 @@ class OLMo(nn.Module):
                     topks_term_indices = topks_term_indices * C + token
 
                 def add_next_beams(beam_index, token_index, log_prob):
-                    if (beam_index, token_index) in flag_next_set or math.isnan(log_prob):
+                    if (beam_index, token_index) in flag_next_set or math.isnan(log_prob) or log_prob < -3e37:
                         return
                     if strategy == BeamSearchType.word_sync_dfs:
                         if topk_threshold and log_prob < next_beams[kn - 1]["logprob"]:
@@ -2102,7 +2104,7 @@ class OLMo(nn.Module):
                     
                     flag_next_set.add((beam_index, token_index))
                     beam = beams[beam_index] 
-                    if generate_TG_bias is None:  # case txltree
+                    if not is_TG_input:  # case txltree
                         input = torch.tensor([token_index], dtype=beam["input_ids"].dtype)
                     else: # case TG
                         if vocab.is_closing_non_terminal(token_index):

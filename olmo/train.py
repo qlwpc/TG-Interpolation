@@ -1030,7 +1030,8 @@ class Trainer:
                             generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=5*sent["input_ids"].shape[1] + 10),
                             tag_start=sent["tag_start"],
                             tag_end=sent["tag_end"],
-                            strategy = BeamSearchType.word_sync_dfs
+                            strategy = BeamSearchType.word_sync_dfs,
+                            transformer_grammar_type = self.cfg.model.transformer_grammar_type,
                         )
                         
                         score_dict[sent["condition_name"]] = surprisal
@@ -1060,7 +1061,8 @@ class Trainer:
                             max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
                             beam_size=6,
                             generate_TG_bias=self.generate_TG_attention_bias, #get_TG_generate_bias_func(self.cfg),
-                            strategy=BeamSearchType.default
+                            strategy=BeamSearchType.default,
+                            transformer_grammar_type = self.cfg.model.transformer_grammar_type,
                         )
                     predictions = predictions[0]["input_ids"].numpy()
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
