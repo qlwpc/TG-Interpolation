@@ -82,6 +82,8 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
     max_length = max_length if max_length is not None else train_config.model.max_sequence_length
     if TG_type is None:
         TG_type = train_config.model.transformer_grammar_type
+        if TG_type == "tgtree": # when single bias, return causal mask "None"
+            return None
     
     if TG_type == "mixing":
         generate_TG_attention_bias = HeadMixingBias(train_config.model.mix_head_type, train_config, max_length)
