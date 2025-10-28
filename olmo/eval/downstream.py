@@ -470,7 +470,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.collator = DataCollator(pad_direction=PaddingDirection.left, pad_token_id=self.tokenizer.pad_token_id, 
                                         generate_attention_mask=True, shuffle_tree=transformer_grammar_type)
         self.MAX_SUMMARY_LENGTH = 150
-        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.collator.vocab = self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.prompts = "<|SEP|> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <|SEP|>"
@@ -550,7 +550,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
-        else:
+        elif self.generate_TG_attention_bias is not None:            
             input_ids = torch.tensor(input_ids)
             attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
         
