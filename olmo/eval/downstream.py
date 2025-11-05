@@ -387,13 +387,28 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             )
             label_ids.append(sample["label_id"])
 
-            input_ids = torch.LongTensor(self.pad_tokens_until_max(sample["query"], max_len=max_query_len))
+            input_ids = sample["query"]
+            if self.transformer_grammar_type[:12] == "tree_shuffle":
+                if not isinstance(input_ids, np.ndarray):
+                    input_ids = np.array(input_ids)
+                input_ids = self.vocab.random_shuffle_tree(input_ids)
+                input_ids = input_ids.tolist()
+            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len))
             queries.append(input_ids)
+
+            label_mask = None
             if self.generate_TG_attention_bias is not None:
                 attention_bias, label_mask = self.generate_TG_attention_bias(input_ids)
                 while len(attention_bias.shape) < 3:
                     attention_bias = attention_bias.unsqueeze(0)
                 all_attention_bias.append(attention_bias)
+            if self.transformer_grammar_type[-4:] == "mask":
+                cur_label_mask = self.vocab.get_non_terminal_mask(input_ids)
+                if label_mask is not None:
+                    label_mask = torch.bitwise_and(label_mask, torch.tensor(cur_label_mask))
+                else:
+                    label_mask = cur_label_mask
+            if label_mask is not None:
                 all_label_mask.append(label_mask)
 
         batch = {
