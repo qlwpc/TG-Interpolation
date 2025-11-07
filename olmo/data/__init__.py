@@ -130,6 +130,7 @@ def build_memmap_dataset(
         label_mask_paths=cast(Optional[List[PathOrStr]], data_config.label_mask_paths),
         instance_filter_config=data_config.instance_filter,
         generate_TG_attention_bias=get_TG_generate_bias_func(train_config),
+        transformer_grammar_type=train_config.model.transformer_grammar_type
     )
 
 

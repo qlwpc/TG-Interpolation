@@ -117,4 +117,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths: 
-    - ${workspace}/dataset/bbc-news/tree/dev.npy
+    - ${workspace}/dataset/bbc-news/tree/train.npy
