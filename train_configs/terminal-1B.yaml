@@ -39,7 +39,6 @@ model:
   init_fn: normal
   init_std: 0.02
   init_cutoff_factor: 3
-  transformer_grammar_type : tree
 
 # softmax_auxiliary_loss: true
 # auxiliary_loss_multiplier: 1e-5
@@ -49,7 +48,7 @@ compile: null
 
 optimizer:
   name: adamw
-  learning_rate: 0.00101
+  learning_rate: 7.66e-4
   weight_decay: 0.1
   eps: 1e-8
   decay_norm_and_bias: true
@@ -84,7 +83,7 @@ save_num_unsharded_checkpoints_to_keep: -1
 load_path: null
 
 max_duration: 1ep
-global_train_batch_size: 244
+global_train_batch_size: 144
 device_train_microbatch_size: 12
 
 precision: amp_bf16
@@ -118,7 +117,7 @@ evaluators:
       drop_last: false
       generate_doc_lengths: true
       paths:
-        - /dev/shm/dataset/bbc-news/tree/dev.npy
+        - /dev/shm/dataset/bbc-news/terminal/dev.npy
   - label: TG-ppl-validation-test
     data:
       num_workers: 1
@@ -126,7 +125,7 @@ evaluators:
       drop_last: false
       generate_doc_lengths: true
       paths:
-        - /dev/shm/dataset/bbc-news/tree/test.npy
+        - /dev/shm/dataset/bbc-news/terminal/test.npy
 
 data:
   pad_direction: right
@@ -138,4 +137,4 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - /dev/shm/dataset/bbc-news/tree/train.npy
+    - /dev/shm/dataset/bbc-news/terminal/train.npy

@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from ..config import PaddingDirection, TrainConfig
 from .tg_mask import SentencepieceVocab
+from .util import get_document_lengths
 __all__ = ["DataCollator"]
 
 
@@ -48,11 +49,6 @@ class DataCollator:
                 if not isinstance(input_ids, np.ndarray):
                     input_ids = input_ids.numpy()
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
-            elif self.shuffle_tree == "pause1/2":
-                paused_input = torch.zeros(2 * len(input_ids), dtype=input_ids.dtype, device=input_ids.device)
-                paused_input[::2] = input_ids
-                paused_input[1::2] = 50260  # Special token
-                input_ids = paused_input
 
             if not isinstance(input_ids, torch.Tensor):
                 input_ids = torch.tensor(input_ids)

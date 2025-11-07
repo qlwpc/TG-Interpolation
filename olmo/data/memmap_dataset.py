@@ -59,6 +59,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         label_mask_paths: Optional[List[PathOrStr]] = None,
         instance_filter_config: Optional[InstanceFilterConfig] = None,
         generate_TG_attention_bias: Optional[Callable] = None,
+        transformer_grammar_type: str = "",
     ):
         if not paths:
             raise ValueError("At least one path is required")
@@ -92,6 +93,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         self._eos_token_id = eos_token_id
         self.instance_filter_config = instance_filter_config
         self.generate_TG_attention_bias = generate_TG_attention_bias
+        self.transformer_grammar_type = transformer_grammar_type
 
     @property
     def chunk_size(self) -> int:
@@ -198,6 +200,11 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
 
         # Read the data from file.
         input_ids = self._read_chunk_from_memmap(self._memmap_paths[memmap_index], memmap_local_index)
+        if self.transformer_grammar_type=="pause1/2":
+            paused_input = torch.zeros(2 * len(input_ids), dtype=input_ids.dtype, device=input_ids.device)
+            paused_input[::2] = input_ids
+            paused_input[1::2] = 50260  # Special token
+            input_ids = paused_input
         out: Dict[str, Any] = {"input_ids": input_ids}
         if self.generate_TG_attention_bias is not None:
             out["attention_bias"], out["label_mask"] = self.generate_TG_attention_bias(input_ids)
