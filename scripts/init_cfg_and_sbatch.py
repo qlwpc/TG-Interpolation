@@ -68,7 +68,7 @@ Device_args = {
 }
 
 INPUTFORMAT = {
-    "terminal": ["terminal"],
+    "terminal": ["terminal", "pause1/2"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"]
 }
@@ -76,7 +76,9 @@ INPUTFORMAT = {
 Models = {
     "tg": {"model.transformer_grammar_type": "tg", },
     "tree": {"model.transformer_grammar_type": "tree"},
+    "tree-1B" : {"model.transformer_grammar_type": "tree"},
     "terminal": {"model.transformer_grammar_type": "terminal"},
+    "terminal-1B": {"model.transformer_grammar_type": "terminal"},
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
@@ -84,6 +86,7 @@ Models = {
     "tree_shuffle_mask": {"model.transformer_grammar_type": "tree_shuffle_mask"},
     "tree_mix_tg" : {"model.transformer_grammar_type": "mixing"},
     "nomask_mix_tg" : {"model.transformer_grammar_type": "mixing"},
+    "pause1/2": {"model.transformer_grammar_type": "pause1/2"}
 }
 mixing = {
     "tree_mix_tg" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tg", n_heads=6)],
@@ -91,7 +94,7 @@ mixing = {
 }
 
 test_only_params = {"eval_on_load": True, "eval_no_save": True}
-finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True}
+finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "eval_interval": 1000000}
 
 train_params = {
     "pretrain_tg": {"global_train_batch_size": 280, "device_train_microbatch_size": 30, "optimizer.learning_rate": 0.0076}, 
@@ -101,7 +104,9 @@ train_params = {
     "xsum_finetune": {"finetune_task": "xsum", "max_duration":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
-               "global_train_batch_size": 40, "device_train_batch_size":10,  **finetune_params},
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "rte": {"finetune_task": "rte", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
     "blimp": {**test_only_params, },
@@ -116,8 +121,10 @@ GPU_tasks = {
     "docppl": 1,
     "xsum_finetune": 4,
     "xsum_test": 4,
-    "blimp": 4,
+    "blimp": 2,
     "SG": 2,
+    "boolq": 4,
+    "rte": 2,
 }
 
 Evaltasks = {
@@ -127,10 +134,11 @@ Evaltasks = {
     "xsum_finetune": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
     "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=150)],
+    "boolq": [EvaluatorConfig(label="boolq", type=EvaluatorType.downstream)],
+    "rte": [EvaluatorConfig(label="rte", type=EvaluatorType.downstream)],
 }
 
 def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
-    
     timestamp : datetime = datetime.now()
     sbatch_args = {"-N" : 1, **Device_args[Device]}
     run_args = {"--run_name": "${run_name}", 
@@ -147,7 +155,7 @@ def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:st
     sbatch_args["-t"] = "120:00:00"
     sbatch_args["--gres"] = f"gpu:{n_tasks}"
     run_args["--nproc-per-node"] = n_tasks
-    run_args["--master_port"] = f"1{timestamp.minute:02d}{timestamp.second:02d}"
+    run_args["--master_port"] = f"{timestamp.microsecond % 10000 + 10000}"
     run_args["--save_folder"] = "${workspace}/saved_models/${run_name}" if task[:8]=="pretrain" else "${workspace}/saved_models/test_models/${run_name}"
     if load_path is not None:
         run_args["--load_path"] = load_path
@@ -182,7 +190,7 @@ date
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
     script_filename = f"{run_name}.sh"
-    
+    script_filename = os.path.join(os.path.join(os.getcwd(), modelname), script_filename)
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
     
@@ -190,6 +198,8 @@ date
 
 def generate_config(save_path: Path, args_list: List[str], Device:str, modelname: str, task: str) -> None:
     default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal.yaml")
+    if modelname[-2:] == "1B":
+        default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal-1B.yaml")
     override_args = {
         **Models[modelname],
         **train_params[task],
@@ -210,7 +220,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     train_path = f"{workspace}/dataset/bbc-news/" + input_format + "/train.npy"
     cfg.data.paths[0] = train_path
 
-    if task[:8]=="pretrain":
+    if task[:8]=="pretrain" or task=="docppl" and input_format == "terminal":
         Evallist = [EvaluatorConfig(label="TG-ppl-validation"), EvaluatorConfig(label="TG-ppl-validation-test")]
         Evallist[0].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/dev.npy"]
         Evallist[1].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/test.npy"]
@@ -220,7 +230,12 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         cfg.model.flex_attention = True
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
-    
+    elif task=="blimp":
+        if cfg.model.transformer_grammar_type=="terminal":
+            Evaltasks["blimp"][0].device_eval_batch_size = 100
+        else:
+            Evaltasks["blimp"][0].device_eval_batch_size = 150
+
     if cfg.model.transformer_grammar_type=="mixing":
         cfg.model.mix_head_type = mixing[modelname]
 
@@ -243,6 +258,9 @@ model_paths = {
     "tree": "/saved_models/Tree_test/step49440-unsharded",
     "tree_shuffle": "/saved_models/Tree_shuffle_pretrain/step49440-unsharded",
     "tree_shuffle_mask": "/saved_models/treeshufflemask_pretrain/step49440-unsharded",
+    "pause1/2" : "/saved_models/pause_pretrain/step40267-unsharded",
+    "terminal-1B": "/saved_models/terminal_1B/step34115-unsharded",
+    "tree-1B": "/saved_models/Tree_1B/step49440-unsharded"
 }
 
 
@@ -300,18 +318,24 @@ class TaskInfo:
 
 if __name__ == "__main__":
     prepare_cli_environment()
-
-    try:
-        save_path, args_list = sys.argv[1], sys.argv[2:]
-    except IndexError:
-        raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
+    args_list = []
+    # try:
+    #     save_path, args_list = sys.argv[1], sys.argv[2:]
+    # except IndexError:
+    #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "RTX3090"
-    modelname = "tree_mix_tg"
-    task = "SG"
-    run_name = "debug_SG_mixtgtree"
+    modelname = "tree-1B"
+    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte", "xsum_test"]
+    task += ["docppl"]
     load_path = True
-    if load_path is not None:
+    if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
         robust_directory_check(load_path)
-    generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=task)
-    generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=task, run_name=run_name, load_path=load_path)
+    
+    os.makedirs(modelname, exist_ok=True)
+    save_dir = os.path.join(os.getcwd(), modelname)
+    for pertask in task:
+        run_name = f"{pertask}_test"
+        save_path = os.path.join(save_dir, f"config_{run_name}.yaml")
+        generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=pertask)
+        generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=pertask, run_name=run_name, load_path=load_path)

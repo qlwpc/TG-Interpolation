@@ -1016,7 +1016,7 @@ class Trainer:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
-                    if self.cfg.model.transformer_grammar_type == "terminal":
+                    if self.cfg.model.transformer_grammar_type in ["terminal", "pause1/2"]:
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits = self.model_forward(sent, loss_reduction="none")
