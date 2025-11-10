@@ -373,6 +373,38 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
         # pad according to max_lengths
         for sample in data:
+            input_ids = sample["query"]
+            if self.transformer_grammar_type[:12] == "tree_shuffle":
+                if not isinstance(input_ids, np.ndarray):
+                    input_ids = np.array(input_ids)
+                input_ids = self.vocab.random_shuffle_tree(input_ids)
+                input_ids = input_ids.tolist()
+            elif self.transformer_grammar_type == "pause1/2":
+                paused_input = input_ids + input_ids
+                paused_input[::2] = input_ids
+                paused_input[1::2] = [50260] * len(input_ids)  # Special token
+                input_ids = paused_input
+                sample["ctx_len"] *= 2
+                sample["dc_len"] *= 2
+                sample["cont_len"] *= 2
+            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=None if self.transformer_grammar_type!="pause1/2" else self.model_ctx_len * 2))
+            queries.append(input_ids)
+
+            label_mask = None
+            if self.generate_TG_attention_bias is not None:
+                attention_bias, label_mask = self.generate_TG_attention_bias(input_ids)
+                while len(attention_bias.shape) < 3:
+                    attention_bias = attention_bias.unsqueeze(0)
+                all_attention_bias.append(attention_bias)
+            if self.transformer_grammar_type[-4:] == "mask":
+                cur_label_mask = self.vocab.get_non_terminal_mask(input_ids)
+                if label_mask is not None:
+                    label_mask = torch.bitwise_and(label_mask, torch.tensor(cur_label_mask))
+                else:
+                    label_mask = cur_label_mask
+            if label_mask is not None:
+                all_label_mask.append(label_mask)
+            
             doc_ids.append(sample["doc_id"])
             cont_ids.append(sample["cont_id"])
 
@@ -391,35 +423,6 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
-
-            input_ids = sample["query"]
-            if self.transformer_grammar_type[:12] == "tree_shuffle":
-                if not isinstance(input_ids, np.ndarray):
-                    input_ids = np.array(input_ids)
-                input_ids = self.vocab.random_shuffle_tree(input_ids)
-                input_ids = input_ids.tolist()
-            elif self.transformer_grammar_type == "pause1/2":
-                paused_input = input_ids + input_ids
-                paused_input[::2] = input_ids
-                paused_input[1::2] = [50260] * len(input_ids)  # Special token
-                input_ids = paused_input
-            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=None if self.transformer_grammar_type!="pause1/2" else self.model_ctx_len * 2))
-            queries.append(input_ids)
-
-            label_mask = None
-            if self.generate_TG_attention_bias is not None:
-                attention_bias, label_mask = self.generate_TG_attention_bias(input_ids)
-                while len(attention_bias.shape) < 3:
-                    attention_bias = attention_bias.unsqueeze(0)
-                all_attention_bias.append(attention_bias)
-            if self.transformer_grammar_type[-4:] == "mask":
-                cur_label_mask = self.vocab.get_non_terminal_mask(input_ids)
-                if label_mask is not None:
-                    label_mask = torch.bitwise_and(label_mask, torch.tensor(cur_label_mask))
-                else:
-                    label_mask = cur_label_mask
-            if label_mask is not None:
-                all_label_mask.append(label_mask)
 
         batch = {
             "doc_id": torch.LongTensor(doc_ids),
@@ -1198,14 +1201,6 @@ class BLiMPMetric(Metric):
         self.metric_type = metric_type
         self.task_dict = BLiMP_TASK_DICT
         self.task_list = BLiMP_TASK_LIST
-        torch.set_printoptions(
-            precision=6,      # 小数位数
-            threshold=10000,  # 显示的元素数量阈值
-            edgeitems=3,      # 每维开头和结尾显示的元素数
-            linewidth=140,    # 每行字符数
-            profile='default', # 打印配置
-            sci_mode=False    # 禁用科学计数法
-        )
         self.pair_per_task = pair_per_task
         self.device_eval_batch_size = device_eval_batch_size 
         self.dataset_length = dataset_length
@@ -1378,7 +1373,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             if self.transformer_grammar_type == "pause1/2":
                 paused_input = torch.zeros(2 * len(cur_input_id), dtype=cur_input_id.dtype, device=cur_input_id.device)
                 paused_input[::2] = cur_input_id
-                paused_input[1::2] = 50260  # Special token
+                paused_input[1::2] = torch.where(cur_input_id != self.vocab.pad, 50260, self.vocab.pad)  # Special token
                 cur_input_id = paused_input
 
             attention_bias, label_mask = None, None

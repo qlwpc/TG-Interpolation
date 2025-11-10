@@ -64,7 +64,7 @@ Device_args = {
     "RTX3090":        {"-c": 1, "--mem-per-cpu": 1, },
     "A6000" :         {"-c": 1, "--mem-per-cpu": 1, },
     "H800" :          {"-c": 8,},
-    "RTX5090":        {}
+    "RTX5090":        {"-c": 8, "--partition": "gpu"}
 }
 
 INPUTFORMAT = {
