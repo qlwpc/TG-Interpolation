@@ -4,6 +4,7 @@
 *.log
 *.wandb
 __pycache__/
+run_folder/
 
 some_note.md
 some_note_new.md
