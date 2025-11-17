@@ -59,7 +59,7 @@ class TORCHRUN:
 Device_args = {
     "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-35]"}, 
     "SIST_TITAN" :    {"-c": 2, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
-    "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "shangHAI", "-A": "tukw-shangHAI"},
+    "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "ShangHAI", "-A": "tukw-ShangHAI"},
     "SIST_normal":    {},
     "RTX3090":        {"-c": 1, "--mem-per-cpu": 1, },
     "A6000" :         {"-c": 1, "--mem-per-cpu": 1, },
@@ -339,10 +339,10 @@ if __name__ == "__main__":
     #     save_path, args_list = sys.argv[1], sys.argv[2:]
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "RTX3090"
+    Device = "SIST_shanghai"
     modelname = "tree-500M"
-    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
-    # task = ["docppl"]
+    # task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
+    task = ["docppl"]
     load_path = True
     if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
