@@ -76,9 +76,13 @@ INPUTFORMAT = {
 Models = {
     "tg": {"model.transformer_grammar_type": "tg", },
     "tree": {"model.transformer_grammar_type": "tree"},
+    "tree-500M": {"model.transformer_grammar_type": "tree"},
+    "tree-100M-early" : {"model.transformer_grammar_type": "tree"},
     "tree-1B" : {"model.transformer_grammar_type": "tree"},
     "terminal": {"model.transformer_grammar_type": "terminal"},
     "terminal-1B": {"model.transformer_grammar_type": "terminal"},
+    "terminal-500M": {"model.transformer_grammar_type": "terminal"},
+    "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
@@ -86,7 +90,9 @@ Models = {
     "tree_shuffle_mask": {"model.transformer_grammar_type": "tree_shuffle_mask"},
     "tree_mix_tg" : {"model.transformer_grammar_type": "mixing"},
     "nomask_mix_tg" : {"model.transformer_grammar_type": "mixing"},
-    "pause1/2": {"model.transformer_grammar_type": "pause1/2"}
+    "pause2048": {"model.transformer_grammar_type": "pause1/2"},
+    "pause4096": {"model.transformer_grammar_type": "pause1/2", "model.max_sequence_length": 4096},
+    "terminal1024" : {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 1024},
 }
 mixing = {
     "tree_mix_tg" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tg", n_heads=6)],
@@ -200,6 +206,8 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal.yaml")
     if modelname[-2:] == "1B":
         default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal-1B.yaml")
+    elif modelname[-4:] == "500M":
+        default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal-500M.yaml")
     override_args = {
         **Models[modelname],
         **train_params[task],
@@ -231,7 +239,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     elif task=="blimp":
-        if cfg.model.transformer_grammar_type=="terminal":
+        if cfg.model.transformer_grammar_type in ["terminal", "pause1/2"]:
             Evaltasks["blimp"][0].device_eval_batch_size = 100
         else:
             Evaltasks["blimp"][0].device_eval_batch_size = 150
@@ -258,9 +266,14 @@ model_paths = {
     "tree": "/saved_models/Tree_test/step49440-unsharded",
     "tree_shuffle": "/saved_models/Tree_shuffle_pretrain/step49440-unsharded",
     "tree_shuffle_mask": "/saved_models/treeshufflemask_pretrain/step49440-unsharded",
-    "pause1/2" : "/saved_models/pause_pretrain/step40267-unsharded",
+    "pause2048" : "/saved_models/pause_pretrain/step40267-unsharded",
     "terminal-1B": "/saved_models/terminal_1B/step34115-unsharded",
-    "tree-1B": "/saved_models/Tree_1B/step49440-unsharded"
+    "tree-1B": "/saved_models/Tree_1B/step49440-unsharded",
+    "pause4096" : "/saved_models/pause_pretrain_4096/step40938-unsharded",
+    "terminal1024": "/saved_models/terminal_100M_1024/step34115-unsharded",
+    "terminal-500M" : "/saved_models/terminal_500M/step34115-unsharded",
+    "terminal-100M-early": "/saved_models/terminal_100M_early/step14425-unsharded",
+    "tree-500M" : "/saved_models/Tree_500M/step49440-unsharded",
 }
 
 
@@ -324,9 +337,9 @@ if __name__ == "__main__":
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "RTX3090"
-    modelname = "tree-1B"
-    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte", "xsum_test"]
-    task += ["docppl"]
+    modelname = "tree-500M"
+    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
+    # task = ["docppl"]
     load_path = True
     if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
