@@ -244,6 +244,9 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         else:
             Evaltasks["blimp"][0].device_eval_batch_size = 150
 
+    if Device == "SIST_TITAN":
+        cfg.model.flash_attention = False
+
     if cfg.model.transformer_grammar_type=="mixing":
         cfg.model.mix_head_type = mixing[modelname]
 
