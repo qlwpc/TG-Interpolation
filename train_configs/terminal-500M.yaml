@@ -17,6 +17,7 @@ model:
   rope: true
   rope_theta: 500000
   flash_attention: true
+  flex_attention: true
   attention_dropout: 0.0
   include_bias: true
   block_type: sequential
