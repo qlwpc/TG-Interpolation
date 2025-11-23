@@ -84,6 +84,8 @@ Models = {
     "terminal-500M": {"model.transformer_grammar_type": "terminal"},
     "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
+    "tgtree-500M": {"model.transformer_grammar_type": "tgtree"},
+    "tgnomask_aug-500M": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
@@ -107,7 +109,7 @@ train_params = {
     "pretrain_tree": {"global_train_batch_size": 244, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.007}, 
     "pretrain_terminal": {},
     "pretrain_mix": {"global_train_batch_size": 224, "device_train_microbatch_size": 28, "optimizer.learning_rate": 0.0076}, 
-    "xsum_finetune": {"finetune_task": "xsum", "max_duration":"3ep", "global_train_batch_size": 40, "device_train_batch_size":10, "optimizer.learning_rate": 6e-5,
+    "xsum_finetune": {"finetune_task": "xsum", "max_duration":"3ep", "global_train_batch_size": 40, "device_train_microbatch_size":10, "optimizer.learning_rate": 6e-5,
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
@@ -277,6 +279,9 @@ model_paths = {
     "terminal-500M" : "/saved_models/terminal_500M/step34115-unsharded",
     "terminal-100M-early": "/saved_models/terminal_100M_early/step14425-unsharded",
     "tree-500M" : "/saved_models/Tree_500M/step49440-unsharded",
+    "tree-100M-early" : "/saved_models/Tree_100M_early/step19233-unsharded",
+    "tgtree-500M" : "/saved_models/TGTree_500M/step55853-unsharded",
+    "tgnomask_aug-500M" : "/saved_models/TGnomaskaug_500M/step55853-unsharded"
 }
 
 
@@ -339,10 +344,10 @@ if __name__ == "__main__":
     #     save_path, args_list = sys.argv[1], sys.argv[2:]
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "SIST_shanghai"
-    modelname = "tree-500M"
-    # task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
-    task = ["docppl"]
+    Device = "RTX3090"
+    modelname = "tgnomask_aug-500M"
+    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
+    # task = ["docppl"]
     load_path = True
     if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
