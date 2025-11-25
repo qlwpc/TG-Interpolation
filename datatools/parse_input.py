@@ -189,6 +189,16 @@ def prepare_dataset(config:str):
                     prepared_ds.append(data["passage"]["text"])
                 elif key=='query':
                     prepared_ds.append(data["qas"][0]["query"])
+    elif config[:9] == "hellaswag":
+        split = config.split("_")
+        key = split[1]
+        filename = f"../dataset/hellaswag/{config}.txt"
+        with open(f"../dataset/hellaswag/{config}.jsonl", 'r', encoding='utf-8') as file:
+            for line in file:
+                data = json.loads(line.strip())
+                prepared_ds.append(data["ctx_a"])
+                for endings in data["endings"]:
+                    prepared_ds.append(data["ctx_b"] + endings)
     else: # file_split_key
         split = config.split("_")
         key = split[2]
