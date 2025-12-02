@@ -222,7 +222,7 @@ date
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
     script_filename = f"{run_name}.sh"
-    script_filename = os.path.join(os.path.join(os.getcwd(), modelname), script_filename)
+    script_filename = os.path.join(os.getcwd(), "run_scripts", modelname, script_filename)
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
     
@@ -374,11 +374,11 @@ if __name__ == "__main__":
     # task = ["docppl"]
     load_path = True
     if load_path is not None and load_path!=False:
-        load_path = os.path.expanduser("~/TG-Interpolation/run_scripts" + model_paths[modelname])
+        load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
         robust_directory_check(load_path)
     
-    os.makedirs(modelname, exist_ok=True)
-    save_dir = os.path.join(os.getcwd(), modelname)
+    save_dir = os.path.join(os.getcwd(), "run_scripts", modelname)
+    os.makedirs(save_dir, exist_ok=True)
     for pertask in task:
         run_name = f"{pertask}_test"
         save_path = os.path.join(save_dir, f"config_{run_name}.yaml")
