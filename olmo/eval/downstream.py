@@ -1459,7 +1459,12 @@ class BoolQ(ICLMultiChoiceTaskDataset):
         
 
     def doc_to_text(self, doc):
-        return doc["passage"] + " <|SEP|> (SQ (NP Question NP) : " + doc["question"] + " ? SQ) <|SEP|> (NP (NP Answer NP) : (NP"
+        # Remove the outermost non-terminal tokens 
+        def convert_question(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[1:-1])
+        
+        return doc["passage"] + " <|SEP|> (SQ (NP Question NP) : (SQ " + convert_question(doc["question"]) + " ? SQ) SQ) <|SEP|> (NP (NP Answer NP) : (NP"
 
     def doc_to_continuations(self, doc):
         label = doc["label"]
@@ -1533,7 +1538,12 @@ class CommitmentBank(ICLMultiChoiceTaskDataset):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
     
     def doc_to_text(self, doc):
-        return doc["premise"] + " <|SEP|> (FRAG (NP Question NP) : " + doc["hypothesis"] + " . FRAG) (FRAG True, False or Neither ? FRAG) <|SEP|> (NP (NP Answer NP) : (NP"
+        # Convert hypothesis part in a full sentence. 
+        def convert_hypothesis(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[:-1]) + " . " + tokens[-1]
+        
+        return doc["premise"] + " <|SEP|> (NP (NP Question NP) : " + convert_hypothesis(doc["hypothesis"]) + " NP) (FRAG True, False or Neither ? FRAG) <|SEP|> (NP (NP Answer NP) : (NP"
 
     def doc_to_continuations(self, doc):
         label = self.LABEL_DICT[doc["label"]]
@@ -1565,11 +1575,12 @@ class COPA(ICLMultiChoiceTaskDataset):
     acc, random at 50%
 
     {
-        'premise': 'The pair of students came under scrutiny by the teacher.',
-        'choice1': 'The students both received excellent grades.',
-        'choice2': 'Their responses on the assignment were identical.',
-        'question': 'cause',
-        'label': 1
+        "premise": "The pair of students came under scrutiny by the teacher.",
+        "choice1": "The students both received excellent grades.",
+        "choice2": "Their responses on the assignment were identical.",
+        "question": "cause",
+        "label": 1,
+        "idx": 42
     }
     """
 
@@ -1609,23 +1620,63 @@ class COPA(ICLMultiChoiceTaskDataset):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
     
     def doc_to_text(self, doc):
-        raise NotImplementedError
+        # Remove the tail part for inserting choices.
+        def convert_premise(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[:-3])
+
+        connector = "because" if doc["question"] == "cause" else "therefore"
+        return convert_premise(doc["premise"]) + " (SBAR " + connector
 
     def doc_to_continuations(self, doc):
-        raise NotImplementedError
+        # add spaces in front of continuation
+        def convert_choice(sent):
+            tokens = sent.split()
+            for i, token in enumerate(tokens):
+                if token[0] != '(':
+                    tokens[i] = token[0].lower() + token[1:]
+                    break
+            return ' '.join(tokens[:-2])
+        
+        return [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
 
     def doc_to_label(self, doc):
-        raise NotImplementedError
+        return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
-        raise NotImplementedError
+        connector = "because" if doc["question"] == "cause" else "therefore"
+        return "(SBAR " + connector
 
 
 # TODO: 
 class MultiRC(ICLMultiChoiceTaskDataset):
     """Prompt: {passage}\nQuestion: {Question}\nAnswer: {Answer}\nIs the answer correct? {yes/no}
 
-    
+    {
+        "passage": {
+            "text": "Should places at the same distance from the equator have the same climate? You might think they should. Unfor- tunately, you would not be correct to think this. Climate types vary due to other factors besides distance from the equator. So what are these factors? How can they have such a large impact on local climates? For one thing, these factors are big. You may wonder, are they as big as a car. Think bigger. Are they bigger than a house? Think bigger. Are they bigger than a football stadium? You are still not close. We are talking about mountains and oceans. They are big features and big factors. Oceans and mountains play a huge role in climates around the world. You can see this in Figure above . Only one of those factors is latitude, or distance from the equator. ",
+            "questions": [
+                {
+                    "question": "Name at least one factor of climate",
+                    "answers": [{ "text": "Oceans", "label": 1 },
+                                { "text": "Houses", "label": 0 },
+                                { "text": "Day length", "label": 0 },
+                                { "text": "Latitude", "label": 1 },
+                                { "text": "Longitude", "label": 0 },
+                                { "text": "Season", "label": 0 },
+                                { "text": "Distance from the equator", "label": 1 },
+                                { "text": "The stars", "label": 0 },
+                                { "text": "Moutains", "label": 1 },
+                                { "text": "Mountains, ocean, longitude, latitude", "label": 1 },
+                                { "text": "Cars", "label": 0 },
+                                { "text": "Figures", "label": 0 },
+                                { "text": "Mountains", "label": 1 },
+                                { "text": "Football stadiums", "label": 0 },
+                                { "text": "Same climate", "label": 0 } ],
+                }
+            ]
+        }
+    }
     """
 
     metric_type = "acc"
@@ -1764,6 +1815,7 @@ class RTE(ICLMultiChoiceTaskDataset):
 
     metric_type = "acc"
     RTEPATH = "./dataset/SuperGLUE/RTE/"
+    LABEL_DICT = {"entailment": 0, "not_entailment": 1}
     def __init__(
         self,
         tokenizer,
@@ -1800,7 +1852,7 @@ class RTE(ICLMultiChoiceTaskDataset):
         return doc["premise"] + " <|SEP|> (S (NP Question NP) : " + doc["hypothesis"] + " S) (ADJP (ADJP True or False ADJP) ? ADJP) <|SEP|> (NP (NP Answer NP) : (NP"
 
     def doc_to_continuations(self, doc):
-        label = doc["label"]=="not_entailment"
+        label = self.LABEL_DICT[doc["label"]]
         del doc
         # add spaces in front of continuation
         if self.split=="train":
@@ -1809,7 +1861,7 @@ class RTE(ICLMultiChoiceTaskDataset):
             return [" True", " False"]
 
     def doc_to_label(self, doc):
-        return doc["label"]=="not_entailment"
+        return self.LABEL_DICT[doc["label"]]
 
     def doc_to_domain_conditional(self, doc):
         del doc
