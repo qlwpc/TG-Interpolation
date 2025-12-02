@@ -42,8 +42,8 @@ class TORCHRUN:
     def __init__(self, config_path, scripts="scripts/train.py", **kwargs):
         self.torchrun = ["torchrun  \\", self.set_param("--master_port", kwargs["--master_port"]), 
                                         self.set_param("--nproc-per-node", kwargs["--nproc-per-node"]),
-                                        scripts + "   \\",
-                                        str(config_path.resolve())+ "   \\"]
+                                        "    " + scripts + " \\",
+                                        "    " + str(config_path.resolve())+ " \\"]
         self.configs = kwargs
         self.configs.pop("--master_port")
         self.configs.pop("--nproc-per-node")
@@ -51,7 +51,7 @@ class TORCHRUN:
     
     def set_param(self, key, value) -> str:
         split = "=" if key[:2]=="--" else " "
-        return f"      {split.join([key, str(value)])} \\"
+        return f"    {split.join([key, str(value)])} \\"
 
     def __str__(self):
         return "\n".join(self.torchrun + [self.set_param(key, value) for key,value in self.configs.items()])
@@ -113,7 +113,19 @@ train_params = {
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "cb": {"finetune_task": "cb", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "copa": {"finetune_task": "copa", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "multirc": {"finetune_task": "multirc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "record": {"finetune_task": "record", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "rte": {"finetune_task": "rte", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wic": {"finetune_task": "wic", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "1ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wsc": {"finetune_task": "wsc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
@@ -132,7 +144,13 @@ GPU_tasks = {
     "blimp": 2,
     "SG": 2,
     "boolq": 4,
+    "cb": 2,
+    "copa": 2,
+    "multirc": 2,
+    "record": 2,
     "rte": 2,
+    "wic": 2,
+    "wsc": 2,
 }
 
 Evaltasks = {
@@ -143,7 +161,13 @@ Evaltasks = {
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
     "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=150)],
     "boolq": [EvaluatorConfig(label="boolq", type=EvaluatorType.downstream)],
+    "cb": [EvaluatorConfig(label="cb", type=EvaluatorType.downstream)],
+    "copa": [EvaluatorConfig(label="copa", type=EvaluatorType.downstream)],
+    "multirc": [EvaluatorConfig(label="multirc", type=EvaluatorType.downstream)],
+    "record": [EvaluatorConfig(label="record", type=EvaluatorType.downstream)],
     "rte": [EvaluatorConfig(label="rte", type=EvaluatorType.downstream)],
+    "wic": [EvaluatorConfig(label="wic", type=EvaluatorType.downstream)],
+    "wsc": [EvaluatorConfig(label="wsc", type=EvaluatorType.downstream)],
 }
 
 def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
@@ -344,13 +368,13 @@ if __name__ == "__main__":
     #     save_path, args_list = sys.argv[1], sys.argv[2:]
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "RTX3090"
-    modelname = "tgnomask_aug-500M"
-    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
+    Device = "A6000"
+    modelname = "tree-500M"
+    task = ["boolq", "cb", "copa", "multirc", "record", "rte", "wic", "wsc"]
     # task = ["docppl"]
     load_path = True
     if load_path is not None and load_path!=False:
-        load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
+        load_path = os.path.expanduser("~/TG-Interpolation/run_scripts" + model_paths[modelname])
         robust_directory_check(load_path)
     
     os.makedirs(modelname, exist_ok=True)
