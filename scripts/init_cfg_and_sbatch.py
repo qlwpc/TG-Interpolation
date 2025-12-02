@@ -68,7 +68,7 @@ Device_args = {
 }
 
 INPUTFORMAT = {
-    "terminal": ["terminal", "pause1/2"],
+    "terminal": ["terminal", "pause1/2", "pause1/2_label"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"]
 }
@@ -265,7 +265,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     elif task=="blimp":
-        if cfg.model.transformer_grammar_type in ["terminal", "pause1/2"]:
+        if cfg.model.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
             Evaltasks["blimp"][0].device_eval_batch_size = 100
         else:
             Evaltasks["blimp"][0].device_eval_batch_size = 150

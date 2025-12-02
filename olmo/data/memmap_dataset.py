@@ -200,7 +200,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
 
         # Read the data from file.
         input_ids = self._read_chunk_from_memmap(self._memmap_paths[memmap_index], memmap_local_index)
-        if self.transformer_grammar_type=="pause1/2":
+        if self.transformer_grammar_type[:8]=="pause1/2":
             paused_input = torch.zeros(2 * len(input_ids), dtype=input_ids.dtype, device=input_ids.device)
             paused_input[::2] = input_ids
             paused_input[1::2] = 50260  # Special token
