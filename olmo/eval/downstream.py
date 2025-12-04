@@ -1638,13 +1638,21 @@ class COPA(ICLMultiChoiceTaskDataset):
                     break
             return ' '.join(tokens[:-2])
         
-        return [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
+        choices_list = [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [choices_list[label]]
+        else:
+            return choices_list
 
     def doc_to_label(self, doc):
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
         connector = "because" if doc["question"] == "cause" else "therefore"
+        del doc
         return "(SBAR " + connector
 
 
