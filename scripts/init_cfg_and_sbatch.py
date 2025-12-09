@@ -42,8 +42,8 @@ class TORCHRUN:
     def __init__(self, config_path, scripts="scripts/train.py", **kwargs):
         self.torchrun = ["torchrun  \\", self.set_param("--master_port", kwargs["--master_port"]), 
                                         self.set_param("--nproc-per-node", kwargs["--nproc-per-node"]),
-                                        scripts + "   \\",
-                                        str(config_path.resolve())+ "   \\"]
+                                        "    " + scripts + " \\",
+                                        "    " + str(config_path.resolve())+ " \\"]
         self.configs = kwargs
         self.configs.pop("--master_port")
         self.configs.pop("--nproc-per-node")
@@ -51,7 +51,7 @@ class TORCHRUN:
     
     def set_param(self, key, value) -> str:
         split = "=" if key[:2]=="--" else " "
-        return f"      {split.join([key, str(value)])} \\"
+        return f"    {split.join([key, str(value)])} \\"
 
     def __str__(self):
         return "\n".join(self.torchrun + [self.set_param(key, value) for key,value in self.configs.items()])
@@ -117,7 +117,23 @@ train_params = {
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "cb": {"finetune_task": "cb", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "copa": {"finetune_task": "copa", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "multirc": {"finetune_task": "multirc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "record": {"finetune_task": "record", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "rte": {"finetune_task": "rte", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wic": {"finetune_task": "wic", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "1ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wsc": {"finetune_task": "wsc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "5ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wic": {"finetune_task": "wic", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "1ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wsc": {"finetune_task": "wsc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "hellaswag": {**test_only_params},
     "winogrande": {**test_only_params},
@@ -138,7 +154,13 @@ GPU_tasks = {
     "blimp": 2,
     "SG": 2,
     "boolq": 4,
+    "cb": 2,
+    "copa": 2,
+    "multirc": 2,
+    "record": 2,
     "rte": 2,
+    "wic": 2,
+    "wsc": 2,
     "hellaswag": 4,
     "winogrande": 2,
 }
@@ -151,7 +173,13 @@ Evaltasks = {
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
     "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=100)],
     "boolq": [EvaluatorConfig(label="boolq", type=EvaluatorType.downstream)],
+    "cb": [EvaluatorConfig(label="cb", type=EvaluatorType.downstream)],
+    "copa": [EvaluatorConfig(label="copa", type=EvaluatorType.downstream)],
+    "multirc": [EvaluatorConfig(label="multirc", type=EvaluatorType.downstream)],
+    "record": [EvaluatorConfig(label="record", type=EvaluatorType.downstream)],
     "rte": [EvaluatorConfig(label="rte", type=EvaluatorType.downstream)],
+    "wic": [EvaluatorConfig(label="wic", type=EvaluatorType.downstream)],
+    "wsc": [EvaluatorConfig(label="wsc", type=EvaluatorType.downstream)],
     "hellaswag": [EvaluatorConfig(label="hellaswag", type=EvaluatorType.downstream, device_eval_batch_size=5)],
     "winogrande": [EvaluatorConfig(label="winogrande", type=EvaluatorType.downstream, device_eval_batch_size=5)],
 }
@@ -208,7 +236,7 @@ date
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
     script_filename = f"{run_name}.sh"
-    script_filename = os.path.join(os.path.join(os.getcwd(), modelname), script_filename)
+    script_filename = os.path.join(os.getcwd(), "run_scripts", modelname, script_filename)
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
     
@@ -251,7 +279,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     elif task=="blimp":
-        if cfg.model.transformer_grammar_type in ["terminal", "pause1/2"]:
+        if cfg.model.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
             Evaltasks["blimp"][0].device_eval_batch_size = 100
         else:
             Evaltasks["blimp"][0].device_eval_batch_size = 150
@@ -369,8 +397,8 @@ if __name__ == "__main__":
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
         robust_directory_check(load_path)
     
-    os.makedirs(modelname, exist_ok=True)
-    save_dir = os.path.join(os.getcwd(), modelname)
+    save_dir = os.path.join(os.getcwd(), "run_scripts", modelname)
+    os.makedirs(save_dir, exist_ok=True)
     for pertask in task:
         run_name = f"{pertask}_test"
         save_path = os.path.join(save_dir, f"config_{run_name}.yaml")

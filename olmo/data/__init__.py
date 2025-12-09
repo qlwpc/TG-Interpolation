@@ -119,7 +119,7 @@ def build_memmap_dataset(
         raise OLMoConfigurationError("One of DataConfig.paths or DataConfig.datasets is required")
     return MemMapDataset(
         *paths,
-        chunk_size=train_config.model.max_sequence_length if train_config.model.transformer_grammar_type!="pause1/2" else train_config.model.max_sequence_length//2,
+        chunk_size=train_config.model.max_sequence_length if train_config.model.transformer_grammar_type[:8]!="pause1/2" else train_config.model.max_sequence_length//2,
         memmap_dtype=data_config.effective_memmap_dtype,
         metadata=metadata,
         include_instance_metadata=include_instance_metadata,

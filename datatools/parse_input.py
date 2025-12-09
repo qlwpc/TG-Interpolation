@@ -12,6 +12,8 @@ import os
 
 @Language.component("set_custom_boundaries")
 def set_custom_boundaries(doc):
+    if len(doc)==0:
+        return doc
     for token in doc[:-1]:
         if token.text == "\n" or token.text == 'Ċ':
             doc[token.i].is_sent_start = True
@@ -126,6 +128,9 @@ class batch_buffer:
         self.init_batch()
     
     def append_batch(self, sents):
+        if len(sents)==0:
+            self.batches.append(benepar.InputSentence(words='\n'))
+            self.document_end.append(True)
         for i, sent in enumerate(sents):
             input_sent = benepar.InputSentence(words=sent)
             if len(sent)>70 and self.is_short:
@@ -193,12 +198,21 @@ def prepare_dataset(config:str):
         split = config.split("_")
         key = split[1]
         filename = f"../dataset/hellaswag/{config}.txt"
+        def swag_preprocess(text):
+            text = text.strip()
+            text = text.replace(" [title]", ". ")
+            text = re.sub("\\[.*?\\] ", "", text)
+            text = re.sub(r"^\.+", "", text)
+            text = text.replace("..", ".")
+            text = text.replace("  ", " ")
+            return text
         with open(f"../dataset/hellaswag/{config}.jsonl", 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
-                prepared_ds.append(data["ctx_a"])
+                prepared_ds.append(swag_preprocess(data["ctx_a"]))
                 for endings in data["endings"]:
                     prepared_ds.append(data["ctx_b"] + endings)
+                prepared_ds.append(swag_preprocess(data["ctx_b"].capitalize() + " " + endings))
     elif config[:10] == "winogrande":
         ds = load_dataset("allenai/winogrande", "winogrande_xl")
         filename = os.path.join("../dataset/winogrande/", config + ".txt")

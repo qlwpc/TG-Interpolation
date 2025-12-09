@@ -18,5 +18,6 @@ build_*/
 *.safetensors
 train_logs/
 saved_models/
+/run_scripts/
 dataset/
 dataset.tar
