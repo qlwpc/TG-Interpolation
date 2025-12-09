@@ -199,6 +199,18 @@ def prepare_dataset(config:str):
                 prepared_ds.append(data["ctx_a"])
                 for endings in data["endings"]:
                     prepared_ds.append(data["ctx_b"] + endings)
+    elif config[:10] == "winogrande":
+        ds = load_dataset("allenai/winogrande", "winogrande_xl")
+        filename = os.path.join("../dataset/winogrande/", config + ".txt")
+        if "train" in config:
+            ds = ds["train"]
+        elif "val" in config:
+            ds = ds["validation"]
+        else:
+            ds = ds["test"]
+        for doc in ds:
+            prepared_ds.append(doc["sentence"].replace("_", doc["option1"]))
+            prepared_ds.append(doc["sentence"].replace("_", doc["option2"]))
     else: # file_split_key
         split = config.split("_")
         key = split[2]

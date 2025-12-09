@@ -45,8 +45,8 @@ class ICLMetric(Metric):
         self.labels = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
-        lm_logits = F.log_softmax(lm_logits, dim=-1)
-
+        lm_logits = F.log_softmax(lm_logits, dim=-1, dtype=torch.float32)
+        # print(batch)
         if self.metric_type == "pmi_dc":
             assert dc_lm_logits is not None, "PMI_DC acc type selected but no domain conditional logits provided"
 
@@ -77,9 +77,12 @@ class ICLMetric(Metric):
                 # gather log-probs at continuation token indices
                 log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
+                # print(batch["input_ids"][idx])
+                # print(torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)))
                 log_likelihood = (
                     torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum() / batch["cont_str_len"][idx]
                 )
+                # print(f"log_likelihood is {log_likelihood}")
                 if self.metric_type == "ce_loss":
                     log_likelihood = -log_likelihood
             elif self.metric_type == "bpb":
@@ -283,6 +286,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     else:
                         dc_query = dc + continuation[:-1]
 
+                    cont_str_len = len(self.token_decode(continuation)) - 1
+
                     # form a sample
                     self.samples.append(
                         {
@@ -423,6 +428,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
+            # print(self.token_decode(sample["query"]))
+            # print(sample["query"])
+            # print(f"ctx_len is {sample['ctx_len']}")
+            # print(f'cont_len is {sample["cont_len"]}')
+
 
         batch = {
             "doc_id": torch.LongTensor(doc_ids),
@@ -1470,17 +1480,35 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "len_norm"
+    SwagPATH = "./dataset/hellaswag/"
+    shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
+                  "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
+                  "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
 
     def __init__(
         self,
         tokenizer,
         dataset_path="hellaswag",
         dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        shots_num=5,
     ):
+        self.shots_num = shots_num
+        if split!="train":
+            self.prepare_shots()
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
         )
 
     @classmethod
@@ -1488,29 +1516,57 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         text = text.strip()
         # NOTE: Brackets are artifacts of the WikiHow dataset portion of HellaSwag.
         text = text.replace(" [title]", ". ")
-        text = re.sub("\\[.*?\\]", "", text)
+        text = re.sub("\\[.*?\\] ", "", text)
+        text = text.replace("..", ".")
         text = text.replace("  ", " ")
-
         return text
 
-    def doc_to_text(self, doc):
-        return self.preprocess(doc["activity_label"] + ": " + doc["ctx_a"] + " " + doc["ctx_b"].capitalize())
+    def load_local_datasets(self, split=None, ret=False):
+        dataset = []
+        split = self.split if split is None else split
+        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                if num==0:
+                    dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
+        
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+    
+    def prepare_shots(self):
+        train = self.load_local_datasets(split="train", ret=True)
+        shots = {}
+        for data in train:
+            if data["source_id"] in self.shots_list:
+                shots[data["source_id"]] = data
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        
+        self.shots_str = ""
+        for i in range(self.shots_num):
+            doc = self.shots[i]
+            self.shots_str += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc)[self.doc_to_label(doc)] + "<|SEP|><|SEP|>"
+
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_str if single_shot==False else "") + "(NP " + doc["activity_label"] + " NP) <|SEP|> " + doc["ctx_a"]
 
     def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + self.preprocess(ending) for ending in doc["endings"]]
+        return [ending for ending in doc["endings"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"])
 
     def doc_to_domain_conditional(self, doc):
-        domain_conditional = self.preprocess(doc["ctx_b"].capitalize())
-
-        # ensure non 0 len domain conditional
-        if len(domain_conditional) == 0:
-            return self.preprocess(doc["ctx_a"]).split(" ")[-1]
-
-        return domain_conditional
+        return doc["ctx_a"].split(" ")[-1]
 
 
 class WinoGrande(ICLMultiChoiceTaskDataset):
@@ -1533,19 +1589,75 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "acc"
+    WinoPATH = "./dataset/winogrande/"
 
     def __init__(
         self,
         tokenizer,
         dataset_path="winogrande",
-        dataset_name="winogrande_xl",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        shots_num=5,
     ):
         # all winogrande datasets have same val set
+        self.shots_num = shots_num
+        # if split!="train":
+        #     self.prepare_shots()
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
         )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = datasets.load_dataset("allenai/winogrande", "winogrande_xl", split=split if split!="val" else "validation")
+        dataset = list(dataset)
+        with open(os.path.join(self.WinoPATH, f"winogrande_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//2, idx % 2
+                if num==0:
+                    dataset[id_entry]["parsed"] = ["", ""]
+                dataset[id_entry]["parsed"][num] = convert_TG_format(line.strip())
+
+        for idx in range(len(dataset)):
+            answer_label = int(dataset[idx]["answer"])
+            tree_tokens = dataset[idx]["parsed"][answer_label-1].split(" ")
+            left_text, right_text = dataset[idx]["sentence"].split("_", 1)
+            left_text = left_text + dataset[idx][f"option{answer_label}"]
+            i, j = 0, 0
+            while j<len(left_text):
+                for char in tree_tokens[i]:
+                   while j<len(left_text) and left_text[j]==" ":
+                       j += 1
+                   if j<len(left_text) and char == left_text[j]:
+                        j += 1
+                i += 1
+            if j<len(left_text):
+                raise NotImplementedError
+            
+            doc_str = " ".join(tree_tokens[:i-1] + ["_"])
+            cont_tokens = tree_tokens[i:]
+            cont_str = " " + " ".join(cont_tokens)
+            dataset[idx]["continuation"] = cont_str
+            dataset[idx]["ctxs"] = [
+                doc_str.replace("_", dataset[idx]["option1"]),
+                doc_str.replace("_", dataset[idx]["option2"]),
+            ]
+
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
     def prep_examples(self):
         """Overwrite for WinoGrande as multiple ctx, single continuation"""
@@ -1562,27 +1674,38 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
             # tokenize
             continuation = self.token_encode(continuation_str)
-
+            continuation = self.convert_grammar_input(continuation)
             for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
+                doc_text = ctx
                 ctx = self.token_encode(ctx)
                 dc = self.token_encode(dc)
 
                 # query, remove last token from continuation, truncate from left is longer than model ctx length
-                query = ctx + continuation[:-1]
+                if self.split=="train":
+                    query = ctx + continuation
+                else:
+                    query = ctx + continuation[:-1]
                 query = query[-self.model_ctx_len :]
+                query = self.convert_grammar_input(query)
+                actual_ctx_len = len(query) - len(continuation) + 1
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                dc_query = dc + continuation[:-1]
+                if self.split=="train":
+                    dc_query = dc + continuation
+                else:
+                    dc_query = dc + continuation[:-1]
+                
+                cont_str_len = len(self.token_decode(continuation)) - 1
 
                 # form a sample
                 self.samples.append(
                     {
                         "doc_id": doc_id,
                         "cont_id": cont_id,
-                        "ctx": ctx,
+                        # "ctx": ctx,
                         "continuation": continuation,
-                        "ctx_len": len(ctx),
+                        "ctx_len": actual_ctx_len,
                         "dc_len": len(dc),
                         "cont_len": len(
                             continuation
@@ -1595,22 +1718,26 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                     }
                 )
 
+                if self.log_instances > 0:
+                    self.log_instances -= 1
+                    ds_name = self.dataset_name
+                    if isinstance(ds_name, list):
+                        ds_name = ds_name[0]
+                    log.info(
+                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
+                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuation_str}\n" +
+                        f"input_ids is {self.token_decode(query)}"
+                    )
+
             doc_id += 1
 
     def doc_to_text(self, doc):
         # special case where there are multiple ctx and single continuation
-        pronoun_loc = doc["sentence"].index("_")
-
-        ctx = []
-        for option in [doc["option1"], doc["option2"]]:
-            ctx.append(doc["sentence"][:pronoun_loc] + option)
-
-        return ctx
+        return doc["ctxs"]
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
-        pronoun_loc = doc["sentence"].index("_") + 1
-        return " " + doc["sentence"][pronoun_loc:].strip()
+        return doc["continuation"]
 
     def doc_to_label(self, doc):
         return int(doc["answer"]) - 1
