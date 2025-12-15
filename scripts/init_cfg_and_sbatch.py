@@ -119,7 +119,7 @@ train_params = {
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "cb": {"finetune_task": "cb", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
-    "copa": {"finetune_task": "copa", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+    "copa": {"finetune_task": "copa", "optimizer.learning_rate": 5.0e-4, "optimizer.weight_decay": 0.1,  "scheduler.t_warmup": 50, "scheduler.min_lr": 2e-5,  "max_duration": "10ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "multirc": {"finetune_task": "multirc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
