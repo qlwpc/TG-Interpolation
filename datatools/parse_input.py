@@ -9,6 +9,8 @@ import argparse
 import re
 import subprocess
 import os
+import json
+import glob
 
 @Language.component("set_custom_boundaries")
 def set_custom_boundaries(doc):
@@ -36,9 +38,10 @@ def count_lines_linux_style(filename):
 # nlp.add_pipe("set_custom_boundaries", before="parser")
 
 def preprocess_text(text:str) -> str:
+    text = text.replace("�", "")
     return re.sub(r' $', '', re.sub(r'( )?\n +', '\n', re.sub(r'[^\S\n]+', ' ', text)))
 
-def split_long_sentence(tokens, max_len=512):
+def split_long_sentence(tokens, max_len=256):
     """
     递归分割超过 max_len 的句子，优先按标点分割，否则硬切分
     """
@@ -119,6 +122,7 @@ class batch_buffer:
     def parse_batch(self):
         if len(self.batches)==0:
             return
+        print(self.batches)
         TreeGen = beneparser.parse_sents(self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
             tree = tree[0]
@@ -143,7 +147,19 @@ class batch_buffer:
                not self.is_short and len(self.batches)==long_batchsize:
                 self.parse_batch()
 
-import json
+
+def load_shrunk_dataset(directory_path, file_pattern:str = None):
+    file_pattern = os.path.join(directory_path, file_pattern or "*.arrow")
+    data_files = sorted(glob.glob(file_pattern))
+    if not data_files:
+        print(f"错误：在路径 {directory_path} 下没找到任何 .arrow 文件！")
+        return None
+    print(f"找到 {len(data_files)} 个分片文件，正在加载...")
+    dataset = load_dataset(
+        "arrow", data_files=data_files, split="train",
+    )
+    return dataset
+
 def prepare_dataset(config:str):
     prepared_ds = []
     if config[0:3]=="str":
@@ -155,7 +171,7 @@ def prepare_dataset(config:str):
         filename = f"tmp_out.txt"
     elif config[0:4]=="xsum":
         ds = load_dataset("EdinburghNLP/xsum")
-        filename = os.path.join("/public/home/wangpch/TG-Interpolation/dataset/Xsum", config + ".txt")
+        filename = os.path.join(os.path.expanduser("~/TG-Interpolation/dataset/Xsum"), config + ".txt")
         if "train" in config:
             ds = ds["train"]
         elif "validation" in config:
@@ -225,6 +241,14 @@ def prepare_dataset(config:str):
         for doc in ds:
             prepared_ds.append(doc["sentence"].replace("_", doc["option1"]))
             prepared_ds.append(doc["sentence"].replace("_", doc["option2"]))
+    elif config[:10] == "finewebedu":
+        edupath = "~/.cache/huggingface/datasets/HuggingFaceFW___fineweb-edu/sample-100BT/0.0.0/87f09149ef4734204d70ed1d046ddc9ca3f2b8f9"
+        file_pattern = config[10:] if len(config)>10 else None
+        ds = load_shrunk_dataset(os.path.expanduser(edupath), file_pattern=file_pattern)
+        os.makedirs("../dataset/finewebedu-100BT/", exist_ok=True)
+        filename = f"../dataset/finewebedu-100BT/{file_pattern}.txt"
+        for doc in ds:
+            prepared_ds.append(doc['text'])
     else: # file_split_key
         split = config.split("_")
         key = split[2]
@@ -267,17 +291,19 @@ if __name__=="__main__":
 
         # filename = "bbc-news/" + split + ".txt"
         index = count_lines_linux_style(filename)
-        # pbar.update(index)
+        pbar.update(index)
         with open(filename, "a+") as output:
             Buffer = batch_buffer(output, pbar)
             while index < len(ds):
                 document = ds[index]
                 # text = document['text']
                 # doc = sentparser(document)
-                split_sents = process_text(document, max_len=256)
-                # print(split_sents)
+                print(f"doc is {document}")
+                split_sents = process_text(document, max_len=200)
                 Buffer.append_batch(split_sents)
+                print(f"input is {split_sents}")
                 index += 1
+            print("end parse")
             Buffer.parse_batch()
         index = 0
                 
