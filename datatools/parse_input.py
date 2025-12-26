@@ -122,7 +122,6 @@ class batch_buffer:
     def parse_batch(self):
         if len(self.batches)==0:
             return
-        print(self.batches)
         TreeGen = beneparser.parse_sents(self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
             tree = tree[0]
@@ -149,8 +148,13 @@ class batch_buffer:
 
 
 def load_shrunk_dataset(directory_path, file_pattern:str = None):
-    file_pattern = os.path.join(directory_path, file_pattern or "*.arrow")
-    data_files = sorted(glob.glob(file_pattern))
+    file_pattern = file_pattern or "*.arrow"
+    data_files = []
+    regex = re.compile(file_pattern)
+    for filename in os.listdir(directory_path):
+        if regex.match(filename):  # 或使用 match() 从开头匹配
+            data_files.append(os.path.join(directory_path,filename))
+    print(data_files)
     if not data_files:
         print(f"错误：在路径 {directory_path} 下没找到任何 .arrow 文件！")
         return None
@@ -298,10 +302,10 @@ if __name__=="__main__":
                 document = ds[index]
                 # text = document['text']
                 # doc = sentparser(document)
-                print(f"doc is {document}")
-                split_sents = process_text(document, max_len=200)
+                # print(f"doc is {document}")
+                split_sents = process_text(document, max_len=128)
                 Buffer.append_batch(split_sents)
-                print(f"input is {split_sents}")
+                # print(f"input is {split_sents}")
                 index += 1
             print("end parse")
             Buffer.parse_batch()
