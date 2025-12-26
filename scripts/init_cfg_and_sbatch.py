@@ -57,7 +57,7 @@ class TORCHRUN:
         return "\n".join(self.torchrun + [self.set_param(key, value) for key,value in self.configs.items()])
 
 Device_args = {
-    "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-35]"}, 
+    "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-33]"}, 
     "SIST_TITAN" :    {"-c": 2, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
     "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "ShangHAI", "-A": "tukw-ShangHAI"},
     "SIST_normal":    {},
