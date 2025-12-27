@@ -9,10 +9,10 @@
 #SBATCH --exclude=ai_gpu[26-33],ai_gpu0[1-7],sist-a40-0[6-9]
 
 #finewebedu*-00[0-1]*.arrow
-t1=".*-00(000|001|002|003).*arrow"                # running SIST
-t2=".*-00(004|005|006|007).*arrow"                # running SIST
-t3=".*-00(008|009|010|011).*arrow"                # running SIST
-t4=".*-00(012|013|014|015).*arrow"                # running SIST
+t1=".*-00(000|001|002|003).*arrow"                # running SIST 799076
+t2=".*-00(004|005|006|007).*arrow"                # running SIST 799077
+t3=".*-00(008|009|010|011).*arrow"                # running SIST 799079
+t4=".*-00(012|013|014|015).*arrow"                # running SIST 799078
 t5=".*-00(016|017|018|019).*arrow"                  
 t6=".*-00(020|021|022|023).*arrow"                  
 t7=".*-00(024|025|026|027).*arrow"                  

@@ -1,6 +1,8 @@
 import benepar
 import spacy
 from datasets import load_dataset
+from tokenizers import Tokenizer
+from transformers import T5TokenizerFast
 from spacy.language import Language
 from tqdm import tqdm
 from nltk import Tree
@@ -15,6 +17,8 @@ import torch
 import numpy as np
 
 from benepar import retokenization
+
+tokenizer = T5TokenizerFast.from_pretrained("t5-large")
 
 def my_retokenize(
     tokenizer,
@@ -169,17 +173,52 @@ def split_long_sentence(tokens, max_len=256):
         return [part1] + split_long_sentence(part2, max_len)
 
 
-def process_text(text, max_len=256):
+def split_text_into_sents(text:str):
     text = preprocess_text(text)
     doc = sentparser(text)
+    return doc
+
+def split_list_limit(sub_list, max_tokens=512):
+    punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
+    final_output = []
+    if len(sub_list) <= 60 or not sub_list:
+        return sub_list
+    
+    encoding = tokenizer(
+        sub_list, 
+        is_split_into_words=True, 
+        add_special_tokens=False
+    )
+    input_ids = encoding.input_ids
+    word_ids = encoding.word_ids()
+    start_idx = 0
+    while len(input_ids) - start_idx > max_tokens:
+        limit_word_idx = word_ids[start_idx + max_tokens - 1] - 1
+        split_at_word = limit_word_idx + 1 # 默认切分位置
+        
+        for i in range(limit_word_idx, 0, -1):
+            if any(p in sub_list[i] for p in punctuations):
+                split_at_word = i + 1
+                break
+
+        final_output.append(sub_list[start_idx:split_at_word])
+        start_idx = split_at_word
+    
+    if len(input_ids) - start_idx > 0:
+        final_output.append(sub_list[start_idx:])
+
+    return final_output
+
+def process_doc_into_maxlen(doc, max_len=512):
     final_sentences = []
     for sent in doc.sents:
         tokens = [token.text for token in sent]
-        if len(sent) <= max_len:
-            final_sentences.append(tokens)
-        else:
-            segments = split_long_sentence(tokens, max_len)
-            final_sentences.extend(segments)
+        final_sentences.extend(split_list_limit(tokens, max_tokens=max_len))
+        # if len(sent) <= max_len:
+        #     final_sentences.append(tokens)
+        # else:
+        #     segments = split_long_sentence(tokens, max_len)
+        #     final_sentences.extend(segments)
     return final_sentences
 
 # text = "Adam Afriyie (Windsor), Peter Aldous (Waveney), David Amess (Southend West), Stuart Andrew (Pudsey), Richard Bacon (Norfolk South), Steven Baker (Wycombe), Stephen Barclay (Cambridgeshire North East), John Baron (Basildon & Billericay), Gavin Barwell (Croydon Central), Guto Bebb (Aberconwy), Andrew Bingham (High Peak), Brian Binley (Northampton South), Crispin Blunt (Reigate), Graham Brady (Altrincham & Sale West), Andrew Bridgen (Leicestershire North West), Steve Brine (Winchester), Fiona Bruce (Congleton), Aidan Burley (Cannock Chase), Conor Burns (Bournemouth West), David Burrowes (Enfield Southgate), Dan Byles (Warwickshire North), Alun Cairns (Vale of Glamorgan), Bill Cash (Stone), Rehman Chishti (Gillingham & Rainham), Christopher Chope (Christchurch), James Clappison (Hertsmere), Geoffrey Cox (Devon West & Torridge), Tracey Crouch (Chatham & Aylesford), David Davies (Monmouth), Philip Davies (Shipley), David Davis (Haltemprice & Howden), Nick de Bois (Enfield North), Caroline Dinenage (Gosport), Nadine Dorries (Bedfordshire Mid),Richard Drax (Dorset South), James Duddridge (Rochford & Southend East), Graham Evans (Weaver Vale), Lorraine Fullbrook (South Ribble), Roger Gale (Thanet North), James Gray (Wiltshire North), Robert Halfon (Harlow), Simon Hart (Carmarthen West & Pembrokeshire South), Gordon Henderson (Sittingbourne & Sheppey), Sir Gerald Howarth (Aldershot), Stewart Jackson (Peterborough), Bernard Jenkin (Harwich & Essex North), Gareth Johnson (Dartford), Marcus Jones (Nuneaton), Daniel Kawczynski (Shrewsbury & Atcham), Chris Kelly (Dudley South), Simon Kirby (Brighton Kemptown), Andrea Leadsom (Northamptonshire South), Jessica Lee (Erewash), Phillip Lee (Bracknell), Edward Leigh (Gainsborough), Charlotte Leslie (Bristol North West), Julian Lewis (New Forest East), Ian Liddell-Grainger (Bridgwater & Somerset West), Jonathan Lord (Woking), Tim Loughton (Worthing East & Shoreham), Karen Lumley (Redditch), Jason McCartney (Colne Valley), Karl McCartney (Lincoln), Stephen McPartland (Stevenage), Anne Main (St Albans), Paul Maynard (Blackpool North & Cleveleys), Mark Menzies (Fylde), Patrick Mercer (Newark), Stephen Metcalfe (Basildon South & Thurrock East), Nigel Mills (Amber Valley), David Morris (Morecambe & Lunesdale), James Morris (Halesowen & Rowley Regis), Caroline Nokes (Romsey & Southampton North), David Nuttall (Bury North), Matthew Offord (Hendon), Eric Ollerenshaw (Lancaster & Fleetwood), Priti Patel (Witham), John Penrose (Weston-Super-Mare), Andrew Percy (Brigg & Goole), Stephen Phillips (Sleaford & North Hykeham), Chris Pincher (Tamworth), Dominic Raab (Esher & Walton), Mark Reckless (Rochester & Strood), John Redwood (Wokingham), Jacob Rees-Mogg (Somerset North East), Laurence Robertson (Tewkesbury), Andrew Rosindell (Romford), David Ruffley (Bury St Edmunds), Andrew Selous (Bedfordshire South West), Alec Shelbrooke (Elmet & Rothwell), Sir Richard Shepherd (Aldridge-Brownhills), Henry Smith (Crawley), Mark Spencer (Sherwood), Andrew Stephenson (Pendle), John Stevenson (Carlisle), Iain Stewart (Milton Keynes South), Gary Streeter (Devon South West), Mel Stride (Devon Central), Julian Sturdy (York Outer), Sir Peter Tapsell (Louth & Horncastle), Justin Tomlinson (Swindon North), David Tredinnick (Bosworth), Andrew Turner (Isle of Wight), Martin Vickers (Cleethorpes), Charles Walker (Broxbourne), Robin Walker (Worcester), James Wharton (Stockton South), Heather Wheeler (Derbyshire South), Chris White (Warwick & Leamington), Craig Whittaker (Calder Valley), John Whittingdale (Maldon), Bill Wiggin (Herefordshire North), Dr Sarah Wollaston (Totnes), Nadhim Zahawi (Stratford-on-Avon). The two Tory tellers were Peter Bone (Wellingborough) and Philip Hollobone (Kettering)."
@@ -399,13 +438,16 @@ if __name__=="__main__":
                 document = ds[index]
                 # text = document['text']
                 # doc = sentparser(document)
-                print(f"doc is {document}")
-                split_sents = process_text(document, max_len=128)
+                # print(f"doc is {document}")
+                max_len = 512
+                doc = split_text_into_sents(document)
+                split_sents = process_doc_into_maxlen(doc, max_len=max_len)
+                # print(split_sents)
                 Buffer.append_batch(split_sents)
                 # print(f"input is {split_sents}")
                 index += 1
-            print("end parse")
             Buffer.parse_batch()
+            print("end parse")
         index = 0
                 
     logging.info("finished")
