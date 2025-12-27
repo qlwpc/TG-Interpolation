@@ -1,7 +1,6 @@
 import benepar
 import spacy
 from datasets import load_dataset
-from tokenizers import Tokenizer
 from transformers import T5TokenizerFast
 from spacy.language import Language
 from tqdm import tqdm
@@ -12,7 +11,6 @@ import re
 import subprocess
 import os
 import json
-import glob
 import torch
 import numpy as np
 
@@ -182,7 +180,7 @@ def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
     if len(sub_list) <= 60 or not sub_list:
-        return sub_list
+        return [sub_list]
     
     encoding = tokenizer(
         sub_list, 
