@@ -191,7 +191,7 @@ def split_list_limit(sub_list, max_tokens=512):
     word_ids = encoding.word_ids()
     start_idx = 0
     while len(input_ids) - start_idx > max_tokens:
-        limit_word_idx = word_ids[start_idx + max_tokens - 1] - 1
+        limit_word_idx = word_ids[start_idx + max_tokens - 2] - 1
         split_at_word = limit_word_idx + 1 # 默认切分位置
         
         for i in range(limit_word_idx, 0, -1):
@@ -204,7 +204,7 @@ def split_list_limit(sub_list, max_tokens=512):
     
     if len(input_ids) - start_idx > 0:
         final_output.append(sub_list[start_idx:])
-
+    del encoding
     return final_output
 
 def process_doc_into_maxlen(doc, max_len=512):
