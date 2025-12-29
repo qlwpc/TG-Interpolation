@@ -185,6 +185,11 @@ def split_list_limit(sub_list, max_tokens=512):
     encoding = tokenizer(
         sub_list, 
         is_split_into_words=True, 
+        return_attention_mask=False,   
+        return_token_type_ids=False,   
+        return_tensors=None,           
+        return_offsets_mapping=False,  
+        return_length=False,           
         add_special_tokens=False
     )
     input_ids = encoding.input_ids
@@ -205,6 +210,8 @@ def split_list_limit(sub_list, max_tokens=512):
     if len(input_ids) - start_idx > 0:
         final_output.append(sub_list[start_idx:])
     del encoding
+    del input_ids
+    del word_ids
     return final_output
 
 def process_doc_into_maxlen(doc, max_len=512):
