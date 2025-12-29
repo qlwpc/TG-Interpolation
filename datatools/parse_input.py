@@ -180,7 +180,7 @@ def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
     charlen = sum([len(x) for x in sub_list])
-    if charlen <= max_tokens:
+    if charlen <= max_tokens - 1:
         return [sub_list]
     
     encoding = tokenizer(
@@ -202,7 +202,7 @@ def split_list_limit(sub_list, max_tokens=512):
     start_idx = 0
     # print(sub_list)
     while len(input_ids) - num_idx[start_idx] > max_tokens:
-        limit_word_idx = word_ids[num_idx[start_idx] + max_tokens - 1] - 1
+        limit_word_idx = word_ids[num_idx[start_idx] + max_tokens - 2] - 1
         split_at_word = limit_word_idx + 1 # 默认切分位置
         
         for i in range(limit_word_idx, 0, -1):
