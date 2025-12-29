@@ -179,7 +179,8 @@ def split_text_into_sents(text:str):
 def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
-    if len(sub_list) <= 60 or not sub_list:
+    charlen = sum([len(x) for x in sub_list])
+    if charlen <= max_tokens:
         return [sub_list]
     
     encoding = tokenizer(
@@ -189,21 +190,30 @@ def split_list_limit(sub_list, max_tokens=512):
     )
     input_ids = encoding.input_ids
     word_ids = encoding.word_ids()
+    num_idx = np.zeros((len(sub_list), ), dtype=np.int32)
+    for id in word_ids:
+        num_idx[id] += 1
+    num_idx = np.concatenate([np.zeros((1,), dtype=np.int32), np.cumsum(num_idx)])
     start_idx = 0
-    while len(input_ids) - start_idx > max_tokens:
-        limit_word_idx = word_ids[start_idx + max_tokens - 2] - 1
+    # print(sub_list)
+    while len(input_ids) - num_idx[start_idx] > max_tokens:
+        limit_word_idx = word_ids[num_idx[start_idx] + max_tokens - 1] - 1
         split_at_word = limit_word_idx + 1 # 默认切分位置
         
         for i in range(limit_word_idx, 0, -1):
             if any(p in sub_list[i] for p in punctuations):
                 split_at_word = i + 1
                 break
-
+        # print(f"split_at_word at {split_at_word} nextword is {sub_list[split_at_word]}")
         final_output.append(sub_list[start_idx:split_at_word])
         start_idx = split_at_word
     
-    if len(input_ids) - start_idx > 0:
+    if len(input_ids) - num_idx[start_idx] > 0:
         final_output.append(sub_list[start_idx:])
+    # recover = []
+    # for split in final_output:
+    #     recover += split
+    # assert (recover==sub_list)
     del encoding
     return final_output
 
