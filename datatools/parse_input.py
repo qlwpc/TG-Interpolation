@@ -207,7 +207,7 @@ def split_list_limit(sub_list, max_tokens=512):
         limit_word_idx = word_ids[num_idx[start_idx] + max_tokens - 2] - 1
         split_at_word = limit_word_idx + 1 # 默认切分位置
         
-        for i in range(limit_word_idx, 0, -1):
+        for i in range(limit_word_idx, start_idx, -1):
             if any(p in sub_list[i] for p in punctuations):
                 split_at_word = i + 1
                 break
@@ -444,7 +444,7 @@ def main():
                 # text = document['text']
                 # doc = sentparser(document)
                 # print(f"doc is {document}")
-                max_len = 512
+                max_len = 500
                 doc = split_text_into_sents(document)
                 split_sents = process_doc_into_maxlen(doc, max_len=max_len)
                 # print(split_sents)
@@ -453,6 +453,8 @@ def main():
                 index += 1
                 if index % 200 == 0:
                     gc.collect()
+                # if index % 10000 == 0:
+                #     torch.cuda.empty_cache()
             Buffer.parse_batch()
             print("end parse")
         index = 0
