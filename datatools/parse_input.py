@@ -115,10 +115,10 @@ def set_custom_boundaries(doc):
     if len(doc)==0:
         return doc
     for token in doc[:-1]:
-        if token.text == "\n" or token.text == 'Ċ':
+        if re.match(r"\n+", token.text) or token.text == 'Ċ':
             doc[token.i].is_sent_start = True
             doc[token.i + 1].is_sent_start = True
-    if doc[-1].text == "Ċ" or doc[-1].text == '\n':
+    if doc[-1].text == "Ċ" or re.match(r"\n+", doc[-1].text):
          doc[-1].is_sent_start = True
     return doc
 
@@ -180,7 +180,9 @@ def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
     charlen = sum([len(x) for x in sub_list])
-    if charlen <= max_tokens - 1:
+    # print(sub_list)
+    # print(f"charlen is {charlen}")
+    if charlen <= max_tokens - 20:
         return [sub_list]
     
     encoding = tokenizer(
@@ -270,7 +272,11 @@ class batch_buffer:
         TreeGen = beneparser.parse_sents(self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
             tree = tree[0]
-            parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
+            leaves = tree.leaves()
+            if len(leaves) == 1 and re.match(r"\n+", leaves[0]):
+                parsed_string = leaves[0].replace("\n", "(Ċ Ċ) ").rstrip()
+            else:
+                parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
             #print(parsed_string)
             self.write(parsed_string, DocEnd)
         self.init_batch()
