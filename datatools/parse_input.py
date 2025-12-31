@@ -184,6 +184,15 @@ def split_list_limit(sub_list, max_tokens=512):
     # print(f"charlen is {charlen}")
     if charlen <= max_tokens - 20:
         return [sub_list]
+
+    new_list = []
+    for words in sub_list:
+        if len(words)>max_tokens:
+            chunks = [words[i : i + max_tokens-5] for i in range(0, len(words), max_tokens-5)]
+            new_list.extend(chunks)
+        else:
+            new_list.append(words)
+    sub_list = new_list
     
     encoding = tokenizer(
         sub_list, 
@@ -202,25 +211,29 @@ def split_list_limit(sub_list, max_tokens=512):
         num_idx[id] += 1
     num_idx = np.concatenate([np.zeros((1,), dtype=np.int32), np.cumsum(num_idx)])
     start_idx = 0
-    # print(sub_list)
+    print(sub_list)
+    cnt = 0
     while len(input_ids) - num_idx[start_idx] > max_tokens:
-        limit_word_idx = word_ids[num_idx[start_idx] + max_tokens - 2] - 1
+        limit_word_idx = max(word_ids[num_idx[start_idx] + max_tokens] - 1, start_idx)
         split_at_word = limit_word_idx + 1 # 默认切分位置
         
         for i in range(limit_word_idx, start_idx, -1):
             if any(p in sub_list[i] for p in punctuations):
                 split_at_word = i + 1
                 break
-        # print(f"split_at_word at {split_at_word} nextword is {sub_list[split_at_word]}")
+        print(f"split_at_word at {split_at_word} nextword is {sub_list[split_at_word]}")
         final_output.append(sub_list[start_idx:split_at_word])
         start_idx = split_at_word
+        cnt += 1
+        if cnt >= 100000:
+            break
     
     if len(input_ids) - num_idx[start_idx] > 0:
         final_output.append(sub_list[start_idx:])
-    # recover = []
-    # for split in final_output:
-    #     recover += split
-    # assert (recover==sub_list)
+    recover = []
+    for split in final_output:
+        recover += split
+    assert (recover==sub_list)
     del encoding
     del input_ids
     del word_ids
@@ -444,7 +457,7 @@ def main():
                 # text = document['text']
                 # doc = sentparser(document)
                 # print(f"doc is {document}")
-                max_len = 500
+                max_len = 450
                 doc = split_text_into_sents(document)
                 split_sents = process_doc_into_maxlen(doc, max_len=max_len)
                 # print(split_sents)
