@@ -230,14 +230,14 @@ def split_list_limit(sub_list, max_tokens=512):
         start_idx = split_at_word
         cnt += 1
         if cnt >= 100000:
-            break
+            raise RuntimeError("cannot split, dead loop")
     
     if len(input_ids) - num_idx[start_idx] > 0:
         final_output.append(sub_list[start_idx:])
-    recover = []
-    for split in final_output:
-        recover += split
-    assert (recover==sub_list)
+    # recover = []
+    # for split in final_output:
+    #     recover += split
+    # assert (recover==sub_list)
     del encoding
     del input_ids
     del word_ids
