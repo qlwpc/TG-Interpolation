@@ -418,7 +418,7 @@ def prepare_dataset(config:str):
         file_pattern = config[10:] if len(config)>10 else None
         ds = load_shrunk_dataset(os.path.expanduser(edupath), file_pattern=file_pattern)
         os.makedirs("../dataset/finewebedu-100BT/", exist_ok=True)
-        filename = f"../dataset/finewebedu-100BT/{file_pattern.replace(".","")}.txt"
+        filename = f"../dataset/finewebedu-100BT/{file_pattern.replace('.','')}.txt"
         for doc in ds:
             prepared_ds.append(doc['text'])
     else: # file_split_key
