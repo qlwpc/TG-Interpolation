@@ -5,6 +5,7 @@ from transformers import T5TokenizerFast
 from spacy.language import Language
 from tqdm import tqdm
 from nltk import Tree
+import nltk
 import logging
 import argparse
 import re
@@ -16,6 +17,8 @@ import numpy as np
 import gc
 
 from benepar import retokenization
+nltk.data.path.append("/2024233198/nltk_data")
+
 
 def my_retokenize(
     tokenizer,
