@@ -144,6 +144,7 @@ print(f"parser batch size is {beneparser.batch_size}")
 
 def preprocess_text(text:str) -> str:
     text = text.replace("�", "")
+    text = text.replace("﻿", "")
     return re.sub(r' $', '', re.sub(r'( )?\n +', '\n', re.sub(r'[^\S\n]+', ' ', text)))
 
 def split_long_sentence(tokens, max_len=256):
@@ -179,7 +180,7 @@ def split_text_into_sents(text:str):
 def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
-    charlen = sum([len(x) for x in sub_list])
+    charlen = sum([len(x) + 1 for x in sub_list])
     # print(sub_list)
     # print(f"charlen is {charlen}")
     if charlen <= max_tokens - 20:
