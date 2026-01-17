@@ -19,6 +19,7 @@ import gc
 from benepar import retokenization
 nltk.data.path.append("/2024233198/nltk_data")
 
+logger = logging.getLogger()
 
 def my_retokenize(
     tokenizer,
@@ -130,12 +131,14 @@ def count_lines_linux_style(filename):
     reslist = result.stdout.split()
     return int(reslist[0]) if reslist!=[] else 0
 
-tokenizer = T5TokenizerFast.from_pretrained("t5-large")
-sentparser = spacy.load('en_core_web_md', disable=['tagger', 'attribute_ruler', 'lemmatizer', 'ner'])
-sentparser.add_pipe("set_custom_boundaries", before="parser")
+_sentparser = None
+def _init_sentparser():
+    sentparser = spacy.load('en_core_web_md', disable=['tagger', 'attribute_ruler', 'lemmatizer', 'ner'])
+    sentparser.add_pipe("set_custom_boundaries", before="parser")
+    return sentparser
 
-beneparser = benepar.Parser("benepar_en3_large")
-print(f"parser batch size is {beneparser.batch_size}")
+
+
 
 # benepar.download('benepar_en3_wsj')
 # nlp = spacy.load('en_core_web_md')
@@ -174,12 +177,16 @@ def split_long_sentence(tokens, max_len=256):
 
 
 def split_text_into_sents(text:str):
+    global _sentparser
+    if _sentparser is None:
+        _sentparser = _init_sentparser()
     text = preprocess_text(text)
-    doc = sentparser(text)
+    doc = _sentparser(text)
     sentences = [[str(token.text) for token in sent] for sent in doc.sents] # 提取字符串
     del doc
     return sentences
 
+tokenizer = T5TokenizerFast.from_pretrained("t5-large")
 def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
@@ -215,7 +222,7 @@ def split_list_limit(sub_list, max_tokens=512):
         num_idx[id] += 1
     num_idx = np.concatenate([np.zeros((1,), dtype=np.int32), np.cumsum(num_idx)])
     start_idx = 0
-    print(sub_list)
+    logger.info(sub_list)
     cnt = 0
     while len(input_ids) - num_idx[start_idx] > max_tokens:
         limit_word_idx = max(word_ids[num_idx[start_idx] + max_tokens] - 1, start_idx)
@@ -225,7 +232,7 @@ def split_list_limit(sub_list, max_tokens=512):
             if any(p in sub_list[i] for p in punctuations):
                 split_at_word = i + 1
                 break
-        print(f"split_at_word at {split_at_word} nextword is {sub_list[split_at_word]}")
+        logger.info(f"split_at_word at {split_at_word} nextword is {sub_list[split_at_word]}")
         final_output.append(sub_list[start_idx:split_at_word])
         start_idx = split_at_word
         cnt += 1
@@ -261,8 +268,8 @@ def process_doc_into_maxlen(sents, max_len=512):
 # length more than 70? -> 15 sents per batch
 # length smaller than 70 -> 64 sents per batch
 shortlen = 70
-short_batchsize = 64
-long_batchsize = 15
+short_batchsize = 128
+long_batchsize = 64
 
 class batch_buffer:
     def __init__(self, output_file, pbar):
@@ -270,6 +277,8 @@ class batch_buffer:
         self.doc_to_write = ""
         self.file = output_file
         self.pbar = pbar
+        self.beneparser = benepar.Parser("benepar_en3", batch_size=128)
+        print(f"parser batch size is {self.beneparser.batch_size}")
         
     def init_batch(self):
         self.batches = []
@@ -286,7 +295,7 @@ class batch_buffer:
     def parse_batch(self):
         if len(self.batches)==0:
             return
-        TreeGen = beneparser.parse_sents(self.batches)
+        TreeGen = self.beneparser.parse_sents(self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
             tree = tree[0]
             leaves = tree.leaves()
@@ -322,11 +331,11 @@ def load_shrunk_dataset(directory_path, file_pattern:str = None):
     for filename in os.listdir(directory_path):
         if regex.match(filename):
             data_files.append(os.path.join(directory_path,filename))
-    print(data_files)
+    logger.info(data_files)
     if not data_files:
         print(f"错误：在路径 {directory_path} 下没找到任何 .arrow 文件！")
         return None
-    print(f"找到 {len(data_files)} 个分片文件，正在加载...")
+    logger.info(f"找到 {len(data_files)} 个分片文件，正在加载...")
     dataset = load_dataset(
         "arrow", data_files=data_files, split="train",
     )
@@ -432,26 +441,23 @@ def prepare_dataset(config:str):
 
     return filename, prepared_ds
 
-def main():
+def main(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_list', type=str)
     parser.add_argument('--start_index', type=int, default=0)
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    print(args.input_list)
+    args = parser.parse_args(args_list)
+    logger.info(args.input_list)
     result_list = args.input_list.split(',') if args.input_list else []
-    print("Received list:", result_list) # [ "CC-MAIN-2014-41"]
+    logger.info("Received list:", result_list) # [ "CC-MAIN-2014-41"]
     config = result_list
     for split in config:
         filename, ds = prepare_dataset(split)
-        print(f"len dataset is {len(ds)}")
+        logger.info(f"len dataset is {len(ds)}")
         totallen = len(ds)
         print(totallen)
-        logging.info(f"start parsing {split}")
+        logger.info(f"start parsing {split}")
         pbar = tqdm(total=totallen)
 
-        # filename = "bbc-news/" + split + ".txt"
         index = count_lines_linux_style(filename)
         pbar.update(index)
         with open(filename, "a+") as output:
@@ -470,13 +476,14 @@ def main():
                 index += 1
                 if index % 200 == 0:
                     gc.collect()
-                # if index % 10000 == 0:
-                #     torch.cuda.empty_cache()
             Buffer.parse_batch()
             print("end parse")
         index = 0
                 
-    logging.info("finished")
+    logger.info("finished")
 
+
+#[, 'CC-MAIN-2013-48', 'CC-MAIN-2014-10', 'CC-MAIN-2014-15', 'CC-MAIN-2014-23', 'CC-MAIN-2014-35', 'CC-MAIN-2014-41', 'CC-MAIN-2014-42', 'CC-MAIN-2014-49', 'CC-MAIN-2014-52', 'CC-MAIN-2015-06', 'CC-MAIN-2015-11', 'CC-MAIN-2015-14', 'CC-MAIN-2015-18', 'CC-MAIN-2015-22', 'CC-MAIN-2015-27', 'CC-MAIN-2015-32', 'CC-MAIN-2015-35', 'CC-MAIN-2015-40', 'CC-MAIN-2015-48', 'CC-MAIN-2016-07', 'CC-MAIN-2016-18', 'CC-MAIN-2016-22', 'CC-MAIN-2016-26', 'CC-MAIN-2016-30', 'CC-MAIN-2016-36', 'CC-MAIN-2016-40', 'CC-MAIN-2016-44', 'CC-MAIN-2016-50', 'CC-MAIN-2017-04', 'CC-MAIN-2017-09', 'CC-MAIN-2017-13', 'CC-MAIN-2017-17', 'CC-MAIN-2017-22', 'CC-MAIN-2017-26', 'CC-MAIN-2017-30', 'CC-MAIN-2017-34', 'CC-MAIN-2017-39', 'CC-MAIN-2017-43', 'CC-MAIN-2017-47', 'CC-MAIN-2017-51', 'CC-MAIN-2018-05', 'CC-MAIN-2018-09', 'CC-MAIN-2018-13', 'CC-MAIN-2018-17', 'CC-MAIN-2018-22', 'CC-MAIN-2018-26', 'CC-MAIN-2018-30', 'CC-MAIN-2018-34', 'CC-MAIN-2018-39', 'CC-MAIN-2018-43', 'CC-MAIN-2018-47', 'CC-MAIN-2018-51', 'CC-MAIN-2019-04', 'CC-MAIN-2019-09', 'CC-MAIN-2019-13', 'CC-MAIN-2019-18', 'CC-MAIN-2019-22', 'CC-MAIN-2019-26', 'CC-MAIN-2019-30', 'CC-MAIN-2019-35', 'CC-MAIN-2019-39', 'CC-MAIN-2019-43', 'CC-MAIN-2019-47', 'CC-MAIN-2019-51', 'CC-MAIN-2020-05', 'CC-MAIN-2020-10', 'CC-MAIN-2020-16', 'CC-MAIN-2020-24', 'CC-MAIN-2020-29', 'CC-MAIN-2020-34', 'CC-MAIN-2020-40', 'CC-MAIN-2020-45', 'CC-MAIN-2020-50', 'CC-MAIN-2021-04', 'CC-MAIN-2021-10', 'CC-MAIN-2021-17', 'CC-MAIN-2021-21', 'CC-MAIN-2021-25', 'CC-MAIN-2021-31', 'CC-MAIN-2021-39', 'CC-MAIN-2021-43', 'CC-MAIN-2021-49', 'CC-MAIN-2022-05', 'CC-MAIN-2022-21', 'CC-MAIN-2022-27', 'CC-MAIN-2022-33', 'CC-MAIN-2022-40', 'CC-MAIN-2022-49', 'CC-MAIN-2023-06', 'CC-MAIN-2023-14', 'CC-MAIN-2023-23', 'CC-MAIN-2023-40', 'CC-MAIN-2023-50']
 if __name__=="__main__":
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     main()
