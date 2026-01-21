@@ -51,7 +51,7 @@ def setup_main_logger(log_queue, log_file):
 # 16 CPUtreer, 
 # 1 writer, 1 feeder, 1 batcher = 3
 MAX_TOKENS_PER_BATCH = 8000       # 每个 batch 最大token数（可调，64*250=16000）
-MAX_SAMPLES_PER_BATCH = 50         # 每个 batch 最多样本数（可调）
+MAX_SAMPLES_PER_BATCH = 4        # 每个 batch 最多样本数（可调）
 NUM_CPU_WORKERS = min(max(1, mp.cpu_count() - 2), 4)
 NUM_GPU_TREEWORKERS = 2
 NUM_CPU_TREEWORKERS = 0
