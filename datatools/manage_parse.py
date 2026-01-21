@@ -113,6 +113,6 @@ def worker_process(task_files, file_dir, reverse_order=False, rank=None):
 
 if __name__ == "__main__":
     shards = [f".*-00({i:03d}|{i+1:03d}|{i+2:03d}|{i+3:03d}).*arrow" for i in range(0, 984, 4)]
-    file_dir = "/2024233198"
+    file_dir = "./"
     import multiprocessing
     worker_process(shards, file_dir, False)

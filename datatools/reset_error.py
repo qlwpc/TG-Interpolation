@@ -49,4 +49,4 @@ def reset_error_tasks(status_file="task_status.json", file_dir=""):
 
 if __name__ == "__main__":
     # 运行重置
-    reset_error_tasks(file_dir="/2024233198")
+    reset_error_tasks(file_dir="./")

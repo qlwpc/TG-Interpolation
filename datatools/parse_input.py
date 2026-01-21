@@ -186,7 +186,7 @@ def split_text_into_sents(text:str):
     del doc
     return sentences
 
-tokenizer = T5TokenizerFast.from_pretrained("t5-large")
+tokenizer = T5TokenizerFast.from_pretrained("t5-small")
 def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
