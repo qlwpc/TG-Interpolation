@@ -41,6 +41,7 @@ public:
     int64_t eos;
     int64_t unk;
     int64_t whitespace;
+    int64_t newline;
     int64_t bosent;
     int64_t eosent;
     std::pair<int64_t, int64_t> opening_non_terminals;
@@ -50,19 +51,19 @@ public:
     SentencepieceVocab() {}
     SentencepieceVocab(
         int64_t pad, int64_t bos, int64_t eos, int64_t unk,
-        int64_t whitespace, int64_t bosent, int64_t eosent,
+        int64_t whitespace, int64_t newline, int64_t bosent, int64_t eosent,
         std::pair<int64_t, int64_t> opening_non_terminals,
         std::pair<int64_t, int64_t> closing_non_terminals,
         std::vector<std::string> tokens
     ) : pad(pad), bos(bos), eos(eos), unk(unk),
-        whitespace(whitespace), bosent(bosent), eosent(eosent),
+        whitespace(whitespace), newline(newline), bosent(bosent), eosent(eosent),
         opening_non_terminals(opening_non_terminals),
         closing_non_terminals(closing_non_terminals),
         tokens(tokens) {}
 
     static SentencepieceVocab from_vocab_file(const std::string& vocab_file) {
         int64_t pad = -1, bos = -1, eos = -1, unk = -1;
-        int64_t whitespace = -1, bosent = -1, eosent = -1;
+        int64_t  whitespace = -1, newline = -1, bosent = -1, eosent = -1;
         std::pair<int64_t, int64_t> opening_non_terminals(-1, -1);
         std::pair<int64_t, int64_t> closing_non_terminals(-1, -1);
         std::vector<std::string> tokens;
@@ -96,8 +97,8 @@ public:
                 // std::cout << "before" << '\n';
                 
                 std::regex token_pattern(R"("id"\s*:\s*(\d+)\s*,\s*"content"\s*:\s*"((?:\\"|[^"])+))");
-                std::regex opening_pattern(R"(^\([A-Z]+$)");
-                std::regex closing_pattern(R"(^[A-Z]+\)$)");
+                std::regex opening_pattern(R"(^<\([A-Z]+>$)");
+                std::regex closing_pattern(R"(^<[A-Z]+\)>$)");
         
                 // set<string> opening_non_terminals;
                 // set<string> closing_non_terminals;
@@ -119,6 +120,7 @@ public:
                     else if (token == "(S1" || token == "(TOP") bosent = index;
                     else if (token == "S1)" || token == "TOP)") eosent = index;
                     else if (token == "▁" || token=="Ġ") whitespace = index;
+                    else if (token == "Ċ") newline = index;
                     else if (std::regex_match(token, opening_pattern)) {
                         if (opening_non_terminals.first == -1)
                             opening_non_terminals.first = index;
@@ -170,7 +172,7 @@ public:
 
         return SentencepieceVocab(
             pad, bos, eos, unk,
-            whitespace, bosent, eosent,
+            whitespace, newline, bosent, eosent,
             opening_non_terminals,
             closing_non_terminals,
             tokens
@@ -276,8 +278,8 @@ public:
         auto dtype = tree.dtype();
         if (dtype.is(py::dtype::of<uint16_t>()))
             return convert_treenpy_to_TG_impl<uint16_t>(tree);
-        else if (dtype.is(py::dtype::of<int32_t>()))
-            return convert_treenpy_to_TG_impl<int32_t>(tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_treenpy_to_TG_impl<uint32_t>(tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return convert_treenpy_to_TG_impl<int64_t>(tree);
         else
@@ -288,8 +290,8 @@ public:
         auto dtype = tree.dtype();
         if (dtype.is(py::dtype::of<uint16_t>()))
             return convert_treenpy_to_terminal_impl<uint16_t>(tree);
-        else if (dtype.is(py::dtype::of<int32_t>()))
-            return convert_treenpy_to_terminal_impl<int32_t>(tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_treenpy_to_terminal_impl<uint32_t>(tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return convert_treenpy_to_terminal_impl<int64_t>(tree);
         else
@@ -300,8 +302,8 @@ public:
         auto dtype = TG_tree.dtype();
         if (dtype.is(py::dtype::of<uint16_t>()))
             return convert_TGnpy_to_tree_impl<uint16_t>(TG_tree);
-        else if (dtype.is(py::dtype::of<int32_t>()))
-            return convert_TGnpy_to_tree_impl<int32_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_TGnpy_to_tree_impl<uint32_t>(TG_tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return convert_TGnpy_to_tree_impl<int64_t>(TG_tree);
         else
@@ -355,8 +357,8 @@ public:
         auto dtype = TG_tree.dtype();
         if (dtype.is(py::dtype::of<uint16_t>()))
             return random_shuffle_tree_impl<uint16_t>(TG_tree);
-        else if (dtype.is(py::dtype::of<int32_t>()))
-            return random_shuffle_tree_impl<int32_t>(TG_tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return random_shuffle_tree_impl<uint32_t>(TG_tree);
         else if (dtype.is(py::dtype::of<int64_t>()))
             return random_shuffle_tree_impl<int64_t>(TG_tree);
         else
@@ -1179,7 +1181,7 @@ PYBIND11_MODULE(tg_mask, m) {
     py::class_<SentencepieceVocab>(m, "SentencepieceVocab")
         .def(py::init<
             int64_t, int64_t, int64_t, int64_t, 
-            int64_t, int64_t, int64_t,
+            int64_t, int64_t, int64_t, int64_t,
             std::pair<int64_t, int64_t>,
             std::pair<int64_t, int64_t>,
             std::vector<std::string>>())
@@ -1194,6 +1196,7 @@ PYBIND11_MODULE(tg_mask, m) {
         .def_readwrite("eos", &SentencepieceVocab::eos)
         .def_readwrite("unk", &SentencepieceVocab::unk)
         .def_readwrite("whitespace", &SentencepieceVocab::whitespace)
+        .def_readwrite("newline", &SentencepieceVocab::newline)
         .def_readwrite("bosent", &SentencepieceVocab::bosent)
         .def_readwrite("eosent", &SentencepieceVocab::eosent)
         .def_readwrite("opening_non_terminals", &SentencepieceVocab::opening_non_terminals)
@@ -1217,6 +1220,7 @@ PYBIND11_MODULE(tg_mask, m) {
                     v.eos,
                     v.unk,
                     v.whitespace,
+                    v.newline,
                     v.bosent,
                     v.eosent,
                     v.opening_non_terminals,
@@ -1225,7 +1229,7 @@ PYBIND11_MODULE(tg_mask, m) {
                 );
             },
             [](py::tuple t) { // __setstate__
-                if (t.size() != 10)
+                if (t.size() != 11)
                     throw std::runtime_error("Invalid state!");
                     
                 return SentencepieceVocab(
@@ -1236,9 +1240,10 @@ PYBIND11_MODULE(tg_mask, m) {
                     t[4].cast<int64_t>(),
                     t[5].cast<int64_t>(),
                     t[6].cast<int64_t>(),
-                    t[7].cast<std::pair<int64_t, int64_t>>(),
+                    t[7].cast<int64_t>(),
                     t[8].cast<std::pair<int64_t, int64_t>>(),
-                    t[9].cast<std::vector<std::string>>()
+                    t[9].cast<std::pair<int64_t, int64_t>>(),
+                    t[10].cast<std::vector<std::string>>()
                 );
             }
         ))
