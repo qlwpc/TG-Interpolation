@@ -46,6 +46,7 @@ from .data import IterableDataset
 from .eval import Evaluator
 from .exceptions import OLMoConfigurationError
 from .model import OLMo
+from .transformers_model import HuggingModel
 from .optim import Optimizer, Scheduler
 from .torch_util import (
     barrier,
@@ -212,7 +213,7 @@ except ImportError:
 @dataclass
 class Trainer:
     cfg: TrainConfig
-    model: OLMo
+    model: Union[OLMo, HuggingModel]
     dist_model: Union[DDP, FSDP]
     optim: Optimizer
     scheduler: Scheduler
@@ -1067,6 +1068,8 @@ class Trainer:
                             transformer_grammar_type = self.cfg.model.transformer_grammar_type,
                         )
                     predictions = predictions[0]["input_ids"].numpy()
+                    if self.cfg.model.transformer_grammar_type=="pause1/2_label":
+                        predictions = predictions[1::2]
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
                     predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
 
@@ -1332,7 +1335,7 @@ class Trainer:
 
             torch_profiler = contextlib.nullcontext()
 
-        if self.cfg.load_path is not None and self.global_step > 0 and self.cfg.eval_on_load:
+        if self.cfg.eval_on_load:
             eval_metrics = self.eval()
             if wandb.run is not None:
                 wandb.log(eval_metrics, step=self.global_step)

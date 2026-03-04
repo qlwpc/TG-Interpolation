@@ -859,9 +859,9 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
                     decay.add(fpn)
                 else:
                     no_decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, nn.Linear):
+            elif pn.endswith("weight") and isinstance(m, nn.Linear) and (not fpn.endswith("lm_head.weight") or not cfg.model.weight_tying):
                 decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, (LayerNormBase, nn.LayerNorm)):
+            elif pn.endswith("weight") and (isinstance(m, (LayerNormBase, nn.LayerNorm)) or pn.endswith("norm.weight")):
                 if cfg.optimizer.decay_norm_and_bias:
                     decay.add(fpn)
                 else:
@@ -872,6 +872,8 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
                 else:
                     no_decay.add(fpn)
 
+    if cfg.model.weight_tying and cfg.model.modelname!="OLMo":
+        all_params.pop("module.transformer.lm_head.weight")
     # Validate that we've considered every parameter
     inter_params = decay & no_decay
     union_params = decay | no_decay

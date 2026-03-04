@@ -4,9 +4,16 @@ import os
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from tokenizers import Tokenizer, AddedToken
 from tokenizers.pre_tokenizers import Split
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--model_name', type=str, default="gpt2")
+args = parser.parse_args()
 
-tokenizer = Tokenizer.from_pretrained("gpt2") # tokenizer = GPT2Tokenizer.from_pretrained("gpt2"")", # tokenizer.save_vocabulary("GPT2_tokenizer"")", 
+model = args.model_name
+name = {"gpt2": "gpt2", "qwen3": "Qwen/Qwen3-0.6B"}
+
+tokenizer = Tokenizer.from_pretrained(name[model])
 
 # tokenizer.pre_tokenizer = Split(pattern='\n')
 
@@ -33,8 +40,9 @@ RSB = AddedToken("-RSB-", single_word=True, lstrip=True, rstrip=False, normalize
 tokenizer.add_tokens([LRB, RRB, LCB, RCB, LSB, RSB])
 
 # do not contain "(TOP" or "TOP)"
+# because Qwen3-tokenizer has terminal-tokens "(S" so we must set NT to "(S "
 NT = [ 
-    "(ADJP", "(ADVP", "(CONJP", "(FRAG", "(INTJ", "(LST", "(NAC", "(NML", "(NP", "(PP", "(PRN", "(PRT", "(QP", "(RRC", "(S", "(SBAR", "(SBARQ", "(SINV", "(SQ", "(UCP", "(VP", "(WHADJP", "(WHADVP", "(WHNP", "(WHPP", "(X", 
+    "(ADJP", "(ADVP", "(CONJP", "(FRAG", "(INTJ", "(LST", "(NAC", "(NML", "(NP", "(PP", "(PRN", "(PRT", "(QP", "(RRC", "(S ", "(SBAR", "(SBARQ", "(SINV", "(SQ", "(UCP", "(VP", "(WHADJP", "(WHADVP", "(WHNP", "(WHPP", "(X ", 
      "ADJP)", "ADVP)", "CONJP)", "FRAG)", "INTJ)", "LST)", "NAC)", "NML)", "NP)", "PP)", "PRN)", "PRT)", "QP)", "RRC)", "S)", "SBAR)", "SBARQ)", "SINV)", "SQ)", "UCP)", "VP)", "WHADJP)", "WHADVP)", "WHNP)", "WHPP)", "X)"
 ]
 for non_terminal in NT:
@@ -43,4 +51,4 @@ for non_terminal in NT:
     )
 
 
-tokenizer.save("TG_GPT2_tokenizer.json")
+tokenizer.save(f"../dataset/TG_{model.upper()}_tokenizer.json")

@@ -26,6 +26,8 @@ from olmo.data import build_train_dataloader
 from olmo.eval import build_evaluators
 from olmo.exceptions import OLMoCliError, OLMoConfigurationError
 from olmo.model import OLMo
+from olmo.transformers_model import HuggingModel
+from olmo.tokenizer import Tokenizer
 from olmo.optim import BoltOnWarmupScheduler, build_optimizer, build_scheduler
 from olmo.torch_util import (
     barrier,
@@ -130,17 +132,28 @@ def main(cfg: TrainConfig) -> None:
 
     # Initialize the model.
     log.info("Building model...")
-    olmo_model = OLMo(cfg.model)
+    if cfg.model.modelname=="OLMo":
+        olmo_model = OLMo(cfg.model)
+        # Compile one block at a time.
+        if cfg.compile is not None:
+            if cfg.model.block_group_size != 1:
+                raise OLMoConfigurationError("Compile is only supported with block_group_size 1.")
+            for block in olmo_model.transformer.blocks:
+                block.compile(**cfg.compile.asdict())
+    else:
+        olmo_model = HuggingModel(cfg.model)
+        olmo_model.add_tokens_and_initialize(new_tokenizer=Tokenizer.from_file(cfg.tokenizer.identifier))
+
     log.info(f"Total number of parameters: {olmo_model.num_params():,d}")
     log.info(f"Number of non-embedding parameters: {olmo_model.num_params(include_embedding=False):,d}")
     log.info(f"Peak GPU Memory (MB) before {cfg.distributed_strategy}: {int(peak_gpu_memory() or 0)}")
 
-    # Compile one block at a time.
-    if cfg.compile is not None:
-        if cfg.model.block_group_size != 1:
-            raise OLMoConfigurationError("Compile is only supported with block_group_size 1.")
-        for block in olmo_model.transformer.blocks:
-            block.compile(**cfg.compile.asdict())
+    # # Compile one block at a time.
+    # if cfg.compile is not None:
+    #     if cfg.model.block_group_size != 1:
+    #         raise OLMoConfigurationError("Compile is only supported with block_group_size 1.")
+    #     for block in olmo_model.transformer.blocks:
+    #         block.compile(**cfg.compile.asdict())
 
     olmo_model.set_activation_checkpointing(cfg.activation_checkpointing)
 
