@@ -4,7 +4,7 @@ dry_run: false
 
 wandb:
   name: ${run_name}
-  project: TG-bbcnews
+  project: TG-finewebedu
   entity: qlwpc-shanghaitech-university
 
 model:
@@ -18,7 +18,7 @@ model:
   rope_theta: 500000
   flash_attention: true
   attention_dropout: 0.0
-  include_bias: true
+  include_bias: false
   block_type: sequential
   layer_norm_type: rms
   layer_norm_with_affine: true
@@ -31,10 +31,10 @@ model:
   residual_dropout: 0.0
   embedding_dropout: 0.0
   max_sequence_length: 2048
-  vocab_size: 50320
-  embedding_size : 50320
-  eos_token_id: 50256
-  pad_token_id: 50258
+  vocab_size: 151732
+  embedding_size : 151732
+  eos_token_id: 151643
+  pad_token_id: 151670
   init_device: cuda
   init_fn: normal
   init_std: 0.02
@@ -44,13 +44,11 @@ model:
 # auxiliary_loss_multiplier: 1e-5
 # fused_loss: true
 
-compile: 
-  mode: default
-  fullgraph: false
+compile: null
 
 optimizer:
   name: adamw
-  learning_rate: 7.66e-4
+  learning_rate: 0.001536
   weight_decay: 0.1
   eps: 1e-8
   decay_norm_and_bias: true
@@ -67,8 +65,8 @@ scheduler:
   warmup_min_lr: 0.0
 
 tokenizer:
-  identifier: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
-  vocabulary: /dev/shm/dataset/bbc-news/TG_GPT2_tokenizer.json 
+  identifier: /data/home/scyb223/run/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json
+  vocabulary: /data/home/scyb223/run/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json
   truncate_direction: right
 
 save_folder: workspace/${run_name}
@@ -84,15 +82,15 @@ save_num_unsharded_checkpoints_to_keep: 1
 load_path: null
 
 max_duration: 1ep
-global_train_batch_size: 144
-device_train_microbatch_size: 12
+global_train_batch_size: 536
+device_train_microbatch_size: 8
 
 precision: amp_bf16
 distributed_strategy: fsdp
 
 fsdp:    # ???TODO
-  wrapping_strategy: null
-  sharding_strategy: SHARD_GRAD_OP
+  wrapping_strategy: by_block_group_and_size
+  sharding_strategy: FULL_SHARD
   precision: pure
 
 ddp:
@@ -111,23 +109,27 @@ eval_interval: 1000
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  - label: TG-ppl-validation
-    data:
-      num_workers: 1
-      prefetch_factor : 1
-      pin_memory: true
-      drop_last: false
-      generate_doc_lengths: true
-      paths:
-        - /dev/shm/dataset/bbc-news/terminal/dev.npy
-  - label: TG-ppl-validation-test
-    data:
-      num_workers: 1
-      pin_memory: true
-      drop_last: false
-      generate_doc_lengths: true
-      paths:
-        - /dev/shm/dataset/bbc-news/terminal/test.npy
+    - label: hellaswag
+      type: downstream
+    - label: winogrande
+      type: downstream
+  # - label: TG-ppl-validation
+  #   data:
+  #     num_workers: 1
+  #     prefetch_factor : 1
+  #     pin_memory: true
+  #     drop_last: false
+  #     generate_doc_lengths: true
+  #     paths:
+  #       - /dev/shm/dataset/bbc-news/terminal/dev.npy
+  # - label: TG-ppl-validation-test
+  #   data:
+  #     num_workers: 1
+  #     pin_memory: true
+  #     drop_last: false
+  #     generate_doc_lengths: true
+  #     paths:
+  #       - /dev/shm/dataset/bbc-news/terminal/test.npy
 
 data:
   pad_direction: right
@@ -139,4 +141,248 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - /dev/shm/dataset/bbc-news/terminal/train.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(000|001|002|003)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(004|005|006|007)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(008|009|010|011)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(012|013|014|015)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(016|017|018|019)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(020|021|022|023)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(024|025|026|027)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(028|029|030|031)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(032|033|034|035)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(036|037|038|039)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(040|041|042|043)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(044|045|046|047)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(048|049|050|051)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(052|053|054|055)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(056|057|058|059)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(060|061|062|063)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(064|065|066|067)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(068|069|070|071)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(072|073|074|075)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(076|077|078|079)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(080|081|082|083)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(084|085|086|087)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(088|089|090|091)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(092|093|094|095)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(096|097|098|099)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(100|101|102|103)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(104|105|106|107)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(108|109|110|111)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(112|113|114|115)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(116|117|118|119)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(120|121|122|123)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(124|125|126|127)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(128|129|130|131)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(132|133|134|135)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(136|137|138|139)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(140|141|142|143)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(144|145|146|147)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(148|149|150|151)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(152|153|154|155)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(156|157|158|159)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(160|161|162|163)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(164|165|166|167)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(168|169|170|171)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(172|173|174|175)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(176|177|178|179)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(180|181|182|183)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(184|185|186|187)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(188|189|190|191)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(192|193|194|195)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(196|197|198|199)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(200|201|202|203)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(204|205|206|207)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(208|209|210|211)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(212|213|214|215)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(216|217|218|219)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(220|221|222|223)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(224|225|226|227)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(228|229|230|231)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(232|233|234|235)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(236|237|238|239)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(240|241|242|243)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(244|245|246|247)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(248|249|250|251)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(252|253|254|255)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(256|257|258|259)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(260|261|262|263)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(264|265|266|267)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(268|269|270|271)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(272|273|274|275)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(276|277|278|279)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(280|281|282|283)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(284|285|286|287)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(288|289|290|291)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(292|293|294|295)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(296|297|298|299)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(300|301|302|303)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(304|305|306|307)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(308|309|310|311)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(312|313|314|315)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(316|317|318|319)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(320|321|322|323)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(324|325|326|327)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(328|329|330|331)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(332|333|334|335)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(336|337|338|339)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(340|341|342|343)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(344|345|346|347)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(348|349|350|351)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(352|353|354|355)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(356|357|358|359)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(360|361|362|363)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(364|365|366|367)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(368|369|370|371)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(372|373|374|375)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(376|377|378|379)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(380|381|382|383)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(384|385|386|387)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(388|389|390|391)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(392|393|394|395)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(396|397|398|399)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(400|401|402|403)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(404|405|406|407)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(408|409|410|411)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(412|413|414|415)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(416|417|418|419)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(420|421|422|423)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(424|425|426|427)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(428|429|430|431)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(432|433|434|435)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(436|437|438|439)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(440|441|442|443)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(444|445|446|447)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(448|449|450|451)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(452|453|454|455)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(456|457|458|459)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(460|461|462|463)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(464|465|466|467)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(468|469|470|471)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(472|473|474|475)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(476|477|478|479)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(480|481|482|483)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(484|485|486|487)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(488|489|490|491)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(492|493|494|495)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(496|497|498|499)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(500|501|502|503)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(504|505|506|507)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(508|509|510|511)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(512|513|514|515)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(516|517|518|519)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(520|521|522|523)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(524|525|526|527)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(528|529|530|531)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(532|533|534|535)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(536|537|538|539)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(540|541|542|543)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(544|545|546|547)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(548|549|550|551)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(552|553|554|555)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(556|557|558|559)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(560|561|562|563)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(564|565|566|567)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(568|569|570|571)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(572|573|574|575)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(576|577|578|579)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(580|581|582|583)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(584|585|586|587)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(588|589|590|591)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(592|593|594|595)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(596|597|598|599)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(604|605|606|607)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(608|609|610|611)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(612|613|614|615)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(616|617|618|619)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(620|621|622|623)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(624|625|626|627)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(628|629|630|631)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(632|633|634|635)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(636|637|638|639)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(640|641|642|643)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(644|645|646|647)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(648|649|650|651)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(652|653|654|655)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(656|657|658|659)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(660|661|662|663)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(664|665|666|667)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(668|669|670|671)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(672|673|674|675)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(676|677|678|679)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(680|681|682|683)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(684|685|686|687)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(688|689|690|691)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(692|693|694|695)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(696|697|698|699)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(700|701|702|703)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(704|705|706|707)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(708|709|710|711)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(712|713|714|715)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(716|717|718|719)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(720|721|722|723)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(724|725|726|727)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(728|729|730|731)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(732|733|734|735)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(736|737|738|739)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(740|741|742|743)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(744|745|746|747)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(748|749|750|751)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(752|753|754|755)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(756|757|758|759)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(760|761|762|763)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(764|765|766|767)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(768|769|770|771)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(772|773|774|775)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(776|777|778|779)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(780|781|782|783)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(784|785|786|787)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(788|789|790|791)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(792|793|794|795)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(796|797|798|799)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(800|801|802|803)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(804|805|806|807)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(808|809|810|811)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(812|813|814|815)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(816|817|818|819)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(820|821|822|823)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(824|825|826|827)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(828|829|830|831)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(832|833|834|835)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(836|837|838|839)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(840|841|842|843)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(844|845|846|847)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(848|849|850|851)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(852|853|854|855)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(856|857|858|859)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(860|861|862|863)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(864|865|866|867)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(868|869|870|871)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(872|873|874|875)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(876|877|878|879)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(880|881|882|883)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(884|885|886|887)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(888|889|890|891)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(892|893|894|895)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(896|897|898|899)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(900|901|902|903)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(904|905|906|907)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(908|909|910|911)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(912|913|914|915)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(916|917|918|919)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(920|921|922|923)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(924|925|926|927)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(928|929|930|931)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(932|933|934|935)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(936|937|938|939)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(940|941|942|943)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(944|945|946|947)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(948|949|950|951)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(952|953|954|955)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(956|957|958|959)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(960|961|962|963)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(964|965|966|967)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(968|969|970|971)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(972|973|974|975)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(976|977|978|979)*arrow.npy
+    - /data/home/scyb223/run/TG-Interpolation/dataset/fineweb-edu/terminal/*-00(980|981|982|983)*arrow.npy
