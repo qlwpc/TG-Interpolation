@@ -203,7 +203,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         if self.transformer_grammar_type[:8]=="pause1/2":
             paused_input = torch.zeros(2 * len(input_ids), dtype=input_ids.dtype, device=input_ids.device)
             paused_input[::2] = input_ids
-            paused_input[1::2] = 50260  # Special token
+            paused_input[1::2] = input_ids
             input_ids = paused_input
         out: Dict[str, Any] = {"input_ids": input_ids}
         if self.generate_TG_attention_bias is not None:

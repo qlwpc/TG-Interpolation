@@ -2,11 +2,10 @@
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 1
+#SBATCH --mem=1M
 #SBATCH --gres=gpu:1
-#SBATCH -t 120:00:00
-#SBATCH --partition=critical
-#SBATCH -A tukw-critical
-#SBATCH --exclude=ai_gpu[26-33],ai_gpu0[1-7],sist-a40-0[6-9]
+#SBATCH -t 180:00:00
+#SBATC --exclude=ai_gpu[26-33]
 
 #finewebedu*-00[0-1]*.arrow
 t1=".*-00(000|001|002|003).*arrow"                # running SIST 799076
@@ -261,4 +260,4 @@ input_str="$1"
 echo $input_str
 var_name="t$input_str"
 echo finewebedu${!var_name}
-python parse_input.py --input_list finewebedu${!var_name}
+python -m memory_profiler parse_input.py --input_list finewebedu${!var_name}
