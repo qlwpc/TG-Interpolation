@@ -42,8 +42,8 @@ class TORCHRUN:
     def __init__(self, config_path, scripts="scripts/train.py", **kwargs):
         self.torchrun = ["torchrun  \\", self.set_param("--master_port", kwargs["--master_port"]), 
                                         self.set_param("--nproc-per-node", kwargs["--nproc-per-node"]),
-                                        scripts + "   \\",
-                                        str(config_path.resolve())+ "   \\"]
+                                        "    " + scripts + " \\",
+                                        "    " + str(config_path.resolve())+ " \\"]
         self.configs = kwargs
         self.configs.pop("--master_port")
         self.configs.pop("--nproc-per-node")
@@ -51,13 +51,13 @@ class TORCHRUN:
     
     def set_param(self, key, value) -> str:
         split = "=" if key[:2]=="--" else " "
-        return f"      {split.join([key, str(value)])} \\"
+        return f"    {split.join([key, str(value)])} \\"
 
     def __str__(self):
         return "\n".join(self.torchrun + [self.set_param(key, value) for key,value in self.configs.items()])
 
 Device_args = {
-    "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-35]"}, 
+    "SIST_A40" :      {"-c": 3, "--mem-per-cpu": 32768, "--partition": "critical", "-A": "tukw-critical", "--exclude": "ai_gpu[26-33]"}, 
     "SIST_TITAN" :    {"-c": 2, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
     "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "ShangHAI", "-A": "tukw-ShangHAI"},
     "SIST_normal":    {},
@@ -85,7 +85,9 @@ Models = {
     "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
     "tgtree-500M": {"model.transformer_grammar_type": "tgtree"},
+    "tgtree-100M-early": {"model.transformer_grammar_type": "tgtree"},
     "tgnomask_aug-500M": {"model.transformer_grammar_type": "tgnomask_aug"},
+    "tgnomask_aug-100M-early": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tgnomask": {"model.transformer_grammar_type": "tgnomask"},
     "tgnomask_aug": {"model.transformer_grammar_type": "tgnomask_aug"},
     "tree_shuffle": {"model.transformer_grammar_type": "tree_shuffle"},
@@ -94,6 +96,8 @@ Models = {
     "nomask_mix_tg" : {"model.transformer_grammar_type": "mixing"},
     "pause2048": {"model.transformer_grammar_type": "pause1/2"},
     "pause4096": {"model.transformer_grammar_type": "pause1/2", "model.max_sequence_length": 4096},
+    "pauselabel2048": {"model.transformer_grammar_type": "pause1/2_label"},
+    "pauselabel4096": {"model.transformer_grammar_type": "pause1/2_label", "model.max_sequence_length": 4096},
     "terminal1024" : {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 1024},
 }
 mixing = {
@@ -113,8 +117,26 @@ train_params = {
                       "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6, "device_eval_batch_size": 1, "eval_interval": 1000000, **finetune_params},
     "boolq": {"finetune_task": "boolq", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-6,  "max_duration": "5ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "cb": {"finetune_task": "cb", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "copa": {"finetune_task": "copa", "optimizer.learning_rate": 5.0e-4, "optimizer.weight_decay": 0.1,  "scheduler.t_warmup": 50, "scheduler.min_lr": 2e-5,  "max_duration": "10ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "multirc": {"finetune_task": "multirc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "record": {"finetune_task": "record", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
     "rte": {"finetune_task": "rte", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "3ep",
                "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wic": {"finetune_task": "wic", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "1ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wsc": {"finetune_task": "wsc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "5ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wic": {"finetune_task": "wic", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "1ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "wsc": {"finetune_task": "wsc", "optimizer.learning_rate": 3.0e-4,  "scheduler.t_warmup": 100, "scheduler.min_lr": 1e-5,  "max_duration": "5ep",
+               "global_train_batch_size": 40, "device_train_microbatch_size":10,  **finetune_params},
+    "hellaswag": {**test_only_params},
+    "winogrande": {**test_only_params},
     "docppl": {**test_only_params,},
     "xsum_test": {**test_only_params,},
     "blimp": {**test_only_params, },
@@ -132,7 +154,15 @@ GPU_tasks = {
     "blimp": 2,
     "SG": 2,
     "boolq": 4,
+    "cb": 2,
+    "copa": 2,
+    "multirc": 2,
+    "record": 2,
     "rte": 2,
+    "wic": 2,
+    "wsc": 2,
+    "hellaswag": 4,
+    "winogrande": 2,
 }
 
 Evaltasks = {
@@ -141,9 +171,17 @@ Evaltasks = {
     "xsum_test": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "xsum_finetune": [EvaluatorConfig(label="xsum", type=EvaluatorType.rouge)],
     "SG": [EvaluatorConfig(label="syntactic_generalization", type=EvaluatorType.downstream)],
-    "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=150)],
+    "blimp": [EvaluatorConfig(label="BLiMP", type=EvaluatorType.downstream, device_eval_batch_size=100)],
     "boolq": [EvaluatorConfig(label="boolq", type=EvaluatorType.downstream)],
+    "cb": [EvaluatorConfig(label="cb", type=EvaluatorType.downstream)],
+    "copa": [EvaluatorConfig(label="copa", type=EvaluatorType.downstream)],
+    "multirc": [EvaluatorConfig(label="multirc", type=EvaluatorType.downstream)],
+    "record": [EvaluatorConfig(label="record", type=EvaluatorType.downstream)],
     "rte": [EvaluatorConfig(label="rte", type=EvaluatorType.downstream)],
+    "wic": [EvaluatorConfig(label="wic", type=EvaluatorType.downstream)],
+    "wsc": [EvaluatorConfig(label="wsc", type=EvaluatorType.downstream)],
+    "hellaswag": [EvaluatorConfig(label="hellaswag", type=EvaluatorType.downstream, device_eval_batch_size=5)],
+    "winogrande": [EvaluatorConfig(label="winogrande", type=EvaluatorType.downstream, device_eval_batch_size=5)],
 }
 
 def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
@@ -198,7 +236,7 @@ date
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
     script_filename = f"{run_name}.sh"
-    script_filename = os.path.join(os.path.join(os.getcwd(), modelname), script_filename)
+    script_filename = os.path.join(os.getcwd(), "run_scripts", modelname, script_filename)
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
     
@@ -271,17 +309,21 @@ model_paths = {
     "tree": "/saved_models/Tree_test/step49440-unsharded",
     "tree_shuffle": "/saved_models/Tree_shuffle_pretrain/step49440-unsharded",
     "tree_shuffle_mask": "/saved_models/treeshufflemask_pretrain/step49440-unsharded",
-    "pause2048" : "/saved_models/pause_pretrain/step40267-unsharded",
     "terminal-1B": "/saved_models/terminal_1B/step34115-unsharded",
     "tree-1B": "/saved_models/Tree_1B/step49440-unsharded",
+    "pause2048" : "/saved_models/pause_pretrain/step40267-unsharded",
+    "pauselabel2048": "/saved_models/pause_2labels_2048/step40267-unsharded",
     "pause4096" : "/saved_models/pause_pretrain_4096/step40938-unsharded",
+    "pauselabel4096": "/saved_models/pause_2labels_4096/step40938-unsharded",
     "terminal1024": "/saved_models/terminal_100M_1024/step34115-unsharded",
     "terminal-500M" : "/saved_models/terminal_500M/step34115-unsharded",
     "terminal-100M-early": "/saved_models/terminal_100M_early/step14425-unsharded",
     "tree-500M" : "/saved_models/Tree_500M/step49440-unsharded",
     "tree-100M-early" : "/saved_models/Tree_100M_early/step19233-unsharded",
     "tgtree-500M" : "/saved_models/TGTree_500M/step55853-unsharded",
-    "tgnomask_aug-500M" : "/saved_models/TGnomaskaug_500M/step55853-unsharded"
+    "tgnomask_aug-500M" : "/saved_models/TGnomaskaug_500M/step55853-unsharded",
+    "tgnomask_aug-100M-early": "/saved_models/TGnomaskaug_100M_early/step21637-unsharded",
+    "tgtree-100M-early": "/saved_models/TGTree_100M_early/step21637-unsharded",
 }
 
 
@@ -345,16 +387,18 @@ if __name__ == "__main__":
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "RTX3090"
-    modelname = "tgnomask_aug-500M"
-    task = ["SG", "blimp", "xsum_finetune", "boolq", "rte"]
-    # task = ["docppl"]
+    modelname = "terminal-1B"
+    # task = ["xsum_finetune", "boolq", "rte"]
+    # task += ["docppl"]
+    # task += ["hellaswag"]
+    task = ["winogrande"]
     load_path = True
     if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
         robust_directory_check(load_path)
     
-    os.makedirs(modelname, exist_ok=True)
-    save_dir = os.path.join(os.getcwd(), modelname)
+    save_dir = os.path.join(os.getcwd(), "run_scripts", modelname)
+    os.makedirs(save_dir, exist_ok=True)
     for pertask in task:
         run_name = f"{pertask}_test"
         save_path = os.path.join(save_dir, f"config_{run_name}.yaml")

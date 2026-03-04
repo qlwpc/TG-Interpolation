@@ -80,6 +80,8 @@ class ICLMetric(Metric):
                 # print(lm_cont_logits)
                 log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
+                # print(batch["input_ids"][idx])
+                # print(torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)))
                 log_likelihood = (
                     torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum() / batch["cont_str_len"][idx]
                 )
@@ -443,6 +445,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
+            # print(self.token_decode(sample["query"]))
+            # print(sample["query"])
+            # print(f"ctx_len is {sample['ctx_len']}")
+            # print(f'cont_len is {sample["cont_len"]}')
+
             # print(self.token_decode(sample["query"]))
             # print(sample["query"])
             # print(f"ctx_len is {sample['ctx_len']}")
@@ -1612,9 +1619,19 @@ class COPA(ICLMultiChoiceTaskDataset):
     metric_type = "acc"
     COPAPATH = "./dataset/SuperGLUE/COPA/"
     LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
+    metric_type = "acc"
+    COPAPATH = "./dataset/SuperGLUE/COPA/"
+    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
     def __init__(
         self,
         tokenizer,
+        dataset_path="super_glue",
+        dataset_name="copa",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
         dataset_path="super_glue",
         dataset_name="copa",
         model_ctx_len=2048,
@@ -1627,6 +1644,23 @@ class COPA(ICLMultiChoiceTaskDataset):
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.COPAPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "choice1", "choice2"]:
+            with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+    
             model_ctx_len=model_ctx_len,
             split=split,
             transformer_grammar_type=transformer_grammar_type,
@@ -1671,11 +1705,28 @@ class COPA(ICLMultiChoiceTaskDataset):
             return [choices_list[label]]
         else:
             return choices_list
+        def convert_choice(sent):
+            tokens = sent.split()
+            for i, token in enumerate(tokens):
+                if token[0] != '(':
+                    tokens[i] = token[0].lower() + token[1:]
+                    break
+            return ' '.join(tokens[:-2])
+        
+        choices_list = [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [choices_list[label]]
+        else:
+            return choices_list
 
     def doc_to_label(self, doc):
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
+        connector = "because" if doc["question"] == "cause" else "therefore"
         connector = "because" if doc["question"] == "cause" else "therefore"
         del doc
         return "<(SBAR>" + connector
@@ -2068,6 +2119,10 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
     shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
                   "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
                   "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
+    SwagPATH = "./dataset/hellaswag/"
+    shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
+                  "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
+                  "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
 
     def __init__(
         self,
@@ -2094,6 +2149,11 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
         )
 
     @classmethod
@@ -2101,6 +2161,8 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         text = text.strip()
         # NOTE: Brackets are artifacts of the WikiHow dataset portion of HellaSwag.
         text = text.replace(" [title]", ". ")
+        text = re.sub("\\[.*?\\] ", "", text)
+        text = text.replace("..", ".")
         text = re.sub("\\[.*?\\] ", "", text)
         text = text.replace("..", ".")
         text = text.replace("  ", " ")
@@ -2148,11 +2210,13 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
 
     def doc_to_continuations(self, doc):
         return [ending for ending in doc["endings"]]
+        return [ending for ending in doc["endings"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"])
 
     def doc_to_domain_conditional(self, doc):
+        return doc["ctx_a"].split(" ")[-1]
         return doc["ctx_a"].split(" ")[-1]
 
 
@@ -2183,6 +2247,13 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         self,
         tokenizer,
         dataset_path="winogrande",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        shots_num=5,
         dataset_name=None,
         model_ctx_len=2048,
         split="val",
@@ -2274,7 +2345,9 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             # tokenize
             continuation = self.token_encode(continuation_str)
             continuation = self.convert_grammar_input(continuation)
+            continuation = self.convert_grammar_input(continuation)
             for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
+                doc_text = ctx
                 doc_text = ctx
                 ctx = self.token_encode(ctx)
                 dc = self.token_encode(dc)
@@ -2284,12 +2357,24 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                     query = ctx + continuation
                 else:
                     query = ctx + continuation[:-1]
+                if self.split=="train":
+                    query = ctx + continuation
+                else:
+                    query = ctx + continuation[:-1]
                 query = query[-self.model_ctx_len :]
+                query = self.convert_grammar_input(query)
+                actual_ctx_len = len(query) - len(continuation) + 1
                 query = self.convert_grammar_input(query)
                 actual_ctx_len = len(query) - len(continuation) + 1
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
+                if self.split=="train":
+                    dc_query = dc + continuation
+                else:
+                    dc_query = dc + continuation[:-1]
+                
+                cont_str_len = len(self.token_decode(continuation)) - 1
                 if self.split=="train":
                     dc_query = dc + continuation
                 else:
@@ -2303,7 +2388,9 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                         "doc_id": doc_id,
                         "cont_id": cont_id,
                         # "ctx": ctx,
+                        # "ctx": ctx,
                         "continuation": continuation,
+                        "ctx_len": actual_ctx_len,
                         "ctx_len": actual_ctx_len,
                         "dc_len": len(dc),
                         "cont_len": len(
@@ -2337,6 +2424,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
         return doc["continuation"]
+        return doc["continuation"]
 
     def doc_to_label(self, doc):
         return int(doc["answer"]) - 1
@@ -2351,8 +2439,13 @@ class PIQA(ICLMultiChoiceTaskDataset):
     space added as prefix to each continuation
 
     implement PMI_DC
+    implement PMI_DC
 
     {
+        'goal': "How do I ready a guinea pig cage for it's new occupants?",
+        'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
+        'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
+        'label': 0
         'goal': "How do I ready a guinea pig cage for it's new occupants?",
         'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
         'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
@@ -2365,6 +2458,8 @@ class PIQA(ICLMultiChoiceTaskDataset):
     def __init__(
         self,
         tokenizer,
+        dataset_path="piqa",
+        dataset_name="plain_text",
         dataset_path="piqa",
         dataset_name="plain_text",
     ):
@@ -2380,15 +2475,30 @@ class PIQA(ICLMultiChoiceTaskDataset):
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
         return [" " + doc["sol1"], " " + doc["sol2"]]
+        return [" " + doc["sol1"], " " + doc["sol2"]]
 
     def doc_to_label(self, doc):
+        return doc["label"]
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
         del doc
         return "Answer:"
+        del doc
+        return "Answer:"
 
 
+class OpenBookQA(ICLMultiChoiceTaskDataset):
+    """OBQA: question_stem is sent as context (no special prompt format) and choices are sent as continuation
+        space added as prefix to each continuation
+
+        implement PMI_DC
+
+    {
+        'question_stem': 'Frilled sharks and angler fish live far beneath the surface of the ocean, which is why they are known as',
+        'choices': {'text': ['Deep sea animals', 'fish', 'Long Sea Fish', 'Far Sea Animals'],
+        'label': ['A', 'B', 'C', 'D']},
+        'answerKey': 'A'
 class OpenBookQA(ICLMultiChoiceTaskDataset):
     """OBQA: question_stem is sent as context (no special prompt format) and choices are sent as continuation
         space added as prefix to each continuation
@@ -2405,9 +2515,13 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
 
     metric_type = "len_norm"
 
+    metric_type = "len_norm"
+
     def __init__(
         self,
         tokenizer,
+        dataset_path="openbookqa",
+        dataset_name="main",
         dataset_path="openbookqa",
         dataset_name="main",
     ):
@@ -2416,15 +2530,19 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
             dataset_path=dataset_path,
             dataset_name=dataset_name,
         )
+        )
 
     def doc_to_text(self, doc):
+        return doc["question_stem"]
         return doc["question_stem"]
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
         return [" " + choice for choice in doc["choices"]["text"]]
+        return [" " + choice for choice in doc["choices"]["text"]]
 
     def doc_to_label(self, doc):
+        return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
         return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
 
     def doc_to_domain_conditional(self, doc):
@@ -3219,7 +3337,10 @@ TG_task_map = {
 Super_GLUE = {
     "boolq": BoolQ,
     "cb": CommitmentBank,
+    "cb": CommitmentBank,
     "copa": COPA,
+    "multirc": MultiRC, 
+    "record": ReCoRD,
     "multirc": MultiRC, 
     "record": ReCoRD,
     "rte": RTE,
