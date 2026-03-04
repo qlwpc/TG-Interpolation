@@ -89,7 +89,11 @@ def my_retokenize(
             # print(f"word = {words[word_idx]}")
             while token_end <= word_start:
                 # print(f"token_idx = {token_idx} token_start = {token_start}, end = {token_end}")
-                token_idx, (token_start, token_end) = next(offset_mapping_iter)
+                try:
+                    token_idx, (token_start, token_end) = next(offset_mapping_iter)
+                except StopIteration:
+                    #assert word_idx == len(words) - 1
+                    break
             if token_end > word_end:
                 words_from_tokens[word_idx] = token_idx
             while token_end <= word_end:
