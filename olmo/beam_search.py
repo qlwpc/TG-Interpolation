@@ -1007,6 +1007,26 @@ class BeamSearch:
             # ancestors created this iteration.
             self._update_state(state, backpointer)
 
+            # reconstructed_predictions = self._reconstruct_sequences(predictions, backpointers)
+
+            # # shape: (batch_size, beam_size, max_steps)
+            # all_predictions = torch.cat(list(reversed(reconstructed_predictions)), 2)
+
+            # # Calculate the final sequence scores
+            # # shape: (batch_size, beam_size)
+            # final_scores = self.final_sequence_scorer.score(all_predictions, last_log_probabilities, self._end_index)
+
+            # # Sort the sequences based on the final scores so the best scoring
+            # # sequence is at index 0
+            # sorted_final_scores, sorted_indices = torch.sort(final_scores, dim=1, descending=True)
+            # sorted_all_predictions = torch.gather(
+            #     all_predictions, 1, sorted_indices.unsqueeze(-1).expand_as(all_predictions)
+            # )
+            # from tokenizers import Tokenizer
+            # tmptokenizer:Tokenizer = Tokenizer.from_file("/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json")
+            # for j in range(sorted_final_scores.shape[1]):
+            #     print(f"score is {sorted_final_scores[0, j]} {tmptokenizer.decode(sorted_all_predictions[0, j, :].cpu().tolist(), skip_special_tokens=False)}")
+
             for i, constraint in enumerate(self.constraints):
                 constraint_states[i] = constraint.update_state(
                     constraint_states[i], restricted_predicted_classes, last_backpointer=backpointer

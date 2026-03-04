@@ -36,7 +36,7 @@ class ICLMetric(Metric):
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-
+        # self.tokenizer = Tokenizer.from_file("/2024233198/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
 
@@ -46,7 +46,6 @@ class ICLMetric(Metric):
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
         lm_logits = F.log_softmax(lm_logits, dim=-1, dtype=torch.float32)
-        # print(batch)
         if self.metric_type == "pmi_dc":
             assert dc_lm_logits is not None, "PMI_DC acc type selected but no domain conditional logits provided"
 
@@ -55,7 +54,7 @@ class ICLMetric(Metric):
             cont_tokens = batch["continuation"][idx][: batch["cont_len"][idx]]
             # get logits from LM for the continuation: [cont_len, vocab]
             # batch['input_ids'][idx] -> ctx + cont + padding
-            # -1 in both indices: lm_logits will be left shited 1 pos as 0th pos in input generates next token in the 0th pos of lm_logits
+            # -1 in both indices: lm_logits will be left shifted 1 pos as 0th pos in input generates next token in the 0th pos of lm_logits
             lm_cont_logits = lm_logits[idx][
                 batch["ctx_len"][idx] - 1 : batch["ctx_len"][idx] + batch["cont_len"][idx] - 1
             ]
@@ -75,6 +74,10 @@ class ICLMetric(Metric):
                 )
             elif self.metric_type == "acc" or self.metric_type == "f1":
                 # gather log-probs at continuation token indices
+                # print(cont_tokens)
+                # print(self.tokenizer.decode(cont_tokens.tolist(), skip_special_tokens=False))
+                # print(f'{ batch["ctx_len"][idx] - 1 } : {batch["ctx_len"][idx] + batch["cont_len"][idx] - 1}')
+                # print(lm_cont_logits)
                 log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
                 # print(batch["input_ids"][idx])
@@ -82,7 +85,11 @@ class ICLMetric(Metric):
                 log_likelihood = (
                     torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum() / batch["cont_str_len"][idx]
                 )
-                # print(f"log_likelihood is {log_likelihood}")
+                # print(self.tokenizer.decode(batch["input_ids"][idx].tolist(),skip_special_tokens=False),
+                #  self.tokenizer.decode(cont_tokens.tolist(),skip_special_tokens=False), 
+                #   cont_tokens, 
+                #   torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)),
+                #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood}", sep="\n")
                 if self.metric_type == "ce_loss":
                     log_likelihood = -log_likelihood
             elif self.metric_type == "bpb":
@@ -234,7 +241,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     def convert_grammar_input(self, input_ids) -> List[int]:
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
-        if self.transformer_grammar_type == "terminal":
+        if self.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
         elif self.transformer_grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
@@ -262,8 +269,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 dc = self.convert_grammar_input(dc)
 
                 for cont_id, continuation_str in enumerate(continuations):
-                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
-                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
+                    # cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
+                    # cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     continuation = self.token_encode(continuation_str)
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
@@ -276,6 +283,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     query = query[-self.model_ctx_len :]
                     query = self.convert_grammar_input(query)
                     continuation = self.convert_grammar_input(continuation)
+                    continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
                     
@@ -286,9 +294,25 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     else:
                         dc_query = dc + continuation[:-1]
 
-                    cont_str_len = len(self.token_decode(continuation)) - 1
-
+                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
+                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     # form a sample
+
+                    if self.transformer_grammar_type[:8] == "pause1/2":
+                        paused_input = query + query
+                        paused_input[::2] = query
+                        paused_input[1::2] = query
+                        query = paused_input
+                        pause_dc = dc_query + dc_query
+                        pause_dc[::2] = dc_query
+                        pause_dc[1::2] = dc_query
+                        dc_query = pause_dc
+                        tmp_cont = continuation + continuation
+                        tmp_cont[::2] = continuation
+                        tmp_cont[1::2] = continuation
+                        continuation = tmp_cont[:-1]
+                        actual_ctx_len *= 2
+
                     self.samples.append(
                         {
                             "doc_id": doc_id,
@@ -314,7 +338,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         ds_name = ds_name[0]
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}\n" +
+                        + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
                         f"input_ids is {self.token_decode(query)}"
                     )
 
@@ -373,8 +397,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         label_ids = []
         all_attention_bias = []
         all_label_mask = []
-        if self.transformer_grammar_type[:8] == "pause1/2":
-            max_query_len *= 2
+        # if self.transformer_grammar_type[:8] == "pause1/2":
+        #     max_query_len *= 2
+        #     max_cont_len = max_cont_len * 2 - 1
 
         # pad according to max_lengths
         for sample in data:
@@ -384,14 +409,6 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     input_ids = np.array(input_ids)
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
                 input_ids = input_ids.tolist()
-            elif self.transformer_grammar_type[:8] == "pause1/2":
-                paused_input = input_ids + input_ids
-                paused_input[::2] = input_ids
-                paused_input[1::2] = [50260] * len(input_ids)  # Special token
-                input_ids = paused_input
-                sample["ctx_len"] *= 2
-                sample["dc_len"] *= 2
-                sample["cont_len"] *= 2
             input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=None if self.transformer_grammar_type[:8]!="pause1/2" else self.model_ctx_len * 2))
             queries.append(input_ids)
 
@@ -428,6 +445,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
+            # print(self.token_decode(sample["query"]))
+            # print(sample["query"])
+            # print(f"ctx_len is {sample['ctx_len']}")
+            # print(f'cont_len is {sample["cont_len"]}')
+
             # print(self.token_decode(sample["query"]))
             # print(sample["query"])
             # print(f"ctx_len is {sample['ctx_len']}")
@@ -511,7 +533,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.collator.vocab = self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
-        self.prompts = "<|SEP|> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <|SEP|>"
+        self.prompts = " \n <(S> <(VP> Summarize <(NP> the above article <NP)> <(PP> in <(NP> 1 sentence <NP)> <PP)> <VP)> . <S)>  \n"
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
 
@@ -599,7 +621,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         elif self.transformer_grammar_type[:8] == "pause1/2":
             paused_input = np.zeros(2 * len(input_ids))
             paused_input[::2] = input_ids
-            paused_input[1::2] = 50260  # Special token
+            paused_input[1::2] = input_ids # 50260  # Special token
             input_ids = paused_input
         elif self.generate_TG_attention_bias is not None:            
             input_ids = torch.tensor(input_ids)
@@ -1128,7 +1150,7 @@ class SGDataset(metaclass=abc.ABCMeta):
                             sent["tag"][0] = pause_tag[1:]
                             paused_input = torch.zeros(2 * sent["input_ids"].shape[1], dtype=torch.long)
                             paused_input[::2] = sent["input_ids"][0]
-                            paused_input[1::2] = 50260  # Special token
+                            paused_input[1::2] = sent["input_ids"][0] # 50260  # Special token
                             sent["input_ids"] = paused_input.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:
                             cur.append(sent)
@@ -1421,7 +1443,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
 
 
 class BoolQ(ICLMultiChoiceTaskDataset):
-    """Prompt: "{passage}\nQuestion: {question}?\nAnswer:"
+    """Prompt: "{passage} \nQuestion: {question}? \nAnswer:"
     continuation: yes, no
 
     acc, random at 50% (SuperGLUE)
@@ -1474,7 +1496,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
             tokens = sent.split()
             return ' '.join(tokens[1:-1])
         
-        return doc["passage"] + " <|SEP|> (SQ (NP Question NP) : (SQ " + convert_question(doc["question"]) + " ? SQ) SQ) <|SEP|> (NP (NP Answer NP) : (NP"
+        return doc["passage"] + " \n<(SQ><(NP> Question<NP)> :<(SQ>" + convert_question(doc["question"]) + " ?<SQ)><SQ)> \n<(NP><(NP> Answer<NP)> :<(NP>"
 
     def doc_to_continuations(self, doc):
         label = doc["label"]
@@ -1494,12 +1516,12 @@ class BoolQ(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "(NP (NP Answer NP) : (NP"
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
 
 
-# TODO:
+
 class CommitmentBank(ICLMultiChoiceTaskDataset):
-    """Prompt: "{premise}\nQuestion:{hypothesis}. True, False or Neither?\nAnswer:"
+    """Prompt: "{premise} \nQuestion:{hypothesis}. True, False or Neither? \nAnswer:"
     continuations: True, False, Neither.
 
     implement PMI_DC
@@ -1553,7 +1575,7 @@ class CommitmentBank(ICLMultiChoiceTaskDataset):
             tokens = sent.split()
             return ' '.join(tokens[:-1]) + " . " + tokens[-1]
         
-        return doc["premise"] + " <|SEP|> (NP (NP Question NP) : " + convert_hypothesis(doc["hypothesis"]) + " NP) (FRAG True, False or Neither ? FRAG) <|SEP|> (NP (NP Answer NP) : (NP"
+        return doc["premise"] + " \n<(NP><(NP> Question<NP)> :" + convert_hypothesis(doc["hypothesis"]) + "<NP)><(FRAG> True, False or Neither ?<FRAG)> \n<(NP><(NP> Answer<NP)> :<(NP>"
 
     def doc_to_continuations(self, doc):
         label = self.LABEL_DICT[doc["label"]]
@@ -1569,7 +1591,7 @@ class CommitmentBank(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "(NP (NP Answer NP) : (NP"
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
 
 
 # TODO: 
@@ -1628,6 +1650,16 @@ class COPA(ICLMultiChoiceTaskDataset):
             with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
                 for idx, line in enumerate(file):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.COPAPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "choice1", "choice2"]:
+            with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
     
     def doc_to_text(self, doc):
         # Remove the tail part for inserting choices.
@@ -1636,10 +1668,26 @@ class COPA(ICLMultiChoiceTaskDataset):
             return ' '.join(tokens[:-3])
 
         connector = "because" if doc["question"] == "cause" else "therefore"
-        return convert_premise(doc["premise"]) + " (SBAR " + connector
+        return convert_premise(doc["premise"]) + "<(SBAR>" + connector
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
+        def convert_choice(sent):
+            tokens = sent.split()
+            for i, token in enumerate(tokens):
+                if token[0] != '(':
+                    tokens[i] = token[0].lower() + token[1:]
+                    break
+            return ' '.join(tokens[:-2])
+        
+        choices_list = [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [choices_list[label]]
+        else:
+            return choices_list
         def convert_choice(sent):
             tokens = sent.split()
             for i, token in enumerate(tokens):
@@ -1662,13 +1710,14 @@ class COPA(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         connector = "because" if doc["question"] == "cause" else "therefore"
+        connector = "because" if doc["question"] == "cause" else "therefore"
         del doc
-        return "(SBAR " + connector
+        return "<(SBAR>" + connector
 
 
 # TODO: 
 class MultiRC(ICLMultiChoiceTaskDataset):
-    """Prompt: {passage}\nQuestion: {Question}\nAnswer: {Answer}\nIs the answer correct? {yes/no}
+    """Prompt: {passage} \nQuestion: {Question} \nAnswer: {Answer} \nIs the answer correct? {yes/no}
 
     {
         "passage": {
@@ -1746,12 +1795,12 @@ class MultiRC(ICLMultiChoiceTaskDataset):
 
 # TODO: 
 class ReCoRD(ICLMultiChoiceTaskDataset):
-    """Prompt: "{passage[text]}\n"
+    """Prompt: "{passage[text]} \n"
 
     {
         "source": "Daily mail",
         "passage": {
-            "text": "The harrowing stories of women and children locked up for so-called 'moral crimes' in Afghanistan's notorious female prison have been revealed after cameras were allowed inside. Mariam has been in Badam Bagh prison for three months after she shot a man who just raped her at gunpoint and then turned the weapon on herself - but she has yet to been charged. Nuria has eight months left to serve of her sentence for trying to divorce her husband. She gave birth in prison to her son and they share a cell together. Scroll down for video Nuria was jailed for trying to divorce her husband. Her son is one of 62 children living at Badam Bagh prison\n@highlight\nMost of the 202 Badam Bagh inmates are jailed for so-called 'moral crimes'\n@highlight\nCrimes include leaving their husbands or refusing an arrange marriage\n@highlight\n62 children live there and share cells with their mothers and five others",
+            "text": "The harrowing stories of women and children locked up for so-called 'moral crimes' in Afghanistan's notorious female prison have been revealed after cameras were allowed inside. Mariam has been in Badam Bagh prison for three months after she shot a man who just raped her at gunpoint and then turned the weapon on herself - but she has yet to been charged. Nuria has eight months left to serve of her sentence for trying to divorce her husband. She gave birth in prison to her son and they share a cell together. Scroll down for video Nuria was jailed for trying to divorce her husband. Her son is one of 62 children living at Badam Bagh prison \n@highlight \nMost of the 202 Badam Bagh inmates are jailed for so-called 'moral crimes' \n@highlight \nCrimes include leaving their husbands or refusing an arrange marriage \n@highlight \n62 children live there and share cells with their mothers and five others",
             "entities": [ { "start": 86, "end": 96 },
                           { "start": 178, "end": 183 },
                           { "start": 197, "end": 206 },
@@ -1818,7 +1867,7 @@ class ReCoRD(ICLMultiChoiceTaskDataset):
 
 
 class RTE(ICLMultiChoiceTaskDataset):
-    """Prompt: "{sentence1}\nQuestion: {sentence2} True or False?\nAnswer:"
+    """Prompt: "{sentence1} \nQuestion: {sentence2} True or False? \nAnswer:"
     continuations: True, False
 
     implement PMI_DC
@@ -1867,7 +1916,7 @@ class RTE(ICLMultiChoiceTaskDataset):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
 
     def doc_to_text(self, doc):
-        return doc["premise"] + " <|SEP|> (S (NP Question NP) : " + doc["hypothesis"] + " S) (ADJP (ADJP True or False ADJP) ? ADJP) <|SEP|> (NP (NP Answer NP) : (NP"
+        return doc["premise"] + " \n<(S><(NP> Question<NP)> :" + doc["hypothesis"] + "<S)><(ADJP><(ADJP> True or False<ADJP)> ?<ADJP)> \n<(NP><(NP> Answer<NP)> :<(NP>"
 
     def doc_to_continuations(self, doc):
         label = self.LABEL_DICT[doc["label"]]
@@ -1883,12 +1932,12 @@ class RTE(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "(NP (NP Answer NP) : (NP"
+        return "<(NP> <(NP> Answer <NP)> : (NP"
     
 
 # TODO: 
 class WiC(ICLMultiChoiceTaskDataset):
-    """Prompt: "Sentence 1: {sentence1}\nSentence 2: {sentence2}\nQuestion: Is the word '{word}' used in the same way in the two sentences above?\nAnswer: "
+    """Prompt: "Sentence 1: {sentence1} \nSentence 2: {sentence2} \nQuestion: Is the word '{word}' used in the same way in the two sentences above? \nAnswer: "
 
     acc, random at 50% (SuperGLUE) 
     continuation: yes, no
@@ -1936,7 +1985,7 @@ class WiC(ICLMultiChoiceTaskDataset):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
 
     def doc_to_text(self, doc):
-        return "(NP (NP Sentence 1 NP) : " + doc["sentence1"] + " NP) <|SEP|> (NP (NP Sentence 2 NP) : " + doc["sentence2"] + " NP) <|SEP|> (SQ (NP Question NP) : (SQ Is (NP (NP the word NP) ' (NP " + doc["word"] + " NP) ' NP) (VP used (PP in (NP the same way NP) PP) (PP in (NP (NP the two sentences NP) (ADVP above ADVP) NP) PP) VP) SQ) ? SQ) <|SEP|> (NP (NP Answer : NP) (NP"
+        return "<(NP><(NP> Sentence 1<NP)> :" + doc["sentence1"] + "<NP)> \n<(NP><(NP> Sentence 2<NP)> :" + doc["sentence2"] + "<NP)> \n<(SQ><(NP> Question<NP)> :<(SQ> Is<(NP><(NP> the word<NP)> '<(NP>" + doc["word"] + "<NP)> '<NP)><(VP> used<(PP> in<(NP> the same way<NP)><PP)><(PP> in<(NP><(NP> the two sentences<NP)><(ADVP> above<ADVP)><NP)><PP)><VP)><SQ)> ?<SQ)> \n<(NP><(NP> Answer :<NP)><(NP>"
 
     def doc_to_continuations(self, doc):
         label = doc["label"]
@@ -1956,12 +2005,12 @@ class WiC(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "(NP (NP Answer NP) : (NP"
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
 
 
 # TODO: 
 class WSC(ICLMultiChoiceTaskDataset):
-    """Prompt: "{text}\nQuestion: In the passage above, does the pronoun {span1_text} refer to {span2_text}?\nAnswer: "
+    """Prompt: "{text} \nQuestion: In the passage above, does the pronoun {span1_text} refer to {span2_text}? \nAnswer: "
 
     acc, random at 50% (SuperGLUE) 
     continuation: yes, no
@@ -2011,7 +2060,7 @@ class WSC(ICLMultiChoiceTaskDataset):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
 
     def doc_to_text(self, doc):
-        return doc["text"] + " <|SEP|> (NP Question : NP) (SQ (PP In (NP (NP the passage NP) (ADVP above ADVP) NP) PP) , does (NP (NP the pronoun NP) ' (NP " + doc["target"]["span1_text"] + " NP) ' NP) (VP refer (PP to ' (NP " + doc["target"]["span2_text"] + " NP) ' PP) VP) ? SQ) <|SEP|> (NP (NP Answer : NP) (NP"
+        return doc["text"] + " \n<(NP> Question :<NP)><(SQ><(PP> In<(NP><(NP> the passage<NP)><(ADVP> above<ADVP)><NP)><PP)> , does<(NP><(NP> the pronoun<NP)> '<(NP> " + doc["target"]["span1_text"] + "<NP)> '<NP)><(VP> refer<(PP> to '<(NP> " + doc["target"]["span2_text"] + "<NP)> '<PP)><VP)> ?<SQ)> \n<(NP><(NP> Answer :<NP)><(NP>"
 
     def doc_to_continuations(self, doc):
         label = doc["label"]
@@ -2031,7 +2080,7 @@ class WSC(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "(NP (NP Answer NP) : (NP"
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
     
 
 class HellaSwag(ICLMultiChoiceTaskDataset):
@@ -2067,6 +2116,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         shots_num=5,
     ):
         self.shots_num = shots_num
+        self.shots_str = ""
         if split!="train":
             self.prepare_shots()
         super().__init__(
@@ -2087,6 +2137,8 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         text = text.replace(" [title]", ". ")
         text = re.sub("\\[.*?\\] ", "", text)
         text = text.replace("..", ".")
+        text = re.sub("\\[.*?\\] ", "", text)
+        text = text.replace("..", ".")
         text = text.replace("  ", " ")
         return text
 
@@ -2104,6 +2156,8 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
                 else:
                     dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
         
+        # if split!='train':
+        #     dataset = dataset[:50]
         if ret:
             return dataset
         else:
@@ -2122,19 +2176,21 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         self.shots_str = ""
         for i in range(self.shots_num):
             doc = self.shots[i]
-            self.shots_str += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc)[self.doc_to_label(doc)] + "<|SEP|><|SEP|>"
+            self.shots_str += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc)[self.doc_to_label(doc)] + " \n \n"
 
 
     def doc_to_text(self, doc, single_shot=False):
-        return (self.shots_str if single_shot==False else "") + "(NP " + doc["activity_label"] + " NP) <|SEP|> " + doc["ctx_a"]
+        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"]
 
     def doc_to_continuations(self, doc):
+        return [ending for ending in doc["endings"]]
         return [ending for ending in doc["endings"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"])
 
     def doc_to_domain_conditional(self, doc):
+        return doc["ctx_a"].split(" ")[-1]
         return doc["ctx_a"].split(" ")[-1]
 
 
@@ -2159,6 +2215,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
     metric_type = "acc"
     WinoPATH = "./dataset/winogrande/"
+    shots_list = [19875, 26035, 2302, 13568, 7412]
 
     def __init__(
         self,
@@ -2174,8 +2231,8 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
     ):
         # all winogrande datasets have same val set
         self.shots_num = shots_num
-        # if split!="train":
-        #     self.prepare_shots()
+        if split!="train":
+            self.prepare_shots()
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
@@ -2189,7 +2246,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
     def load_local_datasets(self, split=None, ret=False):
         split = self.split if split is None else split
-        dataset = datasets.load_dataset("allenai/winogrande", "winogrande_xl", split=split if split!="val" else "validation")
+        dataset = datasets.load_from_disk(f"./dataset/winogrande/{split}")
         dataset = list(dataset)
         with open(os.path.join(self.WinoPATH, f"winogrande_{split}.txt"), "r") as file:
             for idx, line in enumerate(file):
@@ -2204,11 +2261,11 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             left_text, right_text = dataset[idx]["sentence"].split("_", 1)
             left_text = left_text + dataset[idx][f"option{answer_label}"]
             i, j = 0, 0
-            while j<len(left_text):
+            while j<len(left_text) and i<len(tree_tokens):
                 for char in tree_tokens[i]:
-                   while j<len(left_text) and left_text[j]==" ":
-                       j += 1
-                   if j<len(left_text) and char == left_text[j]:
+                    while j<len(left_text) and re.match(r"\s", left_text[j]):
+                        j += 1
+                    if j<len(left_text) and char == left_text[j]:
                         j += 1
                 i += 1
             if j<len(left_text):
@@ -2228,6 +2285,17 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         else:
             self.dataset = dataset
 
+    def prepare_shots(self):
+        train = self.load_local_datasets(split="train", ret=True)
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        
+        self.shots_str = ""
+        for i in range(self.shots_num):
+            doc = self.shots[i]
+            self.shots_str += self.doc_to_text(doc, single_shot=True)[self.doc_to_label(doc)] + self.doc_to_continuations(doc) + " \n \n"
+
     def prep_examples(self):
         """Overwrite for WinoGrande as multiple ctx, single continuation"""
         doc_id = 0
@@ -2244,7 +2312,9 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             # tokenize
             continuation = self.token_encode(continuation_str)
             continuation = self.convert_grammar_input(continuation)
+            continuation = self.convert_grammar_input(continuation)
             for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
+                doc_text = ctx
                 doc_text = ctx
                 ctx = self.token_encode(ctx)
                 dc = self.token_encode(dc)
@@ -2254,12 +2324,24 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                     query = ctx + continuation
                 else:
                     query = ctx + continuation[:-1]
+                if self.split=="train":
+                    query = ctx + continuation
+                else:
+                    query = ctx + continuation[:-1]
                 query = query[-self.model_ctx_len :]
+                query = self.convert_grammar_input(query)
+                actual_ctx_len = len(query) - len(continuation) + 1
                 query = self.convert_grammar_input(query)
                 actual_ctx_len = len(query) - len(continuation) + 1
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
+                if self.split=="train":
+                    dc_query = dc + continuation
+                else:
+                    dc_query = dc + continuation[:-1]
+                
+                cont_str_len = len(self.token_decode(continuation)) - 1
                 if self.split=="train":
                     dc_query = dc + continuation
                 else:
@@ -2273,7 +2355,9 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                         "doc_id": doc_id,
                         "cont_id": cont_id,
                         # "ctx": ctx,
+                        # "ctx": ctx,
                         "continuation": continuation,
+                        "ctx_len": actual_ctx_len,
                         "ctx_len": actual_ctx_len,
                         "dc_len": len(dc),
                         "cont_len": len(
@@ -2294,18 +2378,19 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                         ds_name = ds_name[0]
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuation_str}\n" +
+                        + f" \ndoc_text: {doc_text} \ncontinuations: {continuation_str} \n" +
                         f"input_ids is {self.token_decode(query)}"
                     )
 
             doc_id += 1
 
-    def doc_to_text(self, doc):
+    def doc_to_text(self, doc, single_shot=False):
         # special case where there are multiple ctx and single continuation
-        return doc["ctxs"]
+        return [(self.shots_str if single_shot==False else "") + ctx for ctx in doc["ctxs"]]
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
+        return doc["continuation"]
         return doc["continuation"]
 
     def doc_to_label(self, doc):
@@ -2317,12 +2402,16 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
 
 class PIQA(ICLMultiChoiceTaskDataset):
-    """PIQA sends context in the following fashion: "Question: GOAL\nAnswer:"
+    """PIQA sends context in the following fashion: "Question: GOAL \nAnswer:"
     space added as prefix to each continuation
 
     implement PMI_DC
 
     {
+        'goal': "How do I ready a guinea pig cage for it's new occupants?",
+        'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
+        'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
+        'label': 0
         'goal': "How do I ready a guinea pig cage for it's new occupants?",
         'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
         'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
@@ -2345,7 +2434,7 @@ class PIQA(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["goal"] + "\nAnswer:"
+        return "Question: " + doc["goal"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -2401,10 +2490,8 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
         return doc["question_stem"].strip().split(" ")[-1]
 
 
-
-
 class SciQ(ICLMultiChoiceTaskDataset):
-    """SciQ sends context as "SUPPORT\nQuestion: QUESTION\nAnswer:" and then distractors + correct_answer as continuations
+    """SciQ sends context as "SUPPORT \nQuestion: QUESTION \nAnswer:" and then distractors + correct_answer as continuations
         space added as prefix to each continuation
 
         implement PMI_DC
@@ -2434,7 +2521,7 @@ class SciQ(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return doc["support"].strip() + "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return doc["support"].strip() + " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -2455,7 +2542,7 @@ class SciQ(ICLMultiChoiceTaskDataset):
 
 
 class ArcEasy(ICLMultiChoiceTaskDataset):
-    """ArcEasy creates context with "Question: QUESTION\nAnswer:" and sends the choices as continuations
+    """ArcEasy creates context with "Question: QUESTION \nAnswer:" and sends the choices as continuations
         space added as prefix to each continuation
 
     {
@@ -2481,7 +2568,7 @@ class ArcEasy(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["question"] + "\nAnswer:"
+        return "Question: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -2612,7 +2699,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["context"] + " " + doc["question"] + "\nAnswer:"
+        return "Question: " + doc["context"] + " " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -2630,7 +2717,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
 
 
 class MRPC(ICLMultiChoiceTaskDataset):
-    """Prompt for MRPC is formed using "Sentence 1: SENTENCE1\nSentence 2: SENTENCE2\nQuestion: Do both sentences mean the same thing?\nAnswer:"
+    """Prompt for MRPC is formed using "Sentence 1: SENTENCE1 \nSentence 2: SENTENCE2 \nQuestion: Do both sentences mean the same thing? \nAnswer:"
     acc/F1, random at 50% acc. (GLUE)
     continuations: yes and no
 
@@ -2671,9 +2758,9 @@ class MRPC(ICLMultiChoiceTaskDataset):
         return (
             "Sentence 1: "
             + self.preprocess(doc["sentence1"])
-            + "\nSentence 2: "
+            + " \nSentence 2: "
             + self.preprocess(doc["sentence2"])
-            + "\nQuestion: Do both sentences mean the same thing?\nAnswer:"
+            + " \nQuestion: Do both sentences mean the same thing? \nAnswer:"
         )
 
     def doc_to_continuations(self, doc):
@@ -2694,7 +2781,7 @@ class MRPC(ICLMultiChoiceTaskDataset):
 
 
 class SST2(ICLMultiChoiceTaskDataset):
-    """SST2 task formats prompts as "SENTENCE\nQuestion: Is this sentence positive or negative?\nAnswer:"
+    """SST2 task formats prompts as "SENTENCE \nQuestion: Is this sentence positive or negative? \nAnswer:"
     some preprocessing done on sentence
 
     constructs 2 requests, 1 for positive and another for negative
@@ -2738,7 +2825,7 @@ class SST2(ICLMultiChoiceTaskDataset):
         return string
 
     def doc_to_text(self, doc):
-        return self.preprocess(doc["sentence"]) + "\nQuestion: Is this sentence positive or negative?\nAnswer:"
+        return self.preprocess(doc["sentence"]) + " \nQuestion: Is this sentence positive or negative? \nAnswer:"
 
     def doc_to_continuations(self, doc):
         del doc
@@ -2756,7 +2843,7 @@ class SST2(ICLMultiChoiceTaskDataset):
 
 
 class MMLU(ICLMultiChoiceTaskDataset):
-    """MMLU creates context with "Question: QUESTION\nAnswer:" and sends the choices as continuations
+    """MMLU creates context with "Question: QUESTION \nAnswer:" and sends the choices as continuations
            space added as prefix to each continuation
 
        {
@@ -2890,8 +2977,8 @@ class MMLU(ICLMultiChoiceTaskDataset):
             question = question_prefix + doc["question"].strip()
             choices = ""
             if self.mc_labels:
-                choices = "".join([f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])])
-            prompt = f"{question}\n{choices}Answer:"
+                choices = "".join([f"{key}. {choice} \n" for key, choice in zip(keys, doc["choices"])])
+            prompt = f"{question} \n{choices}Answer:"
             return prompt
 
         keys = ["A", "B", "C", "D"]
@@ -2901,7 +2988,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
             prefix = ""
             if "inst" in self.current_prompt:
                 subject = doc.get("subject").replace("_", " ")
-                prefix = f"The following are multiple choice questions (with answers) about {subject}:\n\n"
+                prefix = f"The following are multiple choice questions (with answers) about {subject}: \n \n"
             num_shots = re.findall("\\+(\\d+)", self.current_prompt)
             if num_shots:
                 dev_set = self.dev_set.get(doc.get("subject"), [])
@@ -2913,7 +3000,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
                         answer = keys[dev_doc["answer"]]
                     else:
                         answer = dev_doc["choices"][dev_doc["answer"]]
-                    prefix += format_example(dev_doc, keys) + " " + answer + "\n\n"
+                    prefix += format_example(dev_doc, keys) + " " + answer + " \n \n"
             output_text = prefix + output_text
         return output_text
 
@@ -2971,7 +3058,7 @@ class TriviaQACELoss(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         return [" " + doc["answer"]["value"]]
@@ -3008,7 +3095,7 @@ class NaturalQuestionsCELoss(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         return [" " + doc["answer"][0]]
@@ -3120,7 +3207,7 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
                         ds_name = ds_name[0]
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuation: {continuation_str}"
+                        + f" \ndoc_text: {doc_text} \ncontinuation: {continuation_str}"
                     )
                 cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                 cont_byte_len = len(continuation_str[1:].encode("utf-8"))
@@ -3191,17 +3278,20 @@ TG_task_map = {
 Super_GLUE = {
     "boolq": BoolQ,
     "cb": CommitmentBank,
+    "cb": CommitmentBank,
     "copa": COPA,
+    "multirc": MultiRC, 
+    "record": ReCoRD,
     "multirc": MultiRC, 
     "record": ReCoRD,
     "rte": RTE,
     "wic": WiC, 
-    "wsc": WSC
+    "wsc": WSC,
+    "hellaswag": HellaSwag,
 }
 
 label_to_task_map = {
     "piqa": PIQA,
-    "hellaswag": HellaSwag,
     "winogrande": WinoGrande,
     "openbook_qa": OpenBookQA,
     "sciq": SciQ,

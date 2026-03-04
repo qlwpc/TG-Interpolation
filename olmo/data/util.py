@@ -143,31 +143,34 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False):
         elif isinstance(child, tuple):
             childstrs.append("/".join(child))
         elif isinstance(child, str) and not quotes:
-            return child if child!='Ċ' else "<|SEP|>"  # 50261
+            mapping = {
+                "-LRB-": "(",
+                "-RRB-": ")",
+                "-LCB-": "{",
+                "-RCB-": "}",
+                "-LSB-": "[",
+                "-RSB-": "]",
+                "Ċ" : "\n"
+            }
+            out = mapping[child] if child in mapping else child
+            return " " + out
         else:
             childstrs.append(repr(child))
     # print(f"label {self._label} child {childstrs}")
     if isinstance(self._label, str):
         if self._label=="qlwpcRegen":
-            return " ".join(childstrs)
+            return "".join(childstrs)
         else:
-            return "{}{}{} {} {}{}".format(
+            return "<{}{}{}>{}<{}{}>".format(
                 parens[0],
                 self._label,
                 nodesep,
-                " ".join(childstrs),
+                "".join(childstrs),
                 self._label,
                 parens[1],
             )
     else:
-        return "{}{}{} {} {}{}".format(
-            parens[0],
-            repr(self._label),
-            nodesep,
-            " ".join(childstrs),
-            repr(self._label),
-            parens[1],
-        )
+        raise NotImplementedError
 
 def convert_TG_format(input:str) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
@@ -181,7 +184,6 @@ def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndar
     else:
         TG_str = input
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))
-    ids[ids == 50261] = 198  # change <|SEP|>(50261) to \n (198)
     return ids
 
 

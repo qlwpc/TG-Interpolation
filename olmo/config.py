@@ -496,6 +496,11 @@ class ModelConfig(BaseConfig):
     transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle"] 
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
+    """
+    Mixed attention head attention bias type
+    """
+    
+    modelname: str = "OLMo"
 
     tg_proximal_k : int = 20
     tg_height_h : int = 5

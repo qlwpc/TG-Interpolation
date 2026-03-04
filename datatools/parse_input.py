@@ -412,14 +412,13 @@ def prepare_dataset(config:str):
                 data = json.loads(line.strip())
                 prepared_ds.append(swag_preprocess(data["ctx_a"]))
                 for endings in data["endings"]:
-                    prepared_ds.append(data["ctx_b"] + endings)
-                prepared_ds.append(swag_preprocess(data["ctx_b"].capitalize() + " " + endings))
+                    prepared_ds.append(swag_preprocess(data["ctx_b"].capitalize() + " " + endings))
     elif config[:10] == "winogrande":
         ds = load_dataset("allenai/winogrande", "winogrande_xl")
         filename = os.path.join("../dataset/winogrande/", config + ".txt")
         if "train" in config:
             ds = ds["train"]
-        elif "val" in config:
+        elif "val" in config:   
             ds = ds["validation"]
         else:
             ds = ds["test"]
@@ -434,6 +433,14 @@ def prepare_dataset(config:str):
         filename = f"../dataset/finewebedu-100BT/{file_pattern.replace('.','')}.txt"
         for doc in ds:
             prepared_ds.append(doc['text'])
+    elif config[:4] == "mmlu":
+        ds = load_dataset("cais/mmlu", "all")
+        filename = os.path.join("../dataset/mmlu/", config + ".txt")
+        split = config[4:]
+        for doc in ds[split]:
+            prepared_ds.append(doc["question"])
+            for option in doc["choices"]:
+                prepared_ds.append(option)
     else: # file_split_key
         split = config.split("_")
         key = split[2]
