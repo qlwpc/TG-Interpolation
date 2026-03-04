@@ -1619,19 +1619,9 @@ class COPA(ICLMultiChoiceTaskDataset):
     metric_type = "acc"
     COPAPATH = "./dataset/SuperGLUE/COPA/"
     LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
-    metric_type = "acc"
-    COPAPATH = "./dataset/SuperGLUE/COPA/"
-    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
     def __init__(
         self,
         tokenizer,
-        dataset_path="super_glue",
-        dataset_name="copa",
-        model_ctx_len=2048,
-        split="val",
-        transformer_grammar_type:str = "",
-        generate_TG_attention_bias=None,
-        vocab_path=None,
         dataset_path="super_glue",
         dataset_name="copa",
         model_ctx_len=2048,
@@ -1660,13 +1650,6 @@ class COPA(ICLMultiChoiceTaskDataset):
             with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
                 for idx, line in enumerate(file):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
-    
-            model_ctx_len=model_ctx_len,
-            split=split,
-            transformer_grammar_type=transformer_grammar_type,
-            generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
-        )
 
     def load_local_datasets(self):
         self.dataset = []
@@ -2119,10 +2102,6 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
     shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
                   "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
                   "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
-    SwagPATH = "./dataset/hellaswag/"
-    shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
-                  "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
-                  "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
 
     def __init__(
         self,
@@ -2144,11 +2123,6 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
-            model_ctx_len=model_ctx_len,
-            split=split,
-            transformer_grammar_type=transformer_grammar_type,
-            generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
             model_ctx_len=model_ctx_len,
             split=split,
             transformer_grammar_type=transformer_grammar_type,
@@ -2247,13 +2221,6 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         self,
         tokenizer,
         dataset_path="winogrande",
-        dataset_name=None,
-        model_ctx_len=2048,
-        split="val",
-        transformer_grammar_type:str = "",
-        generate_TG_attention_bias=None,
-        vocab_path=None,
-        shots_num=5,
         dataset_name=None,
         model_ctx_len=2048,
         split="val",
@@ -2439,7 +2406,6 @@ class PIQA(ICLMultiChoiceTaskDataset):
     space added as prefix to each continuation
 
     implement PMI_DC
-    implement PMI_DC
 
     {
         'goal': "How do I ready a guinea pig cage for it's new occupants?",
@@ -2458,8 +2424,6 @@ class PIQA(ICLMultiChoiceTaskDataset):
     def __init__(
         self,
         tokenizer,
-        dataset_path="piqa",
-        dataset_name="plain_text",
         dataset_path="piqa",
         dataset_name="plain_text",
     ):
@@ -2475,30 +2439,15 @@ class PIQA(ICLMultiChoiceTaskDataset):
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
         return [" " + doc["sol1"], " " + doc["sol2"]]
-        return [" " + doc["sol1"], " " + doc["sol2"]]
 
     def doc_to_label(self, doc):
-        return doc["label"]
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
         del doc
         return "Answer:"
-        del doc
-        return "Answer:"
 
 
-class OpenBookQA(ICLMultiChoiceTaskDataset):
-    """OBQA: question_stem is sent as context (no special prompt format) and choices are sent as continuation
-        space added as prefix to each continuation
-
-        implement PMI_DC
-
-    {
-        'question_stem': 'Frilled sharks and angler fish live far beneath the surface of the ocean, which is why they are known as',
-        'choices': {'text': ['Deep sea animals', 'fish', 'Long Sea Fish', 'Far Sea Animals'],
-        'label': ['A', 'B', 'C', 'D']},
-        'answerKey': 'A'
 class OpenBookQA(ICLMultiChoiceTaskDataset):
     """OBQA: question_stem is sent as context (no special prompt format) and choices are sent as continuation
         space added as prefix to each continuation
@@ -2515,13 +2464,9 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
 
     metric_type = "len_norm"
 
-    metric_type = "len_norm"
-
     def __init__(
         self,
         tokenizer,
-        dataset_path="openbookqa",
-        dataset_name="main",
         dataset_path="openbookqa",
         dataset_name="main",
     ):
@@ -2530,19 +2475,15 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
             dataset_path=dataset_path,
             dataset_name=dataset_name,
         )
-        )
 
     def doc_to_text(self, doc):
-        return doc["question_stem"]
         return doc["question_stem"]
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
         return [" " + choice for choice in doc["choices"]["text"]]
-        return [" " + choice for choice in doc["choices"]["text"]]
 
     def doc_to_label(self, doc):
-        return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
         return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
 
     def doc_to_domain_conditional(self, doc):

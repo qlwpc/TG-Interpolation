@@ -409,6 +409,34 @@ def prepare_dataset(config:str):
                 prepared_ds.append(swag_preprocess(data["ctx_a"]))
                 for endings in data["endings"]:
                     prepared_ds.append(swag_preprocess(data["ctx_b"].capitalize() + " " + endings))
+    elif config[:10] == "winogrande":
+        ds = load_dataset("allenai/winogrande", "winogrande_xl")
+        filename = os.path.join("../dataset/winogrande/", config + ".txt")
+        if "train" in config:
+            ds = ds["train"]
+        elif "val" in config:   
+            ds = ds["validation"]
+        else:
+            ds = ds["test"]
+        for doc in ds:
+            prepared_ds.append(doc["sentence"].replace("_", doc["option1"]))
+            prepared_ds.append(doc["sentence"].replace("_", doc["option2"]))
+    elif config[:10] == "finewebedu":
+        edupath = "~/.cache/huggingface/datasets/HuggingFaceFW___fineweb-edu/sample-100BT/0.0.0/87f09149ef4734204d70ed1d046ddc9ca3f2b8f9"
+        file_pattern = config[10:] if len(config)>10 else None
+        ds = load_shrunk_dataset(os.path.expanduser(edupath), file_pattern=file_pattern)
+        os.makedirs("../dataset/finewebedu-100BT/", exist_ok=True)
+        filename = f"../dataset/finewebedu-100BT/{file_pattern.replace('.','')}.txt"
+        for doc in ds:
+            prepared_ds.append(doc['text'])
+    elif config[:4] == "mmlu":
+        ds = load_dataset("cais/mmlu", "all")
+        filename = os.path.join("../dataset/mmlu/", config + ".txt")
+        split = config[4:]
+        for doc in ds[split]:
+            prepared_ds.append(doc["question"])
+            for option in doc["choices"]:
+                prepared_ds.append(option)
     else: # file_split_key
         split = config.split("_")
         key = split[2]
