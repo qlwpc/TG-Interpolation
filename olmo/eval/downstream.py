@@ -36,7 +36,7 @@ class ICLMetric(Metric):
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-
+        # self.tokenizer = Tokenizer.from_file("/2024233198/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
 
@@ -45,8 +45,7 @@ class ICLMetric(Metric):
         self.labels = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
-        lm_logits = F.log_softmax(lm_logits, dim=-1)
-
+        lm_logits = F.log_softmax(lm_logits, dim=-1, dtype=torch.float32)
         if self.metric_type == "pmi_dc":
             assert dc_lm_logits is not None, "PMI_DC acc type selected but no domain conditional logits provided"
 
@@ -55,7 +54,7 @@ class ICLMetric(Metric):
             cont_tokens = batch["continuation"][idx][: batch["cont_len"][idx]]
             # get logits from LM for the continuation: [cont_len, vocab]
             # batch['input_ids'][idx] -> ctx + cont + padding
-            # -1 in both indices: lm_logits will be left shited 1 pos as 0th pos in input generates next token in the 0th pos of lm_logits
+            # -1 in both indices: lm_logits will be left shifted 1 pos as 0th pos in input generates next token in the 0th pos of lm_logits
             lm_cont_logits = lm_logits[idx][
                 batch["ctx_len"][idx] - 1 : batch["ctx_len"][idx] + batch["cont_len"][idx] - 1
             ]
@@ -75,11 +74,20 @@ class ICLMetric(Metric):
                 )
             elif self.metric_type == "acc" or self.metric_type == "f1":
                 # gather log-probs at continuation token indices
+                # print(cont_tokens)
+                # print(self.tokenizer.decode(cont_tokens.tolist(), skip_special_tokens=False))
+                # print(f'{ batch["ctx_len"][idx] - 1 } : {batch["ctx_len"][idx] + batch["cont_len"][idx] - 1}')
+                # print(lm_cont_logits)
                 log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
                 log_likelihood = (
                     torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum() / batch["cont_str_len"][idx]
                 )
+                # print(self.tokenizer.decode(batch["input_ids"][idx].tolist(),skip_special_tokens=False),
+                #  self.tokenizer.decode(cont_tokens.tolist(),skip_special_tokens=False), 
+                #   cont_tokens, 
+                #   torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)),
+                #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood}", sep="\n")
                 if self.metric_type == "ce_loss":
                     log_likelihood = -log_likelihood
             elif self.metric_type == "bpb":
@@ -231,7 +239,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     def convert_grammar_input(self, input_ids) -> List[int]:
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
-        if self.transformer_grammar_type == "terminal":
+        if self.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
         elif self.transformer_grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
@@ -259,8 +267,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 dc = self.convert_grammar_input(dc)
 
                 for cont_id, continuation_str in enumerate(continuations):
-                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
-                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
+                    # cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
+                    # cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     continuation = self.token_encode(continuation_str)
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
@@ -273,6 +281,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     query = query[-self.model_ctx_len :]
                     query = self.convert_grammar_input(query)
                     continuation = self.convert_grammar_input(continuation)
+                    continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
                     
@@ -283,7 +292,25 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     else:
                         dc_query = dc + continuation[:-1]
 
+                    cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
+                    cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     # form a sample
+
+                    if self.transformer_grammar_type[:8] == "pause1/2":
+                        paused_input = query + query
+                        paused_input[::2] = query
+                        paused_input[1::2] = query
+                        query = paused_input
+                        pause_dc = dc_query + dc_query
+                        pause_dc[::2] = dc_query
+                        pause_dc[1::2] = dc_query
+                        dc_query = pause_dc
+                        tmp_cont = continuation + continuation
+                        tmp_cont[::2] = continuation
+                        tmp_cont[1::2] = continuation
+                        continuation = tmp_cont[:-1]
+                        actual_ctx_len *= 2
+
                     self.samples.append(
                         {
                             "doc_id": doc_id,
@@ -309,7 +336,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         ds_name = ds_name[0]
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuations: {continuations}\n" +
+                        + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
                         f"input_ids is {self.token_decode(query)}"
                     )
 
@@ -368,8 +395,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         label_ids = []
         all_attention_bias = []
         all_label_mask = []
-        if self.transformer_grammar_type[:8] == "pause1/2":
-            max_query_len *= 2
+        # if self.transformer_grammar_type[:8] == "pause1/2":
+        #     max_query_len *= 2
+        #     max_cont_len = max_cont_len * 2 - 1
 
         # pad according to max_lengths
         for sample in data:
@@ -379,14 +407,6 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     input_ids = np.array(input_ids)
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
                 input_ids = input_ids.tolist()
-            elif self.transformer_grammar_type[:8] == "pause1/2":
-                paused_input = input_ids + input_ids
-                paused_input[::2] = input_ids
-                paused_input[1::2] = [50260] * len(input_ids)  # Special token
-                input_ids = paused_input
-                sample["ctx_len"] *= 2
-                sample["dc_len"] *= 2
-                sample["cont_len"] *= 2
             input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=None if self.transformer_grammar_type[:8]!="pause1/2" else self.model_ctx_len * 2))
             queries.append(input_ids)
 
@@ -423,6 +443,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
+            # print(self.token_decode(sample["query"]))
+            # print(sample["query"])
+            # print(f"ctx_len is {sample['ctx_len']}")
+            # print(f'cont_len is {sample["cont_len"]}')
+
 
         batch = {
             "doc_id": torch.LongTensor(doc_ids),
@@ -501,7 +526,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.collator.vocab = self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
-        self.prompts = "<|SEP|> (S (VP Summarize (NP the above article NP) (PP in (NP 1 sentence NP) PP) VP) . S) <|SEP|>"
+        self.prompts = " \n <(S> <(VP> Summarize <(NP> the above article <NP)> <(PP> in <(NP> 1 sentence <NP)> <PP)> <VP)> . <S)>  \n"
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
 
@@ -589,7 +614,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         elif self.transformer_grammar_type[:8] == "pause1/2":
             paused_input = np.zeros(2 * len(input_ids))
             paused_input[::2] = input_ids
-            paused_input[1::2] = 50260  # Special token
+            paused_input[1::2] = input_ids # 50260  # Special token
             input_ids = paused_input
         elif self.generate_TG_attention_bias is not None:            
             input_ids = torch.tensor(input_ids)
@@ -1118,7 +1143,7 @@ class SGDataset(metaclass=abc.ABCMeta):
                             sent["tag"][0] = pause_tag[1:]
                             paused_input = torch.zeros(2 * sent["input_ids"].shape[1], dtype=torch.long)
                             paused_input[::2] = sent["input_ids"][0]
-                            paused_input[1::2] = 50260  # Special token
+                            paused_input[1::2] = sent["input_ids"][0] # 50260  # Special token
                             sent["input_ids"] = paused_input.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:
                             cur.append(sent)
@@ -1182,7 +1207,6 @@ BLiMP_TASK_DICT = {
 BLiMP_TASK_LIST = [x for v in BLiMP_TASK_DICT.values() for x in v]
 
 
-# TODO: 
 class BLiMPMetric(Metric):
     full_state_update: bool = False
     
@@ -1296,7 +1320,6 @@ class BLiMPMetric(Metric):
         return acc_dict
 
 
-# TODO:
 class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     metric_type: str
 
@@ -1412,8 +1435,919 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         return self.tokenizer.decode(tokens)
 
 
+class BoolQ(ICLMultiChoiceTaskDataset):
+    """Prompt: "{passage} \nQuestion: {question}? \nAnswer:"
+    continuation: yes, no
+
+    acc, random at 50% (SuperGLUE)
+
+    {
+        "question": "is ncis new orleans over for the season",
+        "passage": "NCIS: New Orleans (season 4) -- The fourth season of NCIS: New Orleans premiered on September 26, 2017 on CBS. The series continues to air following Bull, Tuesday at 10:00 p.m. (ET) and contained 24 episodes. The season concluded on May 15, 2018.",
+        "label": true
+    }
+    """
+
+    metric_type = "acc"
+    BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="boolq",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.BoolQPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["passage", "question"]:
+            with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+        
+
+    def doc_to_text(self, doc):
+        # Remove the outermost non-terminal tokens 
+        def convert_question(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[1:-1])
+        
+        return doc["passage"] + " \n<(SQ><(NP> Question<NP)> :<(SQ>" + convert_question(doc["question"]) + " ?<SQ)><SQ)> \n<(NP><(NP> Answer<NP)> :<(NP>"
+
+    def doc_to_continuations(self, doc):
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" yes", " no"][not label]]
+        else:
+            return [" yes", " no"]
+
+    def doc_to_label(self, doc):
+        # if doc['answer'] is True, return index of " yes" which is 0
+        if doc["label"]:
+            return 0
+        else:
+            return 1
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
+
+
+
+class CommitmentBank(ICLMultiChoiceTaskDataset):
+    """Prompt: "{premise} \nQuestion:{hypothesis}. True, False or Neither? \nAnswer:"
+    continuations: True, False, Neither.
+
+    implement PMI_DC
+    acc, random at 33%
+
+    {
+        "premise": "It was a complex language. Not written down but handed down. One might say it was peeled down.",
+        "hypothesis": "the language was peeled down",
+        "label": "entailment",
+    }
+    """
+
+    metric_type = "acc"
+    CBPATH = "./dataset/SuperGLUE/CB/"
+    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="cb",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.CBPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "hypothesis"]:
+            with open(os.path.join(self.CBPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+    
+    def doc_to_text(self, doc):
+        # Convert hypothesis part in a full sentence. 
+        def convert_hypothesis(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[:-1]) + " . " + tokens[-1]
+        
+        return doc["premise"] + " \n<(NP><(NP> Question<NP)> :" + convert_hypothesis(doc["hypothesis"]) + "<NP)><(FRAG> True, False or Neither ?<FRAG)> \n<(NP><(NP> Answer<NP)> :<(NP>"
+
+    def doc_to_continuations(self, doc):
+        label = self.LABEL_DICT[doc["label"]]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" True", " False", " Neither"][label]]
+        else:
+            return [" True", " False", " Neither"]
+
+    def doc_to_label(self, doc):
+        return self.LABEL_DICT[doc["label"]]
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
+
+
+# TODO: 
+class COPA(ICLMultiChoiceTaskDataset):
+    """Prompt: "{premise.strip()[:-1]} {because/therefore}"
+    Req_loglikelihood('The pair of students came under scrutiny by the teacher because', ' the students both received excellent grades.'
+    "question":
+        "cause": "because",
+        "effect": "therefore",
+    continuations: {choice1}/{choice2}
+
+    implement PMI_DC
+    acc, random at 50%
+
+    {
+        "premise": "The pair of students came under scrutiny by the teacher.",
+        "choice1": "The students both received excellent grades.",
+        "choice2": "Their responses on the assignment were identical.",
+        "question": "cause",
+        "label": 1,
+        "idx": 42
+    }
+    """
+
+    metric_type = "acc"
+    COPAPATH = "./dataset/SuperGLUE/COPA/"
+    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="copa",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.COPAPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "choice1", "choice2"]:
+            with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+    
+    def doc_to_text(self, doc):
+        # Remove the tail part for inserting choices.
+        def convert_premise(sent):
+            tokens = sent.split()
+            return ' '.join(tokens[:-3])
+
+        connector = "because" if doc["question"] == "cause" else "therefore"
+        return convert_premise(doc["premise"]) + "<(SBAR>" + connector
+
+    def doc_to_continuations(self, doc):
+        # add spaces in front of continuation
+        def convert_choice(sent):
+            tokens = sent.split()
+            for i, token in enumerate(tokens):
+                if token[0] != '(':
+                    tokens[i] = token[0].lower() + token[1:]
+                    break
+            return ' '.join(tokens[:-2])
+        
+        choices_list = [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [choices_list[label]]
+        else:
+            return choices_list
+
+    def doc_to_label(self, doc):
+        return doc["label"]
+
+    def doc_to_domain_conditional(self, doc):
+        connector = "because" if doc["question"] == "cause" else "therefore"
+        del doc
+        return "<(SBAR>" + connector
+
+
+# TODO: 
+class MultiRC(ICLMultiChoiceTaskDataset):
+    """Prompt: {passage} \nQuestion: {Question} \nAnswer: {Answer} \nIs the answer correct? {yes/no}
+
+    {
+        "passage": {
+            "text": "Should places at the same distance from the equator have the same climate? You might think they should. Unfor- tunately, you would not be correct to think this. Climate types vary due to other factors besides distance from the equator. So what are these factors? How can they have such a large impact on local climates? For one thing, these factors are big. You may wonder, are they as big as a car. Think bigger. Are they bigger than a house? Think bigger. Are they bigger than a football stadium? You are still not close. We are talking about mountains and oceans. They are big features and big factors. Oceans and mountains play a huge role in climates around the world. You can see this in Figure above . Only one of those factors is latitude, or distance from the equator. ",
+            "questions": [
+                {
+                    "question": "Name at least one factor of climate",
+                    "answers": [{ "text": "Oceans", "label": 1 },
+                                { "text": "Houses", "label": 0 },
+                                { "text": "Day length", "label": 0 },
+                                { "text": "Latitude", "label": 1 },
+                                { "text": "Longitude", "label": 0 },
+                                { "text": "Season", "label": 0 },
+                                { "text": "Distance from the equator", "label": 1 },
+                                { "text": "The stars", "label": 0 },
+                                { "text": "Moutains", "label": 1 },
+                                { "text": "Mountains, ocean, longitude, latitude", "label": 1 },
+                                { "text": "Cars", "label": 0 },
+                                { "text": "Figures", "label": 0 },
+                                { "text": "Mountains", "label": 1 },
+                                { "text": "Football stadiums", "label": 0 },
+                                { "text": "Same climate", "label": 0 } ],
+                }
+            ]
+        }
+    }
+    """
+
+    metric_type = "acc"
+    MultiRCATH = "./dataset/SuperGLUE/MultiRC/"
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="multirc",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.MultiRCATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in []: # TODO: 
+            with open(os.path.join(self.MultiRCATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def doc_to_text(self, doc):
+        raise NotImplementedError
+
+    def doc_to_continuations(self, doc):
+        raise NotImplementedError
+
+    def doc_to_label(self, doc):
+        raise NotImplementedError
+
+    def doc_to_domain_conditional(self, doc):
+        raise NotImplementedError
+
+
+# TODO: 
+class ReCoRD(ICLMultiChoiceTaskDataset):
+    """Prompt: "{passage[text]} \n"
+
+    {
+        "source": "Daily mail",
+        "passage": {
+            "text": "The harrowing stories of women and children locked up for so-called 'moral crimes' in Afghanistan's notorious female prison have been revealed after cameras were allowed inside. Mariam has been in Badam Bagh prison for three months after she shot a man who just raped her at gunpoint and then turned the weapon on herself - but she has yet to been charged. Nuria has eight months left to serve of her sentence for trying to divorce her husband. She gave birth in prison to her son and they share a cell together. Scroll down for video Nuria was jailed for trying to divorce her husband. Her son is one of 62 children living at Badam Bagh prison \n@highlight \nMost of the 202 Badam Bagh inmates are jailed for so-called 'moral crimes' \n@highlight \nCrimes include leaving their husbands or refusing an arrange marriage \n@highlight \n62 children live there and share cells with their mothers and five others",
+            "entities": [ { "start": 86, "end": 96 },
+                          { "start": 178, "end": 183 },
+                          { "start": 197, "end": 206 },
+                          { "start": 357, "end": 361 },
+                          { "start": 535, "end": 539 },
+                          { "start": 627, "end": 636 },
+                          { "start": 672, "end": 681 } ]
+        },
+        "qas": [
+            {
+                "query": "The baby she gave birth to is her husbands and he has even offered to have the courts set her free if she returns, but @placeholder has refused.",
+                "answers": [ { "start": 535, "end": 539, "text": "Nuria" } ],
+                "idx": 0
+            }
+        ],
+    }
+    """
+
+    metric_type = "acc"
+    ReCoRDPATH = "./dataset/SuperGLUE/ReCoRD/"
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="record",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.ReCoRDPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["text", "query"]:
+            with open(os.path.join(self.ReCoRDPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def doc_to_text(self, doc):
+        raise NotImplementedError
+
+    def doc_to_continuations(self, doc):
+        raise NotImplementedError
+
+    def doc_to_label(self, doc):
+        raise NotImplementedError
+
+    def doc_to_domain_conditional(self, doc):
+        raise NotImplementedError
+
+
+class RTE(ICLMultiChoiceTaskDataset):
+    """Prompt: "{sentence1} \nQuestion: {sentence2} True or False? \nAnswer:"
+    continuations: True, False
+
+    implement PMI_DC
+    acc, random at 50% (GLUE)
+
+    {
+        "premise": "The number of Danes opposed to swapping the krone for the euro has increased slightly to 35.3 percent, up from 34.6 percent in April, according to a poll published on Thursday by Danske Bank.",
+        "hypothesis": "The introduction of the euro has been opposed.",
+        "label": "entailment",
+    }
+    """
+
+    metric_type = "acc"
+    RTEPATH = "./dataset/SuperGLUE/RTE/"
+    LABEL_DICT = {"entailment": 0, "not_entailment": 1}
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="rte",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.RTEPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["premise", "hypothesis"]:
+            with open(os.path.join(self.RTEPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def doc_to_text(self, doc):
+        return doc["premise"] + " \n<(S><(NP> Question<NP)> :" + doc["hypothesis"] + "<S)><(ADJP><(ADJP> True or False<ADJP)> ?<ADJP)> \n<(NP><(NP> Answer<NP)> :<(NP>"
+
+    def doc_to_continuations(self, doc):
+        label = self.LABEL_DICT[doc["label"]]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" True", " False"][label]]
+        else:
+            return [" True", " False"]
+
+    def doc_to_label(self, doc):
+        return self.LABEL_DICT[doc["label"]]
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "<(NP> <(NP> Answer <NP)> : (NP"
+    
+
+# TODO: 
+class WiC(ICLMultiChoiceTaskDataset):
+    """Prompt: "Sentence 1: {sentence1} \nSentence 2: {sentence2} \nQuestion: Is the word '{word}' used in the same way in the two sentences above? \nAnswer: "
+
+    acc, random at 50% (SuperGLUE) 
+    continuation: yes, no
+
+    {
+        "word": "place",
+        "sentence1": "Do you want to come over to my place later?",
+        "sentence2": "A political system with no place for the less prominent groups.",
+        "label": false,
+    }
+    """
+
+    metric_type = "acc"
+    WiCPATH = "./dataset/SuperGLUE/WiC/"
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="wic",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.WiCPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["sentence1", "sentence2"]:
+            with open(os.path.join(self.WiCPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def doc_to_text(self, doc):
+        return "<(NP><(NP> Sentence 1<NP)> :" + doc["sentence1"] + "<NP)> \n<(NP><(NP> Sentence 2<NP)> :" + doc["sentence2"] + "<NP)> \n<(SQ><(NP> Question<NP)> :<(SQ> Is<(NP><(NP> the word<NP)> '<(NP>" + doc["word"] + "<NP)> '<NP)><(VP> used<(PP> in<(NP> the same way<NP)><PP)><(PP> in<(NP><(NP> the two sentences<NP)><(ADVP> above<ADVP)><NP)><PP)><VP)><SQ)> ?<SQ)> \n<(NP><(NP> Answer :<NP)><(NP>"
+
+    def doc_to_continuations(self, doc):
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" yes", " no"][not label]]
+        else:
+            return [" yes", " no"]
+
+    def doc_to_label(self, doc):
+        # if doc['answer'] is True, return index of " yes" which is 0
+        if doc["label"]:
+            return 0
+        else:
+            return 1
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
+
+
+# TODO: 
+class WSC(ICLMultiChoiceTaskDataset):
+    """Prompt: "{text} \nQuestion: In the passage above, does the pronoun {span1_text} refer to {span2_text}? \nAnswer: "
+
+    acc, random at 50% (SuperGLUE) 
+    continuation: yes, no
+
+    {
+        "text": "I poured water from the bottle into the cup until it was full.",
+        "target": {
+            "span1_text": "the cup",
+            "span2_text": "it"
+        },
+        "label": true
+    }
+    """
+
+    metric_type = "acc"
+    WSCPATH = "./dataset/SuperGLUE/WSC/"
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="super_glue",
+        dataset_name="wsc",
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+    
+    def load_local_datasets(self):
+        self.dataset = []
+        with open(os.path.join(self.WSCPATH, f"{self.split}.jsonl"), "r") as file:
+            for line in file:
+                self.dataset.append(json.loads(line.strip()))
+        for key in ["text"]:
+            with open(os.path.join(self.WSCPATH, f"{self.split}_{key}.txt"), "r") as file:
+                for idx, line in enumerate(file):
+                    self.dataset[idx][key] = convert_TG_format(line.strip())
+
+    def doc_to_text(self, doc):
+        return doc["text"] + " \n<(NP> Question :<NP)><(SQ><(PP> In<(NP><(NP> the passage<NP)><(ADVP> above<ADVP)><NP)><PP)> , does<(NP><(NP> the pronoun<NP)> '<(NP> " + doc["target"]["span1_text"] + "<NP)> '<NP)><(VP> refer<(PP> to '<(NP> " + doc["target"]["span2_text"] + "<NP)> '<PP)><VP)> ?<SQ)> \n<(NP><(NP> Answer :<NP)><(NP>"
+
+    def doc_to_continuations(self, doc):
+        label = doc["label"]
+        del doc
+        # add spaces in front of continuation
+        if self.split=="train":
+            return [[" yes", " no"][not label]]
+        else:
+            return [" yes", " no"]
+
+    def doc_to_label(self, doc):
+        # if doc['answer'] is True, return index of " yes" which is 0
+        if doc["label"]:
+            return 0
+        else:
+            return 1
+
+    def doc_to_domain_conditional(self, doc):
+        del doc
+        return "<(NP><(NP> Answer<NP)> :<(NP>"
+    
+
+class HellaSwag(ICLMultiChoiceTaskDataset):
+    """HellaSwag concats "ACTIVITY_LABEL: CTX_A CTX_B.capitalize()" to form context and then sends endings as continuations
+        space added as prefix to each continuation
+
+    {
+        'activity_label': 'Roof shingle removal',
+        'ctx_a': 'A man is sitting on a roof.',
+        'ctx_b': 'he',
+        'ctx': 'A man is sitting on a roof. he',
+        'endings': ['is using wrap to wrap a pair of skis.', 'is ripping level tiles off.', "is holding a rubik's cube.", 'starts pulling up roofing on a roof.'],
+        'label': '3'
+    }
+    """
+
+    metric_type = "len_norm"
+    SwagPATH = "./dataset/hellaswag/"
+    shots_list = ["wikihow~19", "wikihow~66", "activitynet~v_-2dxp-mv2zo", "activitynet~v_-Xl95IW5H_s",
+                  "wikihow~62", "activitynet~v_-QuFk_ThRNg", "activitynet~v_-YjGbsbDoxs", "activitynet~v_-fMxoShIXiM",
+                  "activitynet~v_-1IBHYS3L-Y", "activitynet~v_-JqLjPz-07E", "activitynet~v_-fBTCykx4gM"] 
+
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="hellaswag",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        shots_num=5,
+    ):
+        self.shots_num = shots_num
+        self.shots_str = ""
+        if split!="train":
+            self.prepare_shots()
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    @classmethod
+    def preprocess(cls, text):
+        text = text.strip()
+        # NOTE: Brackets are artifacts of the WikiHow dataset portion of HellaSwag.
+        text = text.replace(" [title]", ". ")
+        text = re.sub("\\[.*?\\] ", "", text)
+        text = text.replace("..", ".")
+        text = text.replace("  ", " ")
+        return text
+
+    def load_local_datasets(self, split=None, ret=False):
+        dataset = []
+        split = self.split if split is None else split
+        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                if num==0:
+                    dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!='train':
+        #     dataset = dataset[:50]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+    
+    def prepare_shots(self):
+        train = self.load_local_datasets(split="train", ret=True)
+        shots = {}
+        for data in train:
+            if data["source_id"] in self.shots_list:
+                shots[data["source_id"]] = data
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        
+        self.shots_str = ""
+        for i in range(self.shots_num):
+            doc = self.shots[i]
+            self.shots_str += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc)[self.doc_to_label(doc)] + " \n \n"
+
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"]
+
+    def doc_to_continuations(self, doc):
+        return [ending for ending in doc["endings"]]
+
+    def doc_to_label(self, doc):
+        return int(doc["label"])
+
+    def doc_to_domain_conditional(self, doc):
+        return doc["ctx_a"].split(" ")[-1]
+
+
+class WinoGrande(ICLMultiChoiceTaskDataset):
+    """Prompt: split sentence at _ "SENTENCE[:idx] + OPTION1/OPTION2", where idx = SENTENCE.index("_")
+        implement PMI_DC
+        acc, random at 50%
+        continuation is everything in setnence after '_' (" SENTENCE[idx:].strip()")
+
+        Req_loglikelihood('People think Samantha', ' is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.')
+        Req_loglikelihood('People think Rebecca', ' is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.')
+
+    {
+        'sentence': 'People think _ is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.',
+        'option1': 'Samantha',
+        'option2': 'Rebecca',
+        'answer': '2'
+    }
+
+    TODO: might need to write custom metric for Winogrande
+    """
+
+    metric_type = "acc"
+    WinoPATH = "./dataset/winogrande/"
+    shots_list = [19875, 26035, 2302, 13568, 7412]
+
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="winogrande",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="val",
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        shots_num=5,
+    ):
+        # all winogrande datasets have same val set
+        self.shots_num = shots_num
+        if split!="train":
+            self.prepare_shots()
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path
+        )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = datasets.load_from_disk(f"./dataset/winogrande/{split}")
+        dataset = list(dataset)
+        with open(os.path.join(self.WinoPATH, f"winogrande_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//2, idx % 2
+                if num==0:
+                    dataset[id_entry]["parsed"] = ["", ""]
+                dataset[id_entry]["parsed"][num] = convert_TG_format(line.strip())
+
+        for idx in range(len(dataset)):
+            answer_label = int(dataset[idx]["answer"])
+            tree_tokens = dataset[idx]["parsed"][answer_label-1].split(" ")
+            left_text, right_text = dataset[idx]["sentence"].split("_", 1)
+            left_text = left_text + dataset[idx][f"option{answer_label}"]
+            i, j = 0, 0
+            while j<len(left_text) and i<len(tree_tokens):
+                for char in tree_tokens[i]:
+                    while j<len(left_text) and re.match(r"\s", left_text[j]):
+                        j += 1
+                    if j<len(left_text) and char == left_text[j]:
+                        j += 1
+                i += 1
+            if j<len(left_text):
+                raise NotImplementedError
+            
+            doc_str = " ".join(tree_tokens[:i-1] + ["_"])
+            cont_tokens = tree_tokens[i:]
+            cont_str = " " + " ".join(cont_tokens)
+            dataset[idx]["continuation"] = cont_str
+            dataset[idx]["ctxs"] = [
+                doc_str.replace("_", dataset[idx]["option1"]),
+                doc_str.replace("_", dataset[idx]["option2"]),
+            ]
+
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+
+    def prepare_shots(self):
+        train = self.load_local_datasets(split="train", ret=True)
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        
+        self.shots_str = ""
+        for i in range(self.shots_num):
+            doc = self.shots[i]
+            self.shots_str += self.doc_to_text(doc, single_shot=True)[self.doc_to_label(doc)] + self.doc_to_continuations(doc) + " \n \n"
+
+    def prep_examples(self):
+        """Overwrite for WinoGrande as multiple ctx, single continuation"""
+        doc_id = 0
+        for doc in self.dataset:
+            # here ctx is a list
+            ctxs = self.doc_to_text(doc)
+            dcs = self.doc_to_domain_conditional(doc)
+
+            continuation_str = self.doc_to_continuations(doc)
+            label_id = self.doc_to_label(doc)
+            cont_str_len = len(continuation_str) - 1  # continuations contain leading blank space
+            cont_byte_len = len(continuation_str[1:].encode("utf-8"))
+
+            # tokenize
+            continuation = self.token_encode(continuation_str)
+            continuation = self.convert_grammar_input(continuation)
+            for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
+                doc_text = ctx
+                ctx = self.token_encode(ctx)
+                dc = self.token_encode(dc)
+
+                # query, remove last token from continuation, truncate from left is longer than model ctx length
+                if self.split=="train":
+                    query = ctx + continuation
+                else:
+                    query = ctx + continuation[:-1]
+                query = query[-self.model_ctx_len :]
+                query = self.convert_grammar_input(query)
+                actual_ctx_len = len(query) - len(continuation) + 1
+
+                # get domain conditional query
+                # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
+                if self.split=="train":
+                    dc_query = dc + continuation
+                else:
+                    dc_query = dc + continuation[:-1]
+                
+                cont_str_len = len(self.token_decode(continuation)) - 1
+
+                # form a sample
+                self.samples.append(
+                    {
+                        "doc_id": doc_id,
+                        "cont_id": cont_id,
+                        # "ctx": ctx,
+                        "continuation": continuation,
+                        "ctx_len": actual_ctx_len,
+                        "dc_len": len(dc),
+                        "cont_len": len(
+                            continuation
+                        ),  # even if query has last token removed, LM will output same cont len
+                        "cont_str_len": cont_str_len,
+                        "cont_byte_len": cont_byte_len,
+                        "query": query,  # remove last token from continuation
+                        "dc_query": dc_query,
+                        "label_id": label_id,
+                    }
+                )
+
+                if self.log_instances > 0:
+                    self.log_instances -= 1
+                    ds_name = self.dataset_name
+                    if isinstance(ds_name, list):
+                        ds_name = ds_name[0]
+                    log.info(
+                        f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
+                        + f" \ndoc_text: {doc_text} \ncontinuations: {continuation_str} \n" +
+                        f"input_ids is {self.token_decode(query)}"
+                    )
+
+            doc_id += 1
+
+    def doc_to_text(self, doc, single_shot=False):
+        # special case where there are multiple ctx and single continuation
+        return [(self.shots_str if single_shot==False else "") + ctx for ctx in doc["ctxs"]]
+
+    def doc_to_continuations(self, doc):
+        # add spaces in front of continuation
+        return doc["continuation"]
+
+    def doc_to_label(self, doc):
+        return int(doc["answer"]) - 1
+
+    def doc_to_domain_conditional(self, doc):
+        """same number of domain conditionals as context"""
+        return [doc["option1"], doc["option2"]]
+
+
 class PIQA(ICLMultiChoiceTaskDataset):
-    """PIQA sends context in the following fashion: "Question: GOAL\nAnswer:"
+    """PIQA sends context in the following fashion: "Question: GOAL \nAnswer:"
     space added as prefix to each continuation
 
     implement PMI_DC
@@ -1441,7 +2375,7 @@ class PIQA(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["goal"] + "\nAnswer:"
+        return "Question: " + doc["goal"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -1453,171 +2387,6 @@ class PIQA(ICLMultiChoiceTaskDataset):
     def doc_to_domain_conditional(self, doc):
         del doc
         return "Answer:"
-
-
-class HellaSwag(ICLMultiChoiceTaskDataset):
-    """HellaSwag concats "ACTIVITY_LABEL: CTX_A CTX_B.capitalize()" to form context and then sends endings as continuations
-        space added as prefix to each continuation
-
-    {
-        'activity_label': 'Roof shingle removal',
-        'ctx_a': 'A man is sitting on a roof.',
-        'ctx_b': 'he',
-        'ctx': 'A man is sitting on a roof. he',
-        'endings': ['is using wrap to wrap a pair of skis.', 'is ripping level tiles off.', "is holding a rubik's cube.", 'starts pulling up roofing on a roof.'],
-        'label': '3'
-    }
-    """
-
-    metric_type = "len_norm"
-
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="hellaswag",
-        dataset_name=None,
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-        )
-
-    @classmethod
-    def preprocess(cls, text):
-        text = text.strip()
-        # NOTE: Brackets are artifacts of the WikiHow dataset portion of HellaSwag.
-        text = text.replace(" [title]", ". ")
-        text = re.sub("\\[.*?\\]", "", text)
-        text = text.replace("  ", " ")
-
-        return text
-
-    def doc_to_text(self, doc):
-        return self.preprocess(doc["activity_label"] + ": " + doc["ctx_a"] + " " + doc["ctx_b"].capitalize())
-
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + self.preprocess(ending) for ending in doc["endings"]]
-
-    def doc_to_label(self, doc):
-        return int(doc["label"])
-
-    def doc_to_domain_conditional(self, doc):
-        domain_conditional = self.preprocess(doc["ctx_b"].capitalize())
-
-        # ensure non 0 len domain conditional
-        if len(domain_conditional) == 0:
-            return self.preprocess(doc["ctx_a"]).split(" ")[-1]
-
-        return domain_conditional
-
-
-class WinoGrande(ICLMultiChoiceTaskDataset):
-    """Prompt: split sentence at _ "SENTENCE[:idx] + OPTION1/OPTION2", where idx = SENTENCE.index("_")
-        implement PMI_DC
-        acc, random at 50%
-        continuation is everything in setnence after '_' (" SENTENCE[idx:].strip()")
-
-        Req_loglikelihood('People think Samantha', ' is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.')
-        Req_loglikelihood('People think Rebecca', ' is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.')
-
-    {
-        'sentence': 'People think _ is embarassed, because Samantha made snide comments about the shirt Rebecca was wearing.',
-        'option1': 'Samantha',
-        'option2': 'Rebecca',
-        'answer': '2'
-    }
-
-    TODO: might need to write custom metric for Winogrande
-    """
-
-    metric_type = "acc"
-
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="winogrande",
-        dataset_name="winogrande_xl",
-    ):
-        # all winogrande datasets have same val set
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-        )
-
-    def prep_examples(self):
-        """Overwrite for WinoGrande as multiple ctx, single continuation"""
-        doc_id = 0
-        for doc in self.dataset:
-            # here ctx is a list
-            ctxs = self.doc_to_text(doc)
-            dcs = self.doc_to_domain_conditional(doc)
-
-            continuation_str = self.doc_to_continuations(doc)
-            label_id = self.doc_to_label(doc)
-            cont_str_len = len(continuation_str) - 1  # continuations contain leading blank space
-            cont_byte_len = len(continuation_str[1:].encode("utf-8"))
-
-            # tokenize
-            continuation = self.token_encode(continuation_str)
-
-            for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
-                ctx = self.token_encode(ctx)
-                dc = self.token_encode(dc)
-
-                # query, remove last token from continuation, truncate from left is longer than model ctx length
-                query = ctx + continuation[:-1]
-                query = query[-self.model_ctx_len :]
-
-                # get domain conditional query
-                # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                dc_query = dc + continuation[:-1]
-
-                # form a sample
-                self.samples.append(
-                    {
-                        "doc_id": doc_id,
-                        "cont_id": cont_id,
-                        "ctx": ctx,
-                        "continuation": continuation,
-                        "ctx_len": len(ctx),
-                        "dc_len": len(dc),
-                        "cont_len": len(
-                            continuation
-                        ),  # even if query has last token removed, LM will output same cont len
-                        "cont_str_len": cont_str_len,
-                        "cont_byte_len": cont_byte_len,
-                        "query": query,  # remove last token from continuation
-                        "dc_query": dc_query,
-                        "label_id": label_id,
-                    }
-                )
-
-            doc_id += 1
-
-    def doc_to_text(self, doc):
-        # special case where there are multiple ctx and single continuation
-        pronoun_loc = doc["sentence"].index("_")
-
-        ctx = []
-        for option in [doc["option1"], doc["option2"]]:
-            ctx.append(doc["sentence"][:pronoun_loc] + option)
-
-        return ctx
-
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        pronoun_loc = doc["sentence"].index("_") + 1
-        return " " + doc["sentence"][pronoun_loc:].strip()
-
-    def doc_to_label(self, doc):
-        return int(doc["answer"]) - 1
-
-    def doc_to_domain_conditional(self, doc):
-        """same number of domain conditionals as context"""
-        return [doc["option1"], doc["option2"]]
 
 
 class OpenBookQA(ICLMultiChoiceTaskDataset):
@@ -1662,79 +2431,8 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
         return doc["question_stem"].strip().split(" ")[-1]
 
 
-class BoolQ(ICLMultiChoiceTaskDataset):
-    """Prompt: "PASSAGE\nQuestion: QUESTION?\nAnswer:"
-    acc, random at 50% (SuperGLUE)
-    continuation: yes, no
-
-    {
-        'question': 'is ncis new orleans over for the season',
-        'passage': 'NCIS: New Orleans (season 4) -- The fourth season of NCIS: New Orleans premiered on September 26, 2017 on CBS. The series continues to air following Bull, Tuesday at 10:00 p.m. (ET) and contained 24 episodes. The season concluded on May 15, 2018.',
-        'label': 1
-    }
-    """
-
-    metric_type = "acc"
-    BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="boolq",
-        dataset_name=None,
-        model_ctx_len=2048,
-        split="val",
-        transformer_grammar_type:str = "",
-        generate_TG_attention_bias=None,
-        vocab_path=None,
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-            model_ctx_len=model_ctx_len,
-            split=split,
-            transformer_grammar_type=transformer_grammar_type,
-            generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
-        )
-
-    def load_local_datasets(self):
-        self.dataset = []
-        with open(os.path.join(self.BoolQPATH, f"{self.split}.jsonl"), "r") as file:
-            for line in file:
-                self.dataset.append(json.loads(line.strip()))
-        for key in ["passage", "question"]:
-            with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
-                for idx, line in enumerate(file):
-                    self.dataset[idx][key] = convert_TG_format(line.strip())
-        
-
-    def doc_to_text(self, doc):
-        return doc["passage"] + "<|SEP|> (SQ (NP Question NP) : " + doc["question"] + " ? SQ) <|SEP|> (NP (NP Answer NP) : (NP"
-
-    def doc_to_continuations(self, doc):
-        label = not doc["label"]
-        del doc
-        # add spaces in front of continuation
-        if self.split=="train":
-            return [[" yes", " no"][label]]
-        else:
-            return [" yes", " no"]
-
-    def doc_to_label(self, doc):
-        # if doc['answer'] is True, return index of " yes" which is 0
-        if doc["label"]:
-            return 0
-        else:
-            return 1
-
-    def doc_to_domain_conditional(self, doc):
-        del doc
-        return "(NP (NP Answer NP) : (NP"
-
-
 class SciQ(ICLMultiChoiceTaskDataset):
-    """SciQ sends context as "SUPPORT\nQuestion: QUESTION\nAnswer:" and then distractors + correct_answer as continuations
+    """SciQ sends context as "SUPPORT \nQuestion: QUESTION \nAnswer:" and then distractors + correct_answer as continuations
         space added as prefix to each continuation
 
         implement PMI_DC
@@ -1764,7 +2462,7 @@ class SciQ(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return doc["support"].strip() + "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return doc["support"].strip() + " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -1785,7 +2483,7 @@ class SciQ(ICLMultiChoiceTaskDataset):
 
 
 class ArcEasy(ICLMultiChoiceTaskDataset):
-    """ArcEasy creates context with "Question: QUESTION\nAnswer:" and sends the choices as continuations
+    """ArcEasy creates context with "Question: QUESTION \nAnswer:" and sends the choices as continuations
         space added as prefix to each continuation
 
     {
@@ -1811,7 +2509,7 @@ class ArcEasy(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["question"] + "\nAnswer:"
+        return "Question: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -1942,7 +2640,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "Question: " + doc["context"] + " " + doc["question"] + "\nAnswer:"
+        return "Question: " + doc["context"] + " " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
@@ -1958,244 +2656,9 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
     def doc_to_domain_conditional(self, doc):
         return "Answer:"
 
-class CB(ICLMultiChoiceTaskDataset):
-    """Prompt: "premise\nQuestion:{hypothesis}. True, False or Neither?\nAnswer: {True/False/Neither}"
-    continuations: True, False, Neither.
-
-    "cause": "because",
-    "effect": "therefore",
-
-    implement PMI_DC
-    acc, random at 33%
-
-    {
-        'premise': 'It was a complex language. Not written down but handed down. One might say it was peeled down.',
-        'hypothesis': 'the language was peeled down',
-        'label': 0
-    }
-    """
-
-    metric_type = "acc"
-    CBPATH = "./dataset/SuperGLUE/CB/"
-    LABEL_DICT = {"entailment": 0, "contradiction": 1, "neutral": 2}
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="CB",
-        dataset_name=None,
-        model_ctx_len=2048,
-        split="val",
-        transformer_grammar_type:str = "",
-        generate_TG_attention_bias=None,
-        vocab_path=None,
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-            model_ctx_len=model_ctx_len,
-            split=split,
-            transformer_grammar_type=transformer_grammar_type,
-            generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
-        )
-
-    def load_local_datasets(self):
-        self.dataset = []
-        with open(os.path.join(self.CBPATH, f"{self.split}.jsonl"), "r") as file:
-            for line in file:
-                self.dataset.append(json.loads(line.strip()))
-        for key in ["premise", "hypothesis"]:
-            with open(os.path.join(self.CBPATH, f"{self.split}_{key}.txt"), "r") as file:
-                for idx, line in enumerate(file):
-                    self.dataset[idx][key] = convert_TG_format(line.strip())
-    
-    def doc_to_text(self, doc):
-        return doc["premise"] + "<|SEP|> (FRAG (NP Question NP) : " + doc["hypothesis"] + " . FRAG) (FRAG True, False or Neither ? FRAG) <|SEP|> (NP (NP Answer NP) : (NP"
-
-    def doc_to_continuations(self, doc):
-        label = self.LABEL_DICT[doc["label"]]
-        del doc
-        # add spaces in front of continuation
-        if self.split=="train":
-            return [[" True", " False", " Neither"][label]]
-        else:
-            return [" True", " False", " Neither"]
-
-    def doc_to_label(self, doc):
-        return self.LABEL_DICT[doc["label"]]
-
-    def doc_to_domain_conditional(self, doc):
-        del doc
-        return "(NP (NP Answer NP) : (NP"
-
-class COPA(ICLMultiChoiceTaskDataset):
-    """Prompt: "PREMISE.strip()[:-1] because/therefore"
-    Req_loglikelihood('The pair of students came under scrutiny by the teacher because', ' the students both received excellent grades.'
-    continuations: CHOICE1/CHOICE2
-
-    "cause": "because",
-    "effect": "therefore",
-
-    implement PMI_DC
-    acc, random at 50%
-
-    {
-        'premise': 'The pair of students came under scrutiny by the teacher.',
-        'choice1': 'The students both received excellent grades.',
-        'choice2': 'Their responses on the assignment were identical.',
-        'question': 'cause',
-        'label': 1
-    }
-    """
-
-    metric_type = "acc"
-
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="super_glue",
-        dataset_name="copa",
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-        )
-
-    def doc_to_text(self, doc):
-        connector = "because" if doc["question"] == "cause" else "therefore"
-
-        # remove the period
-        return doc["premise"].strip()[:-1] + " " + connector
-
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        def convert_choice(choice):
-            return choice[0].lower() + choice[1:]
-
-        return [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
-
-    def doc_to_label(self, doc):
-        return doc["label"]
-
-    def doc_to_domain_conditional(self, doc):
-        return "because" if doc["question"] == "cause" else "therefore"
-
-
-class RTE(ICLMultiChoiceTaskDataset):
-    """Prompt: "SENTENCE1\nQuestion: SENTENCE2 True or False?\nAnswer:"
-    implement PMI_DC
-    acc, random at 50% (GLUE)
-    continuations: True, False
-
-    {
-        'sentence1': 'The number of Danes opposed to swapping the krone for the euro has increased slightly to 35.3 percent, up from 34.6 percent in April, according to a poll published on Thursday by Danske Bank.',
-        'sentence2': 'The introduction of the euro has been opposed.',
-        'label': 0,
-    }
-    """
-
-    metric_type = "acc"
-    RTEPATH = "./dataset/SuperGLUE/RTE/"
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="rte",
-        dataset_name=None,
-        model_ctx_len=2048,
-        split="val",
-        transformer_grammar_type:str = "",
-        generate_TG_attention_bias=None,
-        vocab_path=None,
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-            model_ctx_len=model_ctx_len,
-            split=split,
-            transformer_grammar_type=transformer_grammar_type,
-            generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
-        )
-    
-    def load_local_datasets(self):
-        self.dataset = []
-        with open(os.path.join(self.RTEPATH, f"{self.split}.jsonl"), "r") as file:
-            for line in file:
-                self.dataset.append(json.loads(line.strip()))
-        for key in ["premise", "hypothesis"]:
-            with open(os.path.join(self.RTEPATH, f"{self.split}_{key}.txt"), "r") as file:
-                for idx, line in enumerate(file):
-                    self.dataset[idx][key] = convert_TG_format(line.strip())
-
-    def doc_to_text(self, doc):
-        return doc["premise"] + "<|SEP|> (S (NP Question NP) : " + doc["hypothesis"] + " S) (ADJP (ADJP True or False ADJP) ? ADJP) <|SEP|> (NP (NP Answer NP) : (NP"
-
-    def doc_to_continuations(self, doc):
-        label = doc["label"]=="not_entailment"
-        del doc
-        # add spaces in front of continuation
-        if self.split=="train":
-            return [[" True", " False"][label]]
-        else:
-            return [" True", " False"]
-
-    def doc_to_label(self, doc):
-        return doc["label"]=="not_entailment"
-
-    def doc_to_domain_conditional(self, doc):
-        del doc
-        return "(NP (NP Answer NP) : (NP"
-
-
-class CommitmentBank(ICLMultiChoiceTaskDataset):
-    """Prompt: "PREMISE\nQuestion: HYPOTHESIS. True, False or Neither?\nAnswer:"
-    continuations: True, False, Neither
-
-        implement PMI_DC
-        acc/F1, random at 33% acc. (SuperGLUE)
-
-    {
-        'premise': 'Then they would awake, terrified and sweating, to find themselves in white starched linen, in a comfortable bed, in peaceful England. And all would be well. It may be said that although he survived it the siege nevertheless had a bad effect on the Collector.',
-        'hypothesis': 'the siege nevertheless had a bad effect on the Collector',
-        'label': 0
-    }
-    """
-
-    metric_type = "acc"
-
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="super_glue",
-        dataset_name="cb",
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-        )
-
-    def doc_to_text(self, doc):
-        return doc["premise"] + "\nQuestion: " + doc["hypothesis"] + ". True, False or Neither?\nAnswer:"
-
-    def doc_to_continuations(self, doc):
-        del doc
-        # add spaces in front of continuation
-        return [" True", " False", " Neither"]
-
-    def doc_to_label(self, doc):
-        return doc["label"]
-
-    def doc_to_domain_conditional(self, doc):
-        del doc
-        return "Answer:"
-
 
 class MRPC(ICLMultiChoiceTaskDataset):
-    """Prompt for MRPC is formed using "Sentence 1: SENTENCE1\nSentence 2: SENTENCE2\nQuestion: Do both sentences mean the same thing?\nAnswer:"
+    """Prompt for MRPC is formed using "Sentence 1: SENTENCE1 \nSentence 2: SENTENCE2 \nQuestion: Do both sentences mean the same thing? \nAnswer:"
     acc/F1, random at 50% acc. (GLUE)
     continuations: yes and no
 
@@ -2236,9 +2699,9 @@ class MRPC(ICLMultiChoiceTaskDataset):
         return (
             "Sentence 1: "
             + self.preprocess(doc["sentence1"])
-            + "\nSentence 2: "
+            + " \nSentence 2: "
             + self.preprocess(doc["sentence2"])
-            + "\nQuestion: Do both sentences mean the same thing?\nAnswer:"
+            + " \nQuestion: Do both sentences mean the same thing? \nAnswer:"
         )
 
     def doc_to_continuations(self, doc):
@@ -2259,7 +2722,7 @@ class MRPC(ICLMultiChoiceTaskDataset):
 
 
 class SST2(ICLMultiChoiceTaskDataset):
-    """SST2 task formats prompts as "SENTENCE\nQuestion: Is this sentence positive or negative?\nAnswer:"
+    """SST2 task formats prompts as "SENTENCE \nQuestion: Is this sentence positive or negative? \nAnswer:"
     some preprocessing done on sentence
 
     constructs 2 requests, 1 for positive and another for negative
@@ -2303,7 +2766,7 @@ class SST2(ICLMultiChoiceTaskDataset):
         return string
 
     def doc_to_text(self, doc):
-        return self.preprocess(doc["sentence"]) + "\nQuestion: Is this sentence positive or negative?\nAnswer:"
+        return self.preprocess(doc["sentence"]) + " \nQuestion: Is this sentence positive or negative? \nAnswer:"
 
     def doc_to_continuations(self, doc):
         del doc
@@ -2321,7 +2784,7 @@ class SST2(ICLMultiChoiceTaskDataset):
 
 
 class MMLU(ICLMultiChoiceTaskDataset):
-    """MMLU creates context with "Question: QUESTION\nAnswer:" and sends the choices as continuations
+    """MMLU creates context with "Question: QUESTION \nAnswer:" and sends the choices as continuations
            space added as prefix to each continuation
 
        {
@@ -2455,8 +2918,8 @@ class MMLU(ICLMultiChoiceTaskDataset):
             question = question_prefix + doc["question"].strip()
             choices = ""
             if self.mc_labels:
-                choices = "".join([f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])])
-            prompt = f"{question}\n{choices}Answer:"
+                choices = "".join([f"{key}. {choice} \n" for key, choice in zip(keys, doc["choices"])])
+            prompt = f"{question} \n{choices}Answer:"
             return prompt
 
         keys = ["A", "B", "C", "D"]
@@ -2466,7 +2929,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
             prefix = ""
             if "inst" in self.current_prompt:
                 subject = doc.get("subject").replace("_", " ")
-                prefix = f"The following are multiple choice questions (with answers) about {subject}:\n\n"
+                prefix = f"The following are multiple choice questions (with answers) about {subject}: \n \n"
             num_shots = re.findall("\\+(\\d+)", self.current_prompt)
             if num_shots:
                 dev_set = self.dev_set.get(doc.get("subject"), [])
@@ -2478,7 +2941,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
                         answer = keys[dev_doc["answer"]]
                     else:
                         answer = dev_doc["choices"][dev_doc["answer"]]
-                    prefix += format_example(dev_doc, keys) + " " + answer + "\n\n"
+                    prefix += format_example(dev_doc, keys) + " " + answer + " \n \n"
             output_text = prefix + output_text
         return output_text
 
@@ -2536,7 +2999,7 @@ class TriviaQACELoss(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         return [" " + doc["answer"]["value"]]
@@ -2573,7 +3036,7 @@ class NaturalQuestionsCELoss(ICLMultiChoiceTaskDataset):
         )
 
     def doc_to_text(self, doc):
-        return "\nQuestion: " + doc["question"] + "\nAnswer:"
+        return " \nQuestion: " + doc["question"] + " \nAnswer:"
 
     def doc_to_continuations(self, doc):
         return [" " + doc["answer"][0]]
@@ -2685,7 +3148,7 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
                         ds_name = ds_name[0]
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}):"
-                        + f"\ndoc_text: {doc_text}\ncontinuation: {continuation_str}"
+                        + f" \ndoc_text: {doc_text} \ncontinuation: {continuation_str}"
                     )
                 cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                 cont_byte_len = len(continuation_str[1:].encode("utf-8"))
@@ -2755,14 +3218,18 @@ TG_task_map = {
 
 Super_GLUE = {
     "boolq": BoolQ,
-    "cb": CB,
+    "cb": CommitmentBank,
     "copa": COPA,
+    "multirc": MultiRC, 
+    "record": ReCoRD,
     "rte": RTE,
+    "wic": WiC, 
+    "wsc": WSC,
+    "hellaswag": HellaSwag,
 }
 
 label_to_task_map = {
     "piqa": PIQA,
-    "hellaswag": HellaSwag,
     "winogrande": WinoGrande,
     "openbook_qa": OpenBookQA,
     "sciq": SciQ,
