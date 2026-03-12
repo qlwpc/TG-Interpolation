@@ -19,24 +19,24 @@ tokenizer = Tokenizer.from_pretrained(name[model])
 
 
 # no <unk>	
-pad = AddedToken("<|pad|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
-bos = AddedToken("<|beginoftext|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
+pad = AddedToken("<|pad|>", single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)
+bos = AddedToken("<|beginoftext|>", single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)
 tokenizer.add_special_tokens([bos, pad])
 
-sum = AddedToken("<|SUM|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
-cls = AddedToken("<|CLS|>", single_word=False, lstrip=False, rstrip=False, normalized=True, special=True)
-sep = AddedToken("<|SEP|>", single_word=True, lstrip=True, rstrip=False, normalized=True, special=True)
+sum = AddedToken("<|SUM|>", single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)
+cls = AddedToken("<|CLS|>", single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)
+sep = AddedToken("<|SEP|>", single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)
 tokenizer.add_special_tokens([sum, cls, sep])
 
 
 # BLLIP special parentheses -LRB- : ( and -RRB- : ) 
 # add in tokenizers but we don't use in data
-LRB = AddedToken("<-LRB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # (
-RRB = AddedToken("<-RRB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # )
-LCB = AddedToken("<-LCB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # {
-RCB = AddedToken("<-RCB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # }
-LSB = AddedToken("<-LSB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # [ 
-RSB = AddedToken("<-RSB->", single_word=True, lstrip=True, rstrip=False, normalized=True, special=False) # ]
+LRB = AddedToken("<-LRB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # (
+RRB = AddedToken("<-RRB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # )
+LCB = AddedToken("<-LCB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # {
+RCB = AddedToken("<-RCB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # }
+LSB = AddedToken("<-LSB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # [ 
+RSB = AddedToken("<-RSB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # ]
 
 tokenizer.add_tokens([LRB, RRB, LCB, RCB, LSB, RSB])
 
@@ -48,7 +48,7 @@ NT = [
 ]
 for non_terminal in NT:
     tokenizer.add_special_tokens(
-        [AddedToken(non_terminal, single_word=True, lstrip=True, rstrip=False, normalized=True, special=True)]
+        [AddedToken(non_terminal, single_word=False, lstrip=False, rstrip=False, normalized=False, special=True)]
     )
 
 
