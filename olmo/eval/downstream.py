@@ -36,7 +36,7 @@ class ICLMetric(Metric):
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-        # self.tokenizer = Tokenizer.from_file("/2024233198/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json")
+        self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
 
@@ -89,7 +89,9 @@ class ICLMetric(Metric):
                 #  self.tokenizer.decode(cont_tokens.tolist(),skip_special_tokens=False), 
                 #   cont_tokens, 
                 #   torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)),
-                #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood}", sep="\n")
+                #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood} label is {batch['label_id'][idx]}",
+                #   f'ctx_len is {batch["ctx_len"]}  cont_len is {batch["cont_len"]}'
+                #   , sep="\n")
                 if self.metric_type == "ce_loss":
                     log_likelihood = -log_likelihood
             elif self.metric_type == "bpb":
@@ -156,6 +158,7 @@ class ICLMetric(Metric):
             if self.metric_type in ["ce_loss", "bpb"]:
                 correct.append(loglikelihoods[0])  # Only one answer is scored
             else:
+                # print(f"{doc_id} is {'correct' if torch.argmax(loglikelihoods).item() == label_dict[doc_id] else 'wrong'}")
                 correct.append(1.0 if torch.argmax(loglikelihoods).item() == label_dict[doc_id] else 0.0)
 
             if self.metric_type == "f1":
@@ -1488,6 +1491,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
             with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
                 for idx, line in enumerate(file):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
+        self.dataset = self.dataset[:1000]
         
 
     def doc_to_text(self, doc):
@@ -2113,7 +2117,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         transformer_grammar_type:str = "",
         generate_TG_attention_bias=None,
         vocab_path=None,
-        shots_num=5,
+        shots_num=0,
     ):
         self.shots_num = shots_num
         self.shots_str = ""
@@ -2148,16 +2152,16 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.jsonl"), "r") as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
-        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
-            for idx, line in enumerate(file):
-                id_entry, num = idx//5, idx % 5
-                if num==0:
-                    dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
-                else:
-                    dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
+        # with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
+        #     for idx, line in enumerate(file):
+        #         id_entry, num = idx//5, idx % 5
+        #         if num==0:
+        #             dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
+        #         else:
+        #             dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
         
-        # if split!='train':
-        #     dataset = dataset[:50]
+        if split!='train':
+            dataset = dataset[:1000]
         if ret:
             return dataset
         else:
@@ -2180,17 +2184,15 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
 
 
     def doc_to_text(self, doc, single_shot=False):
-        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"]
+        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"] + " " + doc["ctx_b"] + " "
 
     def doc_to_continuations(self, doc):
-        return [ending for ending in doc["endings"]]
         return [ending for ending in doc["endings"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"])
 
     def doc_to_domain_conditional(self, doc):
-        return doc["ctx_a"].split(" ")[-1]
         return doc["ctx_a"].split(" ")[-1]
 
 
@@ -2312,9 +2314,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             # tokenize
             continuation = self.token_encode(continuation_str)
             continuation = self.convert_grammar_input(continuation)
-            continuation = self.convert_grammar_input(continuation)
             for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
-                doc_text = ctx
                 doc_text = ctx
                 ctx = self.token_encode(ctx)
                 dc = self.token_encode(dc)
@@ -2324,24 +2324,12 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                     query = ctx + continuation
                 else:
                     query = ctx + continuation[:-1]
-                if self.split=="train":
-                    query = ctx + continuation
-                else:
-                    query = ctx + continuation[:-1]
                 query = query[-self.model_ctx_len :]
-                query = self.convert_grammar_input(query)
-                actual_ctx_len = len(query) - len(continuation) + 1
                 query = self.convert_grammar_input(query)
                 actual_ctx_len = len(query) - len(continuation) + 1
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                if self.split=="train":
-                    dc_query = dc + continuation
-                else:
-                    dc_query = dc + continuation[:-1]
-                
-                cont_str_len = len(self.token_decode(continuation)) - 1
                 if self.split=="train":
                     dc_query = dc + continuation
                 else:
@@ -2355,9 +2343,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                         "doc_id": doc_id,
                         "cont_id": cont_id,
                         # "ctx": ctx,
-                        # "ctx": ctx,
                         "continuation": continuation,
-                        "ctx_len": actual_ctx_len,
                         "ctx_len": actual_ctx_len,
                         "dc_len": len(dc),
                         "cont_len": len(
@@ -2390,7 +2376,6 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
     def doc_to_continuations(self, doc):
         # add spaces in front of continuation
-        return doc["continuation"]
         return doc["continuation"]
 
     def doc_to_label(self, doc):

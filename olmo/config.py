@@ -500,7 +500,7 @@ class ModelConfig(BaseConfig):
     Mixed attention head attention bias type
     """
     
-    modelname: str = "OLMo"
+    modelname: Optional[str] = None
 
     tg_proximal_k : int = 20
     tg_height_h : int = 5

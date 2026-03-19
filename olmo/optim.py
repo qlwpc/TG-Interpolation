@@ -852,6 +852,9 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
                 continue
 
             fpn = f"{mn}.{pn}" if mn else pn
+            if cfg.model.weight_tying and fpn.endswith("lm_head.weight"):
+                continue
+
             all_params[fpn] = p
 
             if pn.endswith("bias"):
@@ -872,8 +875,8 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
                 else:
                     no_decay.add(fpn)
 
-    if cfg.model.weight_tying and cfg.model.modelname!="OLMo":
-        all_params.pop("module.transformer.lm_head.weight")
+    # if cfg.model.weight_tying and cfg.model.modelname is not None:
+    #     all_params.pop("module.transformer.lm_head.weight")
     # Validate that we've considered every parameter
     inter_params = decay & no_decay
     union_params = decay | no_decay
