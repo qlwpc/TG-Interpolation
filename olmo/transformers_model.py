@@ -1,16 +1,17 @@
 from __future__ import annotations
 import logging
 
-from typing import List, Optional, Sequence, Tuple, Callable
+from typing import List, Optional, Sequence, Tuple, Callable, Dict, Set
 
 import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from .model import OLMoOutput, _non_meta_init_device
-from .config import ModelConfig, ActivationCheckpointingStrategy, CheckpointType, TrainConfig
+from .config import ModelConfig, ActivationCheckpointingStrategy, CheckpointType, TrainConfig, FSDPWrapStrategy
 from .aliases import PathOrStr
 from .tokenizer import Tokenizer
 from .checkpoint import Checkpointer, ShardedCheckpointerType
+from transformers.models.olmo.modeling_olmo import OlmoModel, OlmoDecoderLayer
 
 __all__ = [
     "HuggingModel", 
@@ -224,6 +225,108 @@ class HuggingModel(nn.Module):
                 for idx in new_ids:
                     out_w[idx].copy_(mean_out[0])
 
+    def _make_state_dict_compatible(
+        self, state_dict: Dict[str, torch.Tensor]
+    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Set[str]]]:
+        pass
+
+    def get_fsdp_wrap_policy(self, wrap_strategy: Optional[FSDPWrapStrategy] = None):
+        if wrap_strategy is None:
+            return None
+
+        # The 'recurse' mode for the wrap function does not behave like you'd expect.
+        # Even if we return False, it may still recurse because PyTorch does what it wants,
+        # not what you want. This causes issues when, for example, we want to wrap 'ff_out' (a linear layer)
+        # but not other linear layers within a block.
+        # So we have to explicitly tell PyTorch which linear layers to wrap, and we also just
+        # return True in 'recurse' mode for simplicity.
+        
+        size_based_module_to_wrap = {}
+        if hasattr(self.transformer, "wte"):
+            size_based_module_to_wrap.add(self.transformer.wte)
+        if hasattr(self.transformer, "ff_out"):
+            size_based_module_to_wrap.add(self.transformer.ff_out)
+
+        if wrap_strategy == FSDPWrapStrategy.by_block:
+
+            def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
+                del nonwrapped_numel
+                wrap = isinstance(module, OlmoDecoderLayer)
+                if recurse:
+                    return True
+                else:
+                    return wrap
+
+            return fsdp_wrap_fn
+        elif wrap_strategy == FSDPWrapStrategy.by_block_and_size:
+
+            def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
+                del nonwrapped_numel
+                wrap = isinstance(module, (OlmoDecoderLayer,)) or module in size_based_module_to_wrap
+                if recurse:
+                    return True
+                else:
+                    return wrap
+
+            return fsdp_wrap_fn
+        elif wrap_strategy == FSDPWrapStrategy.by_block_group:
+            if self.config.block_group_size <= 1:
+                raise OLMoConfigurationError(
+                    "'by_block_group' FSDP wrapping strategy requires block group size greater than 1"
+                )
+
+            def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
+                del nonwrapped_numel
+                wrap = isinstance(module, OLMoBlockGroup)
+                if recurse:
+                    return True
+                else:
+                    return wrap
+
+            return fsdp_wrap_fn
+        elif wrap_strategy == FSDPWrapStrategy.by_block_group_and_size:
+            if self.config.block_group_size <= 1:
+                raise OLMoConfigurationError(
+                    "'by_block_group_and_size' FSDP wrapping strategy requires block group size greater than 1"
+                )
+
+            def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
+                del nonwrapped_numel
+                wrap = isinstance(module, (OLMoBlockGroup,)) or module in size_based_module_to_wrap
+                if recurse:
+                    return True
+                else:
+                    return wrap
+
+            return fsdp_wrap_fn
+        elif wrap_strategy == FSDPWrapStrategy.size_based:
+            from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
+
+            return size_based_auto_wrap_policy
+        elif wrap_strategy in {
+            FSDPWrapStrategy.one_in_two,
+            FSDPWrapStrategy.one_in_three,
+            FSDPWrapStrategy.one_in_four,
+            FSDPWrapStrategy.one_in_five,
+        }:
+            c = {
+                FSDPWrapStrategy.one_in_two: 2,
+                FSDPWrapStrategy.one_in_three: 3,
+                FSDPWrapStrategy.one_in_four: 4,
+                FSDPWrapStrategy.one_in_five: 5,
+            }[wrap_strategy]
+
+            def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
+                del nonwrapped_numel
+                wrap = isinstance(module, OlmoDecoderLayer) and module.layer_id % c == 0
+                if recurse:
+                    return True
+                else:
+                    return wrap
+
+            return fsdp_wrap_fn
+        else:
+            raise NotImplementedError(wrap_strategy)
 
 
 if __name__ == '__main__':

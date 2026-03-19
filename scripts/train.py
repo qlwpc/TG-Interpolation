@@ -132,7 +132,7 @@ def main(cfg: TrainConfig) -> None:
 
     # Initialize the model.
     log.info("Building model...")
-    if cfg.model.modelname=="OLMo":
+    if cfg.model.modelname is None:
         olmo_model = OLMo(cfg.model)
         # Compile one block at a time.
         if cfg.compile is not None:
@@ -299,7 +299,7 @@ def main(cfg: TrainConfig) -> None:
                 )
                 cfg.reset_optimizer_state = False
 
-        if not cfg.dry_run and not cfg.no_pre_train_checkpoint and cfg.load_path is None:
+        if not cfg.dry_run and not cfg.no_pre_train_checkpoint and cfg.load_path is None and cfg.model.modelname is None:
             if cfg.distributed_strategy == DistributedStrategy.ddp:
                 checkpoint_type = CheckpointType.unsharded
 

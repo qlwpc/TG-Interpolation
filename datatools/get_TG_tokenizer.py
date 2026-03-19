@@ -11,7 +11,7 @@ parser.add_argument('--model_name', type=str, default="gpt2")
 args = parser.parse_args()
 
 model = args.model_name
-name = {"gpt2": "gpt2", "qwen3": "Qwen/Qwen3-0.6B"}
+name = {"gpt2": "gpt2", "qwen3": "Qwen/Qwen3-0.6B", "olmo-1B": "allenai/OLMo-1B-0724-hf"}
 
 tokenizer = Tokenizer.from_pretrained(name[model])
 
