@@ -1495,12 +1495,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
         
 
     def doc_to_text(self, doc):
-        # Remove the outermost non-terminal tokens 
-        def convert_question(sent):
-            tokens = sent.split()
-            return ' '.join(tokens[1:-1])
-        
-        return doc["passage"] + " \n<(SQ><(NP> Question<NP)> :<(SQ>" + convert_question(doc["question"]) + " ?<SQ)><SQ)> \n<(NP><(NP> Answer<NP)> :<(NP>"
+        return doc["passage"] + " \n<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is<VP)><(NP>"
 
     def doc_to_continuations(self, doc):
         label = doc["label"]
@@ -1520,7 +1515,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "<(NP><(NP> Answer<NP)> :<(NP>"
+        return "<(S><(NP> The answer<NP)><(VP> is<VP)><(NP>"
 
 
 
@@ -2117,7 +2112,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         transformer_grammar_type:str = "",
         generate_TG_attention_bias=None,
         vocab_path=None,
-        shots_num=0,
+        shots_num=5,
     ):
         self.shots_num = shots_num
         self.shots_str = ""
@@ -2152,6 +2147,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.jsonl"), "r") as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
+                dataset[-1]["ctx_b"] = dataset[-1]["ctx_b"].capitalize()
         # with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
         #     for idx, line in enumerate(file):
         #         id_entry, num = idx//5, idx % 5
@@ -2184,7 +2180,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
 
 
     def doc_to_text(self, doc, single_shot=False):
-        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"] + " " + doc["ctx_b"] + " "
+        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> : " + doc["ctx_a"] + " " + doc["ctx_b"] + " "
 
     def doc_to_continuations(self, doc):
         return [ending for ending in doc["endings"]]
@@ -2273,14 +2269,17 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             if j<len(left_text):
                 raise NotImplementedError
             
-            doc_str = " ".join(tree_tokens[:i-1] + ["_"])
+            doc_str = " ".join(tree_tokens[:i-1])
+            answer_tokens = tree_tokens[i-1]
+            answer = dataset[idx][f"option{answer_label}"]
             cont_tokens = tree_tokens[i:]
             cont_str = " " + " ".join(cont_tokens)
             dataset[idx]["continuation"] = cont_str
             dataset[idx]["ctxs"] = [
-                doc_str.replace("_", dataset[idx]["option1"]),
-                doc_str.replace("_", dataset[idx]["option2"]),
+                doc_str + " "  + answer_tokens.replace(answer, dataset[idx]["option1"]),
+                doc_str + " "  + answer_tokens.replace(answer, dataset[idx]["option2"]),
             ]
+
 
         if ret:
             return dataset
