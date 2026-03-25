@@ -1,7 +1,6 @@
-name: LLM
+name: LLMH100
 channels:
   - defaults
-  - conda-forge
   - conda-forge
 dependencies:
   - _libgcc_mutex=0.1=main
@@ -58,6 +57,7 @@ dependencies:
       - comm==0.2.0
       - commonmark==0.9.1
       - confection==0.1.5
+      - contourpy==1.3.2
       - cycler==0.12.1
       - cymem==2.0.13
       - datasets==3.1.0
@@ -73,19 +73,19 @@ dependencies:
       - fastjsonschema==2.19.1
       - filelock==3.9.0
       - flash-attn==2.8.2
-      - fonttools==4.46.0
+      - fonttools==4.62.1
       - fqdn==1.5.1
       - frozenlist==1.5.0
       - fsspec==2024.9.0
       - gitdb==4.0.12
       - gitpython==3.1.46
-      - google-api-core>=2.23.0
-      - google-auth>=2.36.0
-      - google-cloud-core>=2.4.1
-      - google-cloud-storage>=2.18.2
-      - google-crc32c>=1.6.0
-      - google-resumable-media>=2.7.2
-      - googleapis-common-protos>=1.66.0
+      - google-api-core==2.23.0
+      - google-auth==2.36.0
+      - google-cloud-core==2.4.1
+      - google-cloud-storage==2.18.2
+      - google-crc32c==1.6.0
+      - google-resumable-media==2.7.2
+      - googleapis-common-protos==1.66.0
       - grpcio==1.71.0
       - huggingface==0.0.1
       - huggingface-hub==0.26.2
@@ -116,12 +116,12 @@ dependencies:
       - jupyterlab-pygments==0.3.0
       - jupyterlab-server==2.25.2
       - jupyterlab-widgets==3.0.9
-      - kiwisolver==1.4.5
+      - kiwisolver==1.5.0
       - lightning-utilities==0.11.9
       - markdown==3.7
       - markdown-it-py==3.0.0
       - markupsafe==2.1.2
-      - matplotlib==3.5.3
+      - matplotlib==3.10.8
       - matplotlib-inline==0.1.6
       - mdurl==0.1.2
       - mistune==3.0.2
@@ -165,8 +165,8 @@ dependencies:
       - parso==0.8.3
       - pastel==0.2.1
       - pexpect==4.9.0
-      - pillow==9.3.0
-      - pip==25.1.1
+      - pillow==12.1.1
+      - pip==26.0.1
       - platformdirs==4.5.1
       - pluggy==1.5.0
       - poethepoet==0.13.1
@@ -187,9 +187,9 @@ dependencies:
       - pydantic==2.12.5
       - pydantic-core==2.41.5
       - pygments==2.17.2
-      - pyparsing==3.1.1
+      - pyparsing==3.3.2
       - pytest==8.3.3
-      - python-dateutil==2.8.2
+      - python-dateutil==2.9.0.post0
       - python-json-logger==2.0.7
       - pytz==2026.1.post1
       - pyyaml==6.0.3
@@ -232,7 +232,7 @@ dependencies:
       - thinc==8.3.10
       - threadpoolctl==3.5.0
       - tinycss2==1.2.1
-      - tokenizers==0.22.3
+      - tokenizers==0.20.3
       - tomli==2.0.1
       - torch==2.7.1
       - torch-struct==0.5
@@ -244,11 +244,11 @@ dependencies:
       - tornado==6.4
       - tqdm==4.67.3
       - traitlets==5.14.0
-      - transformers==4.57.3
+      - transformers==4.46.3
       - triton==3.3.1
       - typeguard==2.13.3
       - typer-slim==0.21.0
-      - types-python-dateutil==2.9.0.post0
+      - types-python-dateutil==2.8.19.14
       - typing-extensions==4.15.0
       - typing-inspection==0.4.2
       - tzdata==2025.3
