@@ -31,12 +31,14 @@ class ICLMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
 
-    def __init__(self, metric_type="acc") -> None:
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default") -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
-        self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
+        self.tree_eval_type = tree_eval_type
+        self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        # self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
 
@@ -58,6 +60,10 @@ class ICLMetric(Metric):
             lm_cont_logits = lm_logits[idx][
                 batch["ctx_len"][idx] - 1 : batch["ctx_len"][idx] + batch["cont_len"][idx] - 1
             ]
+            lm_log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1))
+            if self.tree_eval_type=="terminal":
+                mask = self.vocab.get_non_terminal_mask(cont_tokens)
+                lm_log_likelihood *= mask
 
             log_likelihood: torch.Tensor
             if self.metric_type == "pmi_dc":
@@ -69,7 +75,7 @@ class ICLMetric(Metric):
 
                 # gather log-probs at continuation token indices but divide by domain conditional prob
                 log_likelihood = (
-                    torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
+                    lm_log_likelihood.sum()
                     / torch.gather(dc_lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
                 )
             elif self.metric_type == "acc" or self.metric_type == "f1":
@@ -78,17 +84,17 @@ class ICLMetric(Metric):
                 # print(self.tokenizer.decode(cont_tokens.tolist(), skip_special_tokens=False))
                 # print(f'{ batch["ctx_len"][idx] - 1 } : {batch["ctx_len"][idx] + batch["cont_len"][idx] - 1}')
                 # print(lm_cont_logits)
-                log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
+                log_likelihood = lm_log_likelihood.sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
                 # print(batch["input_ids"][idx])
-                # print(torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)))
+                # print(lm_log_likelihood)
                 log_likelihood = (
-                    torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum() / batch["cont_str_len"][idx]
+                    lm_log_likelihood.sum() / batch["cont_str_len"][idx]
                 )
                 # print(self.tokenizer.decode(batch["input_ids"][idx].tolist(),skip_special_tokens=False),
                 #  self.tokenizer.decode(cont_tokens.tolist(),skip_special_tokens=False), 
                 #   cont_tokens, 
-                #   torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)),
+                #   lm_log_likelihood,
                 #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood} label is {batch['label_id'][idx]}",
                 #   f'ctx_len is {batch["ctx_len"]}  cont_len is {batch["cont_len"]}'
                 #   , sep="\n")
@@ -97,7 +103,7 @@ class ICLMetric(Metric):
             elif self.metric_type == "bpb":
                 # bits per byte
                 log_likelihood = (
-                    -torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
+                    -lm_log_likelihood.sum()
                     / batch["cont_byte_len"][idx]
                     * LOG_2_OF_E
                 )
@@ -196,6 +202,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         transformer_grammar_type="",
         generate_TG_attention_bias=None,
         vocab_path=None,
+        tree_eval_type="default"
     ):
         super().__init__()
 
@@ -210,6 +217,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.split = split
         if metric_type is not None:
             self.metric_type = metric_type
+        self.tree_eval_type = tree_eval_type
         self.log_instances = 5  # Set to > 0 to log the first few instances as a sanity check
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.transformer_grammar_type = transformer_grammar_type
@@ -241,12 +249,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     def __len__(self):
         return len(self.samples)
     
-    def convert_grammar_input(self, input_ids) -> List[int]:
+    def convert_grammar_input(self, input_ids, grammar_type=None) -> List[int]:
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
-        if self.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
+        if grammar_type is None:
+            grammar_type = self.transformer_grammar_type
+        if grammar_type[:8] in ["terminal", "pause1/2"]:
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
-        elif self.transformer_grammar_type[:4] == "tree":
+        elif grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
 
@@ -299,7 +309,12 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
                     cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                     cont_byte_len = len(continuation_str[1:].encode("utf-8"))
-                    # form a sample
+                    if self.tree_eval_type=="terminal":
+                        terminal_continuation = self.convert_grammar_input(continuation, grammar_type="terminal")
+                        terminal_continuation_str = self.token_decode(terminal_continuation)
+                        cont_str_len = len(terminal_continuation_str) - 1  # continuation contain leading blank
+                        cont_byte_len = len(terminal_continuation_str[1:].encode("utf-8"))
+
 
                     if self.transformer_grammar_type[:8] == "pause1/2":
                         paused_input = query + query
@@ -2396,10 +2411,6 @@ class PIQA(ICLMultiChoiceTaskDataset):
         'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
         'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
         'label': 0
-        'goal': "How do I ready a guinea pig cage for it's new occupants?",
-        'sol1': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped paper strips, you will also need to supply it with a water bottle and a food dish.',
-        'sol2': 'Provide the guinea pig with a cage full of a few inches of bedding made of ripped jeans material, you will also need to supply it with a water bottle and a food dish.',
-        'label': 0
     }
     """
 
@@ -3262,10 +3273,7 @@ TG_task_map = {
 Super_GLUE = {
     "boolq": BoolQ,
     "cb": CommitmentBank,
-    "cb": CommitmentBank,
     "copa": COPA,
-    "multirc": MultiRC, 
-    "record": ReCoRD,
     "multirc": MultiRC, 
     "record": ReCoRD,
     "rte": RTE,
@@ -3290,6 +3298,8 @@ label_to_task_map = {
     "social_iqa": SocialIQa,
     "trivia_qa_wiki_ppl": TriviaQACELoss,
     "natural_qs_open_ppl": NaturalQuestionsCELoss,
+    "winogrande_term" : (WinoGrande, {"tree_eval_type": "terminal"}),
+    "hellaswag_term" : (HellaSwag, {"tree_eval_type": "terminal"}),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),
@@ -3298,47 +3308,47 @@ label_to_task_map = {
     "mmlu_humanities": (MMLU, {"dataset_name": "humanities"}),
     "mmlu_social_sciences": (MMLU, {"dataset_name": "social_sciences"}),
     "mmlu_other": (MMLU, {"dataset_name": "other"}),
-    "mmlu_stem_bpb": (MMLU, {"dataset_name": "stem", "metric_type": "bpb"}),
-    "mmlu_humanities_bpb": (MMLU, {"dataset_name": "humanities", "metric_type": "bpb"}),
-    "mmlu_social_sciences_bpb": (MMLU, {"dataset_name": "social_sciences", "metric_type": "bpb"}),
-    "mmlu_other_bpb": (MMLU, {"dataset_name": "other", "metric_type": "bpb"}),
-    "mmlu_stem_var": (MMLU, {"dataset_name": "stem", "prompt_variations": 1}),
-    "mmlu_humanities_var": (MMLU, {"dataset_name": "humanities", "prompt_variations": 1}),
-    "mmlu_social_sciences_var": (MMLU, {"dataset_name": "social_sciences", "prompt_variations": 1}),
-    "mmlu_other_var": (MMLU, {"dataset_name": "other", "prompt_variations": 1}),
-    "mmlu_stem_var_bpb": (MMLU, {"dataset_name": "stem", "prompt_variations": 1, "metric_type": "bpb"}),
-    "mmlu_humanities_var_bpb": (
-        MMLU,
-        {"dataset_name": "humanities", "prompt_variations": 1, "metric_type": "bpb"},
-    ),
-    "mmlu_social_sciences_var_bpb": (
-        MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 1, "metric_type": "bpb"},
-    ),
-    "mmlu_other_var_bpb": (MMLU, {"dataset_name": "other", "prompt_variations": 1, "metric_type": "bpb"}),
-    "mmlu_stem_mc_5shot": (MMLU, {"dataset_name": "stem", "prompt_variations": 2, "mc_labels": True}),
-    "mmlu_humanities_mc_5shot": (MMLU, {"dataset_name": "humanities", "prompt_variations": 2, "mc_labels": True}),
-    "mmlu_social_sciences_mc_5shot": (
-        MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 2, "mc_labels": True},
-    ),
-    "mmlu_other_mc_5shot": (MMLU, {"dataset_name": "other", "prompt_variations": 2, "mc_labels": True}),
-    "mmlu_stem_mc_5shot_test": (
-        MMLU,
-        {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "mc_labels": True},
-    ),
-    "mmlu_humanities_mc_5shot_test": (
-        MMLU,
-        {"dataset_name": "humanities", "split": "test", "prompt_variations": 2, "mc_labels": True},
-    ),
-    "mmlu_social_sciences_mc_5shot_test": (
-        MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2, "mc_labels": True},
-    ),
-    "mmlu_other_mc_5shot_test": (
-        MMLU,
-        {"dataset_name": "other", "split": "test", "prompt_variations": 2, "mc_labels": True},
-    ),
+    # "mmlu_stem_bpb": (MMLU, {"dataset_name": "stem", "metric_type": "bpb"}),
+    # "mmlu_humanities_bpb": (MMLU, {"dataset_name": "humanities", "metric_type": "bpb"}),
+    # "mmlu_social_sciences_bpb": (MMLU, {"dataset_name": "social_sciences", "metric_type": "bpb"}),
+    # "mmlu_other_bpb": (MMLU, {"dataset_name": "other", "metric_type": "bpb"}),
+    # "mmlu_stem_var": (MMLU, {"dataset_name": "stem", "prompt_variations": 1}),
+    # "mmlu_humanities_var": (MMLU, {"dataset_name": "humanities", "prompt_variations": 1}),
+    # "mmlu_social_sciences_var": (MMLU, {"dataset_name": "social_sciences", "prompt_variations": 1}),
+    # "mmlu_other_var": (MMLU, {"dataset_name": "other", "prompt_variations": 1}),
+    # "mmlu_stem_var_bpb": (MMLU, {"dataset_name": "stem", "prompt_variations": 1, "metric_type": "bpb"}),
+    # "mmlu_humanities_var_bpb": (
+    #     MMLU,
+    #     {"dataset_name": "humanities", "prompt_variations": 1, "metric_type": "bpb"},
+    # ),
+    # "mmlu_social_sciences_var_bpb": (
+    #     MMLU,
+    #     {"dataset_name": "social_sciences", "prompt_variations": 1, "metric_type": "bpb"},
+    # ),
+    # "mmlu_other_var_bpb": (MMLU, {"dataset_name": "other", "prompt_variations": 1, "metric_type": "bpb"}),
+    # "mmlu_stem_mc_5shot": (MMLU, {"dataset_name": "stem", "prompt_variations": 2, "mc_labels": True}),
+    # "mmlu_humanities_mc_5shot": (MMLU, {"dataset_name": "humanities", "prompt_variations": 2, "mc_labels": True}),
+    # "mmlu_social_sciences_mc_5shot": (
+    #     MMLU,
+    #     {"dataset_name": "social_sciences", "prompt_variations": 2, "mc_labels": True},
+    # ),
+    # "mmlu_other_mc_5shot": (MMLU, {"dataset_name": "other", "prompt_variations": 2, "mc_labels": True}),
+    # "mmlu_stem_mc_5shot_test": (
+    #     MMLU,
+    #     {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    # ),
+    # "mmlu_humanities_mc_5shot_test": (
+    #     MMLU,
+    #     {"dataset_name": "humanities", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    # ),
+    # "mmlu_social_sciences_mc_5shot_test": (
+    #     MMLU,
+    #     {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    # ),
+    # "mmlu_other_mc_5shot_test": (
+    #     MMLU,
+    #     {"dataset_name": "other", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    # ),
     # Paste in all oe-eval tasks from output of scripts/list_evals_from_oe_eval.py
     "arc_challenge_mc_5shot": (
         OEEvalTask,

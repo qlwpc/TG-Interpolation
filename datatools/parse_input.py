@@ -441,6 +441,16 @@ def prepare_dataset(config:str):
             prepared_ds.append(doc["question"])
             for option in doc["choices"]:
                 prepared_ds.append(option)
+    elif config[:10] == "openbookqa":
+        ds = load_dataset("allenai/openbookqa", "additional")
+        os.makedirs("../dataset/openbookqa/", exist_ok=True)
+        filename = os.path.join("../dataset/openbookqa/", config + ".txt")
+        split = config[10:]
+        label_index = {"A": 0, "B": 1, "C": 2, "D": 3}
+        for doc in ds[split]:
+            prepared_ds.append(doc["question_stem"] + " " + doc["choices"]["text"][label_index[doc["answerKey"]]])
+            for option in doc["choices"]["text"]:
+                prepared_ds.append(option)
     else: # file_split_key
         split = config.split("_")
         key = split[2]
