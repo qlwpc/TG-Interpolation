@@ -228,7 +228,7 @@ def main(cfg: TrainConfig) -> None:
         raise NotImplementedError("Single accelerator training not implemented yet!")
 
     # when param_init_fn is None, FSDP will call reset_parameters() automatically
-    if param_init_fn is not None or cfg.distributed_strategy == DistributedStrategy.ddp:
+    if (param_init_fn is not None or cfg.distributed_strategy == DistributedStrategy.ddp) and cfg.model.modelname is None:
         olmo_model.reset_parameters()
 
     log.info(f"Peak GPU Memory (MB) after {cfg.distributed_strategy}: {int(peak_gpu_memory() or 0)}")
