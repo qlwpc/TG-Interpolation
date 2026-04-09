@@ -31,7 +31,7 @@ class ICLMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
 
-    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default") -> None:
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None) -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
         super().__init__(sync_on_compute=True)
 
@@ -53,17 +53,27 @@ class ICLMetric(Metric):
 
         for idx, (doc_id, cont_id) in enumerate(zip(batch["doc_id"], batch["cont_id"])):
             # [cont_len]: continuation is padded for batching
-            cont_tokens = batch["continuation"][idx][: batch["cont_len"][idx]]
+            cont_tokens = batch["continuation"][idx][: batch["cont_len"][idx]].unsqueeze(-1)
             # get logits from LM for the continuation: [cont_len, vocab]
             # batch['input_ids'][idx] -> ctx + cont + padding
             # -1 in both indices: lm_logits will be left shifted 1 pos as 0th pos in input generates next token in the 0th pos of lm_logits
             lm_cont_logits = lm_logits[idx][
                 batch["ctx_len"][idx] - 1 : batch["ctx_len"][idx] + batch["cont_len"][idx] - 1
             ]
-            lm_log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens.unsqueeze(-1))
+            lm_log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens).squeeze()
+            cont_mask = None
+            if "cont_mask" in batch:
+                cont_mask = batch["cont_mask"][idx][: batch["cont_len"][idx]]
             if self.tree_eval_type=="terminal":
-                mask = self.vocab.get_non_terminal_mask(cont_tokens)
-                lm_log_likelihood *= mask
+                cont_tokens_seq = cont_tokens.squeeze()
+                mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+                if cont_mask is None:
+                    cont_mask = mask
+                else:
+                    cont_mask *= mask
+            
+            if cont_mask is not None:
+                lm_log_likelihood *= cont_mask
 
             log_likelihood: torch.Tensor
             if self.metric_type == "pmi_dc":
@@ -76,28 +86,15 @@ class ICLMetric(Metric):
                 # gather log-probs at continuation token indices but divide by domain conditional prob
                 log_likelihood = (
                     lm_log_likelihood.sum()
-                    / torch.gather(dc_lm_cont_logits, 1, cont_tokens.unsqueeze(-1)).sum()
+                    / torch.gather(dc_lm_cont_logits, 1, cont_tokens).sum()
                 )
             elif self.metric_type == "acc" or self.metric_type == "f1":
                 # gather log-probs at continuation token indices
-                # print(cont_tokens)
-                # print(self.tokenizer.decode(cont_tokens.tolist(), skip_special_tokens=False))
-                # print(f'{ batch["ctx_len"][idx] - 1 } : {batch["ctx_len"][idx] + batch["cont_len"][idx] - 1}')
-                # print(lm_cont_logits)
                 log_likelihood = lm_log_likelihood.sum()
             elif self.metric_type == "len_norm" or self.metric_type == "ce_loss":
-                # print(batch["input_ids"][idx])
-                # print(lm_log_likelihood)
                 log_likelihood = (
                     lm_log_likelihood.sum() / batch["cont_str_len"][idx]
                 )
-                # print(self.tokenizer.decode(batch["input_ids"][idx].tolist(),skip_special_tokens=False),
-                #  self.tokenizer.decode(cont_tokens.tolist(),skip_special_tokens=False), 
-                #   cont_tokens, 
-                #   lm_log_likelihood,
-                #   f"{doc_id} {cont_id} log_likelihood is {log_likelihood} label is {batch['label_id'][idx]}",
-                #   f'ctx_len is {batch["ctx_len"]}  cont_len is {batch["cont_len"]}'
-                #   , sep="\n")
                 if self.metric_type == "ce_loss":
                     log_likelihood = -log_likelihood
             elif self.metric_type == "bpb":
@@ -199,6 +196,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         metric_type=None,  # Override default metric type
         prompts=[None],  # List of prompt variants to use
         local_datasets=True,
+        shots_num=0,
         transformer_grammar_type="",
         generate_TG_attention_bias=None,
         vocab_path=None,
@@ -214,6 +212,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             self.model_ctx_len //= 2
         self.prompts = prompts
         self.current_prompt = None
+        self.shots_num = shots_num
+        self.shots_prompt = ""
         self.split = split
         if metric_type is not None:
             self.metric_type = metric_type
@@ -240,6 +240,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         else:
             self.load_local_datasets()
 
+        if shots_num!=0 and split!="train":
+            self.prepare_shots()
         # prep examples
         self.prep_examples()
 
@@ -260,6 +262,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
 
+    def prepare_shots(self):
+        train = self.load_local_datasets(split="train", ret=True)
+        self.shots = self.get_shots(train)
+        self.shots_prompt = ""
+        for i in range(self.shots_num):
+            doc = self.shots[i]
+            self.shots_prompt += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc, single_shot=True)[self.doc_to_label(doc)] + " \n \n"
+
     def prep_examples(self):
         """Append doc_ids to each example so that they are processed together in the metric"""
         doc_id = 0
@@ -279,33 +289,38 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 doc_text = self.doc_to_text(doc)
                 ctx = self.token_encode(doc_text)
                 dc = self.token_encode(self.doc_to_domain_conditional(doc))
-                dc = self.convert_grammar_input(dc)
 
                 for cont_id, continuation_str in enumerate(continuations):
                     # cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                     # cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     continuation = self.token_encode(continuation_str)
+                    
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
                     # when train, should keep last token
-                    if self.split=="train":
-                        query = ctx + continuation
-                    else:
-                        query = ctx + continuation[:-1]
+                    query = ctx + continuation
+                    dc_query = dc + continuation
+                    # if self.split=="train":
+                    #     query = ctx + continuation
+                    # else:
+                    #     query = ctx + continuation[:-1]
                         
                     query = query[-self.model_ctx_len :]
                     query = self.convert_grammar_input(query)
+                    dc_query = self.convert_grammar_input(dc_query)
                     continuation = self.convert_grammar_input(continuation)
+                    mask = None
+                    if hasattr(self, "get_mask"):
+                        mask = self.get_mask(continuation, doc)
+                    if self.split!="train":
+                        query = query[:-1]
+                        dc_query = dc_query[:-1]
                     continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
                     
                     # get domain conditional query
                     # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                    if self.split=="train":
-                        dc_query = dc + continuation
-                    else:
-                        dc_query = dc + continuation[:-1]
 
                     cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                     cont_byte_len = len(continuation_str[1:].encode("utf-8"))
@@ -330,6 +345,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         tmp_cont[1::2] = continuation
                         continuation = tmp_cont[:-1]
                         actual_ctx_len *= 2
+                        if mask is not None:
+                            tmp_mask = mask + mask
+                            tmp_mask[::2] = mask
+                            tmp_mask[1::2] = mask
+                            mask = tmp_mask[:-1]
 
                     self.samples.append(
                         {
@@ -347,6 +367,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             "query": query,  # remove last token from continuation
                             "dc_query": dc_query,
                             "label_id": label_id,
+                            "cont_mask": mask,
                         }
                     )
                 if self.log_instances > 0:
@@ -357,7 +378,10 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     log.info(
                         f"Sample doc from ({self.dataset_path}, {ds_name}, {self.current_prompt}):"
                         + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
-                        f"input_ids is {self.token_decode(query)}"
+                        f"input_ids is {self.token_decode(query)}\n" + 
+                        f"query is {query}\n" +  
+                        f"continuation is {continuation}" + 
+                        f"ctx_len is {actual_ctx_len}"
                     )
 
                 doc_id += 1
@@ -415,9 +439,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         label_ids = []
         all_attention_bias = []
         all_label_mask = []
-        # if self.transformer_grammar_type[:8] == "pause1/2":
-        #     max_query_len *= 2
-        #     max_cont_len = max_cont_len * 2 - 1
+        all_cont_mask = []
 
         # pad according to max_lengths
         for sample in data:
@@ -452,6 +474,10 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             continuations.append(
                 torch.LongTensor(self.pad_tokens_until_max(sample["continuation"], max_len=max_cont_len))
             )
+            if sample["cont_mask"] is not None:
+                all_cont_mask.append(
+                    torch.tensor(self.pad_tokens_until_max(sample["cont_mask"], max_len=max_cont_len), dtype=torch.bool)
+                )
 
             ctx_lens.append(sample["ctx_len"])
             dc_lens.append(sample["dc_len"])
@@ -463,11 +489,6 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 torch.LongTensor(self.pad_tokens_until_max(sample["dc_query"], max_len=max_dc_query_len))
             )
             label_ids.append(sample["label_id"])
-            # print(self.token_decode(sample["query"]))
-            # print(sample["query"])
-            # print(f"ctx_len is {sample['ctx_len']}")
-            # print(f'cont_len is {sample["cont_len"]}')
-
             # print(self.token_decode(sample["query"]))
             # print(sample["query"])
             # print(f"ctx_len is {sample['ctx_len']}")
@@ -492,6 +513,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             batch["attention_bias"] = torch.stack(all_attention_bias)
         if all_label_mask:
             batch["label_mask"] = torch.stack(all_label_mask)
+        if all_cont_mask:
+            batch["cont_mask"] = torch.stack(all_cont_mask)
 
         return batch
 
@@ -530,6 +553,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         """
         del doc
         return " "
+    
+    def load_local_datasets(self, split, ret):
+        raise NotImplementedError
 
 
 class XsumDataset(metaclass=abc.ABCMeta):
@@ -1475,6 +1501,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
 
     metric_type = "acc"
     BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
+    shots_list = [0, 1, 7, 11, 3, 4, 5]
     def __init__(
         self,
         tokenizer,
@@ -1482,9 +1509,11 @@ class BoolQ(ICLMultiChoiceTaskDataset):
         dataset_name=None,
         model_ctx_len=2048,
         split="val",
+        shots_num=3,
         transformer_grammar_type:str = "",
         generate_TG_attention_bias=None,
         vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -1492,32 +1521,46 @@ class BoolQ(ICLMultiChoiceTaskDataset):
             dataset_name=dataset_name,
             model_ctx_len=model_ctx_len,
             split=split,
+            shots_num=shots_num,
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
-    def load_local_datasets(self):
-        self.dataset = []
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
         with open(os.path.join(self.BoolQPATH, f"{self.split}.jsonl"), "r") as file:
             for line in file:
-                self.dataset.append(json.loads(line.strip()))
+                dataset.append(json.loads(line.strip()))
         for key in ["passage", "question"]:
             with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
                 for idx, line in enumerate(file):
-                    self.dataset[idx][key] = convert_TG_format(line.strip())
-        self.dataset = self.dataset[:1000]
+                    dataset[idx][key] = convert_TG_format(line.strip())
         
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+    
+    def get_shots(self, train):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        return self.shots
 
-    def doc_to_text(self, doc):
-        return doc["passage"] + " \n<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is<VP)><(NP>"
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + doc["passage"] + " \n<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
-    def doc_to_continuations(self, doc):
-        label = doc["label"]
+    def doc_to_continuations(self, doc, single_shot=False):
         del doc
         # add spaces in front of continuation
-        if self.split=="train":
-            return [[" yes", " no"][not label]]
+        # (S (NP (DT The) (NN answer)) (VP (VBZ is) (NP (UH yes))) (. .))
+        if single_shot:
+            return [" yes<NP)><VP)> .<S)>", " no<NP)><VP)> .<S)>"]
         else:
             return [" yes", " no"]
 
@@ -1530,7 +1573,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "<(S><(NP> The answer<NP)><(VP> is<VP)><(NP>"
+        return "<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
 
 
@@ -2128,20 +2171,19 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         shots_num=5,
+        tree_eval_type=None
     ):
-        self.shots_num = shots_num
-        self.shots_str = ""
-        if split!="train":
-            self.prepare_shots()
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
             model_ctx_len=model_ctx_len,
             split=split,
+            shots_num=shots_num,
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type
         )
 
     @classmethod
@@ -2162,42 +2204,47 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.jsonl"), "r") as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
-                dataset[-1]["ctx_b"] = dataset[-1]["ctx_b"].capitalize()
-        # with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
-        #     for idx, line in enumerate(file):
-        #         id_entry, num = idx//5, idx % 5
-        #         if num==0:
-        #             dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
-        #         else:
-        #             dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
-        
-        if split!='train':
-            dataset = dataset[:1000]
+                dataset[-1]["ctx_b"] = " " + dataset[-1]["ctx_b"].capitalize()
+        with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                if num==0:
+                    dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["endings"][num-1] = convert_TG_format(line.strip())
+
+        # if split!='train':
+        #     dataset = dataset[:1000]
         if ret:
             return dataset
         else:
             self.dataset = dataset
     
-    def prepare_shots(self):
-        train = self.load_local_datasets(split="train", ret=True)
+    def get_mask(self, continuation, doc):
+        ctx_b_ids = self.token_encode(doc["ctx_b"])
+        mask = [1] * len(continuation)
+        i,j = (0,0)
+        while i<len(continuation) and j<len(ctx_b_ids):
+            if ctx_b_ids[j] == continuation[i]:
+                mask[i] = 0
+                j += 1
+            i += 1
+        return mask
+
+    def get_shots(self, train):
         shots = {}
+        self.shots = []
         for data in train:
             if data["source_id"] in self.shots_list:
                 shots[data["source_id"]] = data
-        self.shots = []
         for shot_id in self.shots_list:
             self.shots.append(shots[shot_id])
-        
-        self.shots_str = ""
-        for i in range(self.shots_num):
-            doc = self.shots[i]
-            self.shots_str += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc)[self.doc_to_label(doc)] + " \n \n"
-
+        return self.shots
 
     def doc_to_text(self, doc, single_shot=False):
-        return (self.shots_str if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> : " + doc["ctx_a"] + " " + doc["ctx_b"] + " "
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> " + doc["activity_label"] + "<NP)> :" + doc["ctx_a"] # " "    + doc["ctx_b"] + " "
 
-    def doc_to_continuations(self, doc):
+    def doc_to_continuations(self, doc, single_shot=False):
         return [ending for ending in doc["endings"]]
 
     def doc_to_label(self, doc):
@@ -2241,20 +2288,20 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         shots_num=5,
+        tree_eval_type=None
     ):
         # all winogrande datasets have same val set
-        self.shots_num = shots_num
-        if split!="train":
-            self.prepare_shots()
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
             model_ctx_len=model_ctx_len,
+            shots_num=shots_num,
             split=split,
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -2307,13 +2354,14 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         for shot_id in self.shots_list:
             self.shots.append(train[shot_id])
         
-        self.shots_str = ""
+        self.shots_prompt = ""
         for i in range(self.shots_num):
             doc = self.shots[i]
-            self.shots_str += self.doc_to_text(doc, single_shot=True)[self.doc_to_label(doc)] + self.doc_to_continuations(doc) + " \n \n"
+            self.shots_prompt += self.doc_to_text(doc, single_shot=True)[self.doc_to_label(doc)] + self.doc_to_continuations(doc) + " \n \n"
 
     def prep_examples(self):
         """Overwrite for WinoGrande as multiple ctx, single continuation"""
+        import copy
         doc_id = 0
         for doc in self.dataset:
             # here ctx is a list
@@ -2326,30 +2374,51 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             cont_byte_len = len(continuation_str[1:].encode("utf-8"))
 
             # tokenize
-            continuation = self.token_encode(continuation_str)
-            continuation = self.convert_grammar_input(continuation)
+            ori_continuation = self.token_encode(continuation_str)
             for cont_id, (ctx, dc) in enumerate(zip(ctxs, dcs)):
                 doc_text = ctx
                 ctx = self.token_encode(ctx)
                 dc = self.token_encode(dc)
-
+                continuation = copy.deepcopy(ori_continuation)
                 # query, remove last token from continuation, truncate from left is longer than model ctx length
-                if self.split=="train":
-                    query = ctx + continuation
-                else:
-                    query = ctx + continuation[:-1]
+                query = ctx + continuation
+                dc_query = dc + continuation
                 query = query[-self.model_ctx_len :]
                 query = self.convert_grammar_input(query)
+                dc_query = self.convert_grammar_input(dc_query)
+                continuation = self.convert_grammar_input(continuation)
+                mask = None
+                if hasattr(self, "getmask"):
+                    mask = self.getmask(continuation, doc)
+                if self.split!="train":
+                    query = query[:-1]
+                    dc_query = dc_query[:-1]
                 actual_ctx_len = len(query) - len(continuation) + 1
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                if self.split=="train":
-                    dc_query = dc + continuation
-                else:
-                    dc_query = dc + continuation[:-1]
-                
+                                
                 cont_str_len = len(self.token_decode(continuation)) - 1
+
+                if self.transformer_grammar_type[:8] == "pause1/2":
+                    paused_input = query + query
+                    paused_input[::2] = query
+                    paused_input[1::2] = query
+                    query = paused_input
+                    pause_dc = dc_query + dc_query
+                    pause_dc[::2] = dc_query
+                    pause_dc[1::2] = dc_query
+                    dc_query = pause_dc
+                    tmp_cont = continuation + continuation
+                    tmp_cont[::2] = continuation
+                    tmp_cont[1::2] = continuation
+                    continuation = tmp_cont[:-1]
+                    actual_ctx_len *= 2
+                    if mask is not None:
+                        tmp_mask = mask + mask
+                        tmp_mask[::2] = mask
+                        tmp_mask[1::2] = mask
+                        mask = tmp_mask[:-1]
 
                 # form a sample
                 self.samples.append(
@@ -2368,6 +2437,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                         "query": query,  # remove last token from continuation
                         "dc_query": dc_query,
                         "label_id": label_id,
+                        "cont_mask": mask,
                     }
                 )
 
@@ -2386,9 +2456,9 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
     def doc_to_text(self, doc, single_shot=False):
         # special case where there are multiple ctx and single continuation
-        return [(self.shots_str if single_shot==False else "") + ctx for ctx in doc["ctxs"]]
+        return [(self.shots_prompt if single_shot==False else "") + ctx for ctx in doc["ctxs"]]
 
-    def doc_to_continuations(self, doc):
+    def doc_to_continuations(self, doc, single_shot=False):
         # add spaces in front of continuation
         return doc["continuation"]
 
@@ -2983,7 +3053,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
             prefix = ""
             if "inst" in self.current_prompt:
                 subject = doc.get("subject").replace("_", " ")
-                prefix = f"The following are multiple choice questions (with answers) about {subject}: \n \n"
+                prefix = f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {subject}<NP)><PP)><NP)><VP)> .<S)>: \n \n"
             num_shots = re.findall("\\+(\\d+)", self.current_prompt)
             if num_shots:
                 dev_set = self.dev_set.get(doc.get("subject"), [])
@@ -3019,7 +3089,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "Answer:"
+        return "The answer is"
 
 
 class TriviaQACELoss(ICLMultiChoiceTaskDataset):

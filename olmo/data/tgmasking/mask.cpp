@@ -253,7 +253,7 @@ public:
         size_t N = TG_tree.size();
         size_t tree_N = 0;
         for (size_t i = 0; i < buf_TG.shape(0); ++i) 
-            if (is_closing_non_terminal(buf_TG[i]) && i < buf_TG.shape(0) - 1 && is_closing_non_terminal(buf_TG[i+1])) 
+            if (is_closing_non_terminal(buf_TG[i]) && i < buf_TG.shape(0) - 1 && buf_TG[i+1]==buf_TG[i]) 
                 tree_N++, i++;
             else
                 tree_N++;
@@ -265,7 +265,7 @@ public:
         for (size_t i = 0; i < buf_TG.shape(0); ++i) {
             T token = buf_TG[i];
             buf_tree[tree_index++] = token;
-            if (is_closing_non_terminal(token) && i < buf_TG.shape(0) - 1 && is_closing_non_terminal(buf_TG[i+1]))
+            if (is_closing_non_terminal(token) && i < buf_TG.shape(0) - 1 && buf_TG[i+1]==token)
                 ++i;
         }
         if (tree_index != tree_N) {
