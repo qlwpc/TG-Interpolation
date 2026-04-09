@@ -71,12 +71,6 @@ class HuggingModel(nn.Module):
     ):
         pass
 
-    @classmethod
-    def from_checkpoint(
-        cls, checkpoint_dir: PathOrStr, device: str = "cpu", checkpoint_type: Optional[CheckpointType] = None
-    ) -> HuggingModel:
-        pass
-
     def num_params(self, include_embedding: bool = True) -> int:
         """
         Get the total number of parameters.
