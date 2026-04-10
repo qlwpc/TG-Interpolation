@@ -262,9 +262,15 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
 
-    def prepare_shots(self):
-        train = self.load_local_datasets(split="train", ret=True)
-        self.shots = self.get_shots(train)
+    def get_shots(self, shots_split):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(shots_split[shot_id])
+        return self.shots
+
+    def prepare_shots(self, split="train"):
+        shots_split = self.load_local_datasets(split=split, ret=True)
+        self.shots = self.get_shots(shots_split)
         self.shots_prompt = ""
         for i in range(self.shots_num):
             doc = self.shots[i]
@@ -1531,11 +1537,11 @@ class BoolQ(ICLMultiChoiceTaskDataset):
     def load_local_datasets(self, split=None, ret=False):
         split = self.split if split is None else split
         dataset = []
-        with open(os.path.join(self.BoolQPATH, f"{self.split}.jsonl"), "r") as file:
+        with open(os.path.join(self.BoolQPATH, f"{split}.jsonl"), "r") as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
         for key in ["passage", "question"]:
-            with open(os.path.join(self.BoolQPATH, f"{self.split}_{key}.txt"), "r") as file:
+            with open(os.path.join(self.BoolQPATH, f"{split}_{key}.txt"), "r") as file:
                 for idx, line in enumerate(file):
                     dataset[idx][key] = convert_TG_format(line.strip())
         
@@ -2988,93 +2994,146 @@ class MMLU(ICLMultiChoiceTaskDataset):
         "other": ["other", "business", "health"],
     }
 
+    _MMLUPATH = "./dataset/mmlu"
+    shots_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
     def __init__(
         self,
-        tokenizer,
-        dataset_path="hails/mmlu_no_train",
-        dataset_name=None,
-        split="validation",
-        prompt_variations=None,
+        tokenizer: Tokenizer,
+        dataset_path: str = "cais/mmlu",
+        dataset_name: Union[str, Sequence[str], None] = None,
+        model_ctx_len: int = 2048,
+        split="test",
+        metric_type=None,  # Override default metric type
+        prompts=[None],  # List of prompt variants to use
+        local_datasets=True,
+        shots_num=5,
+        transformer_grammar_type="",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type="default",
         mc_labels=False,
-        metric_type=None,
     ):
-        dataset_names = []
-        # Collect the relevant categories
-        if dataset_name in MMLU._categories:
-            for sub_cat in MMLU._categories[dataset_name]:
-                for name, cats in MMLU._subcategories.items():
-                    if sub_cat in cats:
-                        dataset_names.append(name)
-        elif dataset_name in MMLU._subcategories:
-            dataset_names.append(dataset_name)
-        else:  # E.g., "math"
-            for name, cats in MMLU._subcategories.items():
-                if dataset_name in cats:
-                    dataset_names.append(name)
-        self.dev_set = {}
         self.mc_labels = mc_labels
-        prompts: List[Union[None, str]] = [None]
-        if prompt_variations is not None:
-            if prompt_variations == 1:
-                prompts = [None, "inst", "inst+1", "inst+2", "inst+3", "inst+4", "inst+5"]
-            elif prompt_variations == 2:
-                prompts = ["inst+5"]
-            else:
-                raise ValueError(f"Unknown prompt variations: {prompt_variations}")
-            # Need to grab the dev set for the few-shot prompts
-            for name in dataset_names:
-                dev_set = load_hf_dataset(dataset_path, name, "dev")
-                self.dev_set[name] = dev_set
+        # dataset_names = []
+        # # Collect the relevant categories
+        # if dataset_name in MMLU._categories:
+        #     for sub_cat in MMLU._categories[dataset_name]:
+        #         for name, cats in MMLU._subcategories.items():
+        #             if sub_cat in cats:
+        #                 dataset_names.append(name)
+        # elif dataset_name in MMLU._subcategories:
+        #     dataset_names.append(dataset_name)
+        # else:  # E.g., "math"
+        #     for name, cats in MMLU._subcategories.items():
+        #         if dataset_name in cats:
+        #             dataset_names.append(name)
+        # self.dev_set = {}
+        # self.mc_labels = mc_labels
+        # prompts: List[Union[None, str]] = [None]
+        # if prompts is not None:
+        #     if prompts == 1:
+        #         prompts = [None, "inst", "inst+1", "inst+2", "inst+3", "inst+4", "inst+5"]
+        #     elif prompts == 2:
+        #         prompts = ["inst+5"]
+        #     else:
+        #         raise ValueError(f"Unknown prompt variations: {prompts}")
+        #     # Need to grab the dev set for the few-shot prompts
+        #     for name in dataset_names:
+        #         dev_set = load_hf_dataset(dataset_path, name, "dev")
+        #         self.dev_set[name] = dev_set
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
-            dataset_name=dataset_names,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
             split=split,
-            prompts=prompts,
-            metric_type=metric_type,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
+    
+    def prepare_shots(self, split="validation"):
+        self.shots_prompt : Dict[str, str] = {}
+        shots_split = self.load_local_datasets(split=split, ret=True)
+        self.shots = {}
+        for doc in shots_split:
+            subject = doc["subject"]
+            if subject not in self.shots:
+                self.shots[subject] = []
+            self.shots[subject].append(doc)
+        for category in self._subcategories:
+            prompt = ""
+            for i in range(self.shots_num):
+                doc = self.shots[category][i]
+                prompt += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc, single_shot=True)[self.doc_to_label(doc)] + " \n \n"
+            self.shots_prompt[category] = prompt
+    
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = datasets.load_dataset("cais/mmlu", "all", split=split)
+        dataset = list(dataset)
+        with open(os.path.join(self._MMLUPATH, f"mmlu{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["choices"][num - 1] = convert_TG_format(line.strip())
 
-    def doc_to_text(self, doc):
-        def format_example(doc, keys):
-            question_prefix = ""
-            if not self.mc_labels:
-                question_prefix = "Question: "  # To make context more clear
-            question = question_prefix + doc["question"].strip()
-            choices = ""
-            if self.mc_labels:
-                choices = "".join([f"{key}. {choice} \n" for key, choice in zip(keys, doc["choices"])])
-            prompt = f"{question} \n{choices}Answer:"
-            return prompt
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-        keys = ["A", "B", "C", "D"]
-        output_text = format_example(doc, keys)
+    def doc_to_text(self, doc, single_shot=False):
+        return ("" if single_shot==True else f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {doc['subject']}<NP)><PP)><NP)><VP)> .<S)> \n")  \
+           +  (self.shots_prompt[doc["subject"]] if single_shot==False else "")   \
+           + "<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is"
+        # def format_example(doc, keys):
+        #     question_prefix = ""
+        #     if not self.mc_labels:
+        #         question_prefix = "Question: "  # To make context more clear
+        #     question = question_prefix + doc["question"].strip()
+        #     choices = ""
+        #     if self.mc_labels:
+        #         choices = "".join([f"{key}. {choice} \n" for key, choice in zip(keys, doc["choices"])])
+        #     prompt = f"{question} \n{choices}Answer:"
+        #     return prompt
 
-        if self.current_prompt is not None:
-            prefix = ""
-            if "inst" in self.current_prompt:
-                subject = doc.get("subject").replace("_", " ")
-                prefix = f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {subject}<NP)><PP)><NP)><VP)> .<S)>: \n \n"
-            num_shots = re.findall("\\+(\\d+)", self.current_prompt)
-            if num_shots:
-                dev_set = self.dev_set.get(doc.get("subject"), [])
-                num_shots_int = int(num_shots[0])
-                for idx, dev_doc in enumerate(dev_set):
-                    if idx >= num_shots_int:
-                        break
-                    if self.mc_labels:
-                        answer = keys[dev_doc["answer"]]
-                    else:
-                        answer = dev_doc["choices"][dev_doc["answer"]]
-                    prefix += format_example(dev_doc, keys) + " " + answer + " \n \n"
-            output_text = prefix + output_text
-        return output_text
+        # keys = ["A", "B", "C", "D"]
+        # output_text = format_example(doc, keys)
 
-    def doc_to_continuations(self, doc):
+        # if self.current_prompt is not None:
+        #     prefix = ""
+        #     if "inst" in self.current_prompt:
+        #         subject = doc.get("subject").replace("_", " ")
+        #         prefix = f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {subject}<NP)><PP)><NP)><VP)> .<S)>: \n \n"
+        #     num_shots = re.findall("\\+(\\d+)", self.current_prompt)
+        #     if num_shots:
+        #         dev_set = self.dev_set.get(doc.get("subject"), [])
+        #         num_shots_int = int(num_shots[0])
+        #         for idx, dev_doc in enumerate(dev_set):
+        #             if idx >= num_shots_int:
+        #                 break
+        #             if self.mc_labels:
+        #                 answer = keys[dev_doc["answer"]]
+        #             else:
+        #                 answer = dev_doc["choices"][dev_doc["answer"]]
+        #             prefix += format_example(dev_doc, keys) + " " + answer + " \n \n"
+        #     output_text = prefix + output_text
+        # return output_text
+
+    def doc_to_continuations(self, doc, single_shot=False):
         # add spaces in front of continuation
         if self.mc_labels:
             choices = [" A", " B", " C", " D"]
         else:
-            choices = [" " + choice for choice in doc["choices"]]
+            choices = doc["choices"]
         if self.metric_type in ["ce_loss", "bpb"]:
             # Only need correct answer for these metrics
             return [choices[doc["answer"]]]
@@ -3089,7 +3148,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
 
     def doc_to_domain_conditional(self, doc):
         del doc
-        return "The answer is"
+        return "<(S><(NP> The answer<NP)><(VP> is"
 
 
 class TriviaQACELoss(ICLMultiChoiceTaskDataset):
@@ -3350,6 +3409,7 @@ Super_GLUE = {
     "wic": WiC, 
     "wsc": WSC,
     "hellaswag": HellaSwag,
+    "mmlu": MMLU,
 }
 
 label_to_task_map = {
@@ -3370,6 +3430,7 @@ label_to_task_map = {
     "natural_qs_open_ppl": NaturalQuestionsCELoss,
     "winogrande_term" : (WinoGrande, {"tree_eval_type": "terminal"}),
     "hellaswag_term" : (HellaSwag, {"tree_eval_type": "terminal"}),
+    "mmlu_term": (MMLU, {"tree_eval_type": "terminal"}),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),
@@ -3382,42 +3443,42 @@ label_to_task_map = {
     # "mmlu_humanities_bpb": (MMLU, {"dataset_name": "humanities", "metric_type": "bpb"}),
     # "mmlu_social_sciences_bpb": (MMLU, {"dataset_name": "social_sciences", "metric_type": "bpb"}),
     # "mmlu_other_bpb": (MMLU, {"dataset_name": "other", "metric_type": "bpb"}),
-    # "mmlu_stem_var": (MMLU, {"dataset_name": "stem", "prompt_variations": 1}),
-    # "mmlu_humanities_var": (MMLU, {"dataset_name": "humanities", "prompt_variations": 1}),
-    # "mmlu_social_sciences_var": (MMLU, {"dataset_name": "social_sciences", "prompt_variations": 1}),
-    # "mmlu_other_var": (MMLU, {"dataset_name": "other", "prompt_variations": 1}),
-    # "mmlu_stem_var_bpb": (MMLU, {"dataset_name": "stem", "prompt_variations": 1, "metric_type": "bpb"}),
+    # "mmlu_stem_var": (MMLU, {"dataset_name": "stem", "prompts": 1}),
+    # "mmlu_humanities_var": (MMLU, {"dataset_name": "humanities", "prompts": 1}),
+    # "mmlu_social_sciences_var": (MMLU, {"dataset_name": "social_sciences", "prompts": 1}),
+    # "mmlu_other_var": (MMLU, {"dataset_name": "other", "prompts": 1}),
+    # "mmlu_stem_var_bpb": (MMLU, {"dataset_name": "stem", "prompts": 1, "metric_type": "bpb"}),
     # "mmlu_humanities_var_bpb": (
     #     MMLU,
-    #     {"dataset_name": "humanities", "prompt_variations": 1, "metric_type": "bpb"},
+    #     {"dataset_name": "humanities", "prompts": 1, "metric_type": "bpb"},
     # ),
     # "mmlu_social_sciences_var_bpb": (
     #     MMLU,
-    #     {"dataset_name": "social_sciences", "prompt_variations": 1, "metric_type": "bpb"},
+    #     {"dataset_name": "social_sciences", "prompts": 1, "metric_type": "bpb"},
     # ),
-    # "mmlu_other_var_bpb": (MMLU, {"dataset_name": "other", "prompt_variations": 1, "metric_type": "bpb"}),
-    # "mmlu_stem_mc_5shot": (MMLU, {"dataset_name": "stem", "prompt_variations": 2, "mc_labels": True}),
-    # "mmlu_humanities_mc_5shot": (MMLU, {"dataset_name": "humanities", "prompt_variations": 2, "mc_labels": True}),
+    # "mmlu_other_var_bpb": (MMLU, {"dataset_name": "other", "prompts": 1, "metric_type": "bpb"}),
+    # "mmlu_stem_mc_5shot": (MMLU, {"dataset_name": "stem", "prompts": 2, "mc_labels": True}),
+    # "mmlu_humanities_mc_5shot": (MMLU, {"dataset_name": "humanities", "prompts": 2, "mc_labels": True}),
     # "mmlu_social_sciences_mc_5shot": (
     #     MMLU,
-    #     {"dataset_name": "social_sciences", "prompt_variations": 2, "mc_labels": True},
+    #     {"dataset_name": "social_sciences", "prompts": 2, "mc_labels": True},
     # ),
-    # "mmlu_other_mc_5shot": (MMLU, {"dataset_name": "other", "prompt_variations": 2, "mc_labels": True}),
+    # "mmlu_other_mc_5shot": (MMLU, {"dataset_name": "other", "prompts": 2, "mc_labels": True}),
     # "mmlu_stem_mc_5shot_test": (
     #     MMLU,
-    #     {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    #     {"dataset_name": "stem", "split": "test", "prompts": 2, "mc_labels": True},
     # ),
     # "mmlu_humanities_mc_5shot_test": (
     #     MMLU,
-    #     {"dataset_name": "humanities", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    #     {"dataset_name": "humanities", "split": "test", "prompts": 2, "mc_labels": True},
     # ),
     # "mmlu_social_sciences_mc_5shot_test": (
     #     MMLU,
-    #     {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    #     {"dataset_name": "social_sciences", "split": "test", "prompts": 2, "mc_labels": True},
     # ),
     # "mmlu_other_mc_5shot_test": (
     #     MMLU,
-    #     {"dataset_name": "other", "split": "test", "prompt_variations": 2, "mc_labels": True},
+    #     {"dataset_name": "other", "split": "test", "prompts": 2, "mc_labels": True},
     # ),
     # Paste in all oe-eval tasks from output of scripts/list_evals_from_oe_eval.py
     "arc_challenge_mc_5shot": (
@@ -3953,155 +4014,155 @@ label_to_task_map_new = {
         OEEvalTask,
         {"dataset_path": "winogrande", "dataset_name": "val_mc_5shot", "metric_type": "bpb"},
     ),
-    "mmlu_stem_val_rc_var": (MMLU, {"dataset_name": "stem", "prompt_variations": 1}),
-    "mmlu_stem_val_rc_var_bpb": (MMLU, {"dataset_name": "stem", "prompt_variations": 1, "metric_type": "bpb"}),
-    "mmlu_stem_val_rc_5shot": (MMLU, {"dataset_name": "stem", "prompt_variations": 2}),
-    "mmlu_stem_val_rc_5shot_bpb": (MMLU, {"dataset_name": "stem", "prompt_variations": 2, "metric_type": "bpb"}),
-    "mmlu_stem_val_mc_5shot": (MMLU, {"dataset_name": "stem", "prompt_variations": 2, "mc_labels": True}),
+    "mmlu_stem_val_rc_var": (MMLU, {"dataset_name": "stem", "prompts": 1}),
+    "mmlu_stem_val_rc_var_bpb": (MMLU, {"dataset_name": "stem", "prompts": 1, "metric_type": "bpb"}),
+    "mmlu_stem_val_rc_5shot": (MMLU, {"dataset_name": "stem", "prompts": 2}),
+    "mmlu_stem_val_rc_5shot_bpb": (MMLU, {"dataset_name": "stem", "prompts": 2, "metric_type": "bpb"}),
+    "mmlu_stem_val_mc_5shot": (MMLU, {"dataset_name": "stem", "prompts": 2, "mc_labels": True}),
     "mmlu_stem_val_mc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "stem", "prompt_variations": 2, "mc_labels": True, "metric_type": "bpb"},
+        {"dataset_name": "stem", "prompts": 2, "mc_labels": True, "metric_type": "bpb"},
     ),
-    "mmlu_stem_test_rc_var": (MMLU, {"dataset_name": "stem", "split": "test", "prompt_variations": 1}),
+    "mmlu_stem_test_rc_var": (MMLU, {"dataset_name": "stem", "split": "test", "prompts": 1}),
     "mmlu_stem_test_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "stem", "split": "test", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "stem", "split": "test", "prompts": 1, "metric_type": "bpb"},
     ),
-    "mmlu_stem_test_rc_5shot": (MMLU, {"dataset_name": "stem", "split": "test", "prompt_variations": 2}),
+    "mmlu_stem_test_rc_5shot": (MMLU, {"dataset_name": "stem", "split": "test", "prompts": 2}),
     "mmlu_stem_test_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "stem", "split": "test", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_stem_test_mc_5shot": (
         MMLU,
-        {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "stem", "split": "test", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_stem_test_mc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "stem", "split": "test", "prompt_variations": 2, "mc_labels": True, "metric_type": "bpb"},
+        {"dataset_name": "stem", "split": "test", "prompts": 2, "mc_labels": True, "metric_type": "bpb"},
     ),
-    "mmlu_humanities_val_rc_var": (MMLU, {"dataset_name": "humanities", "prompt_variations": 1}),
+    "mmlu_humanities_val_rc_var": (MMLU, {"dataset_name": "humanities", "prompts": 1}),
     "mmlu_humanities_val_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "humanities", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "humanities", "prompts": 1, "metric_type": "bpb"},
     ),
-    "mmlu_humanities_val_rc_5shot": (MMLU, {"dataset_name": "humanities", "prompt_variations": 2}),
+    "mmlu_humanities_val_rc_5shot": (MMLU, {"dataset_name": "humanities", "prompts": 2}),
     "mmlu_humanities_val_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "humanities", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "humanities", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_humanities_val_mc_5shot": (
         MMLU,
-        {"dataset_name": "humanities", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "humanities", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_humanities_val_mc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "humanities", "prompt_variations": 2, "mc_labels": True, "metric_type": "bpb"},
+        {"dataset_name": "humanities", "prompts": 2, "mc_labels": True, "metric_type": "bpb"},
     ),
-    "mmlu_humanities_test_rc_var": (MMLU, {"dataset_name": "humanities", "split": "test", "prompt_variations": 1}),
+    "mmlu_humanities_test_rc_var": (MMLU, {"dataset_name": "humanities", "split": "test", "prompts": 1}),
     "mmlu_humanities_test_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "humanities", "split": "test", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "humanities", "split": "test", "prompts": 1, "metric_type": "bpb"},
     ),
     "mmlu_humanities_test_rc_5shot": (
         MMLU,
-        {"dataset_name": "humanities", "split": "test", "prompt_variations": 2},
+        {"dataset_name": "humanities", "split": "test", "prompts": 2},
     ),
     "mmlu_humanities_test_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "humanities", "split": "test", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "humanities", "split": "test", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_humanities_test_mc_5shot": (
         MMLU,
-        {"dataset_name": "humanities", "split": "test", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "humanities", "split": "test", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_humanities_test_mc_5shot_bpb": (
         MMLU,
         {
             "dataset_name": "humanities",
             "split": "test",
-            "prompt_variations": 2,
+            "prompts": 2,
             "mc_labels": True,
             "metric_type": "bpb",
         },
     ),
-    "mmlu_social_sciences_val_rc_var": (MMLU, {"dataset_name": "social_sciences", "prompt_variations": 1}),
+    "mmlu_social_sciences_val_rc_var": (MMLU, {"dataset_name": "social_sciences", "prompts": 1}),
     "mmlu_social_sciences_val_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "social_sciences", "prompts": 1, "metric_type": "bpb"},
     ),
-    "mmlu_social_sciences_val_rc_5shot": (MMLU, {"dataset_name": "social_sciences", "prompt_variations": 2}),
+    "mmlu_social_sciences_val_rc_5shot": (MMLU, {"dataset_name": "social_sciences", "prompts": 2}),
     "mmlu_social_sciences_val_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "social_sciences", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_social_sciences_val_mc_5shot": (
         MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "social_sciences", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_social_sciences_val_mc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "social_sciences", "prompt_variations": 2, "mc_labels": True, "metric_type": "bpb"},
+        {"dataset_name": "social_sciences", "prompts": 2, "mc_labels": True, "metric_type": "bpb"},
     ),
     "mmlu_social_sciences_test_rc_var": (
         MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 1},
+        {"dataset_name": "social_sciences", "split": "test", "prompts": 1},
     ),
     "mmlu_social_sciences_test_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "social_sciences", "split": "test", "prompts": 1, "metric_type": "bpb"},
     ),
     "mmlu_social_sciences_test_rc_5shot": (
         MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2},
+        {"dataset_name": "social_sciences", "split": "test", "prompts": 2},
     ),
     "mmlu_social_sciences_test_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "social_sciences", "split": "test", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_social_sciences_test_mc_5shot": (
         MMLU,
-        {"dataset_name": "social_sciences", "split": "test", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "social_sciences", "split": "test", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_social_sciences_test_mc_5shot_bpb": (
         MMLU,
         {
             "dataset_name": "social_sciences",
             "split": "test",
-            "prompt_variations": 2,
+            "prompts": 2,
             "mc_labels": True,
             "metric_type": "bpb",
         },
     ),
-    "mmlu_other_val_rc_var": (MMLU, {"dataset_name": "other", "prompt_variations": 1}),
-    "mmlu_other_val_rc_var_bpb": (MMLU, {"dataset_name": "other", "prompt_variations": 1, "metric_type": "bpb"}),
-    "mmlu_other_val_rc_5shot": (MMLU, {"dataset_name": "other", "prompt_variations": 2}),
-    "mmlu_other_val_rc_5shot_bpb": (MMLU, {"dataset_name": "other", "prompt_variations": 2, "metric_type": "bpb"}),
-    "mmlu_other_val_mc_5shot": (MMLU, {"dataset_name": "other", "prompt_variations": 2, "mc_labels": True}),
+    "mmlu_other_val_rc_var": (MMLU, {"dataset_name": "other", "prompts": 1}),
+    "mmlu_other_val_rc_var_bpb": (MMLU, {"dataset_name": "other", "prompts": 1, "metric_type": "bpb"}),
+    "mmlu_other_val_rc_5shot": (MMLU, {"dataset_name": "other", "prompts": 2}),
+    "mmlu_other_val_rc_5shot_bpb": (MMLU, {"dataset_name": "other", "prompts": 2, "metric_type": "bpb"}),
+    "mmlu_other_val_mc_5shot": (MMLU, {"dataset_name": "other", "prompts": 2, "mc_labels": True}),
     "mmlu_other_val_mc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "other", "prompt_variations": 2, "mc_labels": True, "metric_type": "bpb"},
+        {"dataset_name": "other", "prompts": 2, "mc_labels": True, "metric_type": "bpb"},
     ),
-    "mmlu_other_test_rc_var": (MMLU, {"dataset_name": "other", "split": "test", "prompt_variations": 1}),
+    "mmlu_other_test_rc_var": (MMLU, {"dataset_name": "other", "split": "test", "prompts": 1}),
     "mmlu_other_test_rc_var_bpb": (
         MMLU,
-        {"dataset_name": "other", "split": "test", "prompt_variations": 1, "metric_type": "bpb"},
+        {"dataset_name": "other", "split": "test", "prompts": 1, "metric_type": "bpb"},
     ),
-    "mmlu_other_test_rc_5shot": (MMLU, {"dataset_name": "other", "split": "test", "prompt_variations": 2}),
+    "mmlu_other_test_rc_5shot": (MMLU, {"dataset_name": "other", "split": "test", "prompts": 2}),
     "mmlu_other_test_rc_5shot_bpb": (
         MMLU,
-        {"dataset_name": "other", "split": "test", "prompt_variations": 2, "metric_type": "bpb"},
+        {"dataset_name": "other", "split": "test", "prompts": 2, "metric_type": "bpb"},
     ),
     "mmlu_other_test_mc_5shot": (
         MMLU,
-        {"dataset_name": "other", "split": "test", "prompt_variations": 2, "mc_labels": True},
+        {"dataset_name": "other", "split": "test", "prompts": 2, "mc_labels": True},
     ),
     "mmlu_other_test_mc_5shot_bpb": (
         MMLU,
         {
             "dataset_name": "other",
             "split": "test",
-            "prompt_variations": 2,
+            "prompts": 2,
             "mc_labels": True,
             "metric_type": "bpb",
         },
