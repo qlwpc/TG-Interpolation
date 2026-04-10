@@ -153,6 +153,8 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False):
                 "Ċ" : "\n"
             }
             out = mapping[child] if child in mapping else child
+            for old, new in mapping.items():
+                out = out.replace(old, " " + new)
             return " " + out
         else:
             childstrs.append(repr(child))
