@@ -2885,22 +2885,72 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
             dataset_name=dataset_name,
         )
 
-    def doc_to_text(self, doc):
-        return "Question: " + doc["context"] + " " + doc["question"] + " \nAnswer:"
+    metric_type = "len_norm"
+    SIQAPATH = "./dataset/social_i_qa"
+    shots_list = [0, 8, 1, 13, 2, 7, 18, 9]
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [
-            " " + doc["answerA"],
-            " " + doc["answerB"],
-            " " + doc["answerC"],
-        ]
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="social_i_qa",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+        )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.txt"), "r") as file:
+            item_list = ["context", "question", "answerA", "answerB", "answerC"]
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                dataset[id_entry][item_list[num]] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+
+    def get_shots(self, train):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["context"] + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is<(NP>"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return [doc["answerA"], doc["answerB"], doc["answerC"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"]) - 1
 
     def doc_to_domain_conditional(self, doc):
-        return "Answer:"
+        return "<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
 
 class MRPC(ICLMultiChoiceTaskDataset):
