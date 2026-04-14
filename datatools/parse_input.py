@@ -442,15 +442,42 @@ def prepare_dataset(config:str):
             for option in doc["choices"]:
                 prepared_ds.append(option)
     elif config[:10] == "openbookqa":
-        ds = load_dataset("allenai/openbookqa", "additional")
+        ds = load_dataset("allenai/openbookqa", "main")
         os.makedirs("../dataset/openbookqa/", exist_ok=True)
         filename = os.path.join("../dataset/openbookqa/", config + ".txt")
-        split = config[10:]
-        label_index = {"A": 0, "B": 1, "C": 2, "D": 3}
+        split = config[11:]
         for doc in ds[split]:
-            prepared_ds.append(doc["question_stem"] + " " + doc["choices"]["text"][label_index[doc["answerKey"]]])
+        #    for option in doc["choices"]["text"]:
+        #        if doc["question_stem"][-1] in ".?!":
+        #            option = option[:1].upper() + option[1:]
+        #        prepared_ds.append(doc["question_stem"] + " " + option + '.')
+            label_idx = ["A", "B", "C", "D"].index(doc["answerKey"].strip())
+            prepared_ds.append(doc["question_stem"] + " " + doc["choices"]["text"][label_idx])
             for option in doc["choices"]["text"]:
                 prepared_ds.append(option)
+    elif config[:11] == "social_i_qa":
+        ds = load_dataset("baber/social_i_qa")
+        os.makedirs("../dataset/social_i_qa/", exist_ok=True)
+        filename = os.path.join("../dataset/social_i_qa/", config + ".txt")
+        split = config[12:]
+        for doc in ds[split]:
+            prepared_ds.append(doc["context"] + " " + doc["question"])
+            for label in ["answerA" ,"answerB", "answerC"]:
+                prepared_ds.append(doc[label])
+    elif config[:14] == "commonsense_qa":
+        ds = load_dataset("tau/commonsense_qa")
+        os.makedirs("../dataset/commonsense_qa/", exist_ok=True)
+        filename = os.path.join("../dataset/commonsense_qa/", config + ".txt")
+        split = config[15:]
+        for doc in ds[split]:
+            prepared_ds.append(doc["question"])
+            for option in doc["choices"]["text"]:
+                # prepared_ds.append(option)
+                tokens = nltk.pos_tag(nltk.word_tokenize(option))
+                first_tag = tokens[0][1]
+                if first_tag in ('VB', 'VBP'):
+                    option = "to " + option
+                prepared_ds.append("The answer is " + option)
     else: # file_split_key
         split = config.split("_")
         key = split[2]
@@ -469,7 +496,7 @@ def main(args_list=None):
     args = parser.parse_args(args_list)
     logger.info(args.input_list)
     result_list = args.input_list.split(',') if args.input_list else []
-    logger.info("Received list:", result_list) # [ "CC-MAIN-2014-41"]
+    logger.info(f"Received list: {result_list}") # [ "CC-MAIN-2014-41"]
     config = result_list
     for split in config:
         filename, ds = prepare_dataset(split)

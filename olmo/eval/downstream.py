@@ -386,7 +386,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
                         f"input_ids is {self.token_decode(query)}\n" + 
                         f"query is {query}\n" +  
-                        f"continuation is {continuation}" + 
+                        f"continuation is {continuation}\n" + 
                         f"ctx_len is {actual_ctx_len}"
                     )
 
@@ -1508,6 +1508,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
     metric_type = "acc"
     BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
     shots_list = [0, 1, 7, 11, 3, 4, 5]
+
     def __init__(
         self,
         tokenizer,
@@ -2534,25 +2535,77 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "len_norm"
+    OpenBookQAPATH = "./dataset/openbookqa"
+    shots_list = ["7-584", "7-870", "9-732", "9-782", "8-72", "9-87", "1046", "1591", "7-1167"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="openbookqa",
         dataset_name="main",
+        model_ctx_len=2048,
+        split="test",
+        shots_num=5,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
-    def doc_to_text(self, doc):
-        return doc["question_stem"]
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//4, idx % 4
+                dataset[id_entry]["choices"]["text"][num] = convert_TG_format(line.strip())
+        for item in dataset:
+            choices = item["choices"]["text"]
+            idx = os.path.commonprefix(choices).rfind('>') + 1
+            # stem = item["question_stem"]
+            item["question_stem"] = choices[0][:idx]
+            item["choices"]["text"] = [s[idx:] for s in choices]
+            #if len(item["question_stem"]) < len(stem):
+            #    print(f'Oh no! {item["question_stem"]=} {item["choices"]["text"]=}')
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + choice for choice in doc["choices"]["text"]]
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + doc["question_stem"]
+        # return (self.shots_prompt if single_shot==False else "") + " \n<(NP> Question<NP)> :" + doc["question_stem"] + " \n<(NP> Answer<NP)> :"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
 
     def doc_to_label(self, doc):
         return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
@@ -2719,6 +2772,7 @@ class BasicArithmetic(ArcEasy):
         )
 
 
+# TODO:
 class CommonsenseQA(ArcEasy):
     """CommonsenseQA
     Example:
@@ -2745,6 +2799,7 @@ class CommonsenseQA(ArcEasy):
         )
 
 
+# TODO:
 class SocialIQa(ICLMultiChoiceTaskDataset):
     """SocialIQa
     Example:
