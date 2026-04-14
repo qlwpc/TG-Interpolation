@@ -461,6 +461,8 @@ def prepare_dataset(config:str):
         filename = os.path.join("../dataset/social_i_qa/", config + ".txt")
         split = config[12:]
         for doc in ds[split]:
+            prepared_ds.append(doc["context"])
+            prepared_ds.append(doc["question"])
             for label in ["answerA" ,"answerB", "answerC"]:
                 prepared_ds.append(doc[label])
     elif config[:14] == "commonsense_qa":
