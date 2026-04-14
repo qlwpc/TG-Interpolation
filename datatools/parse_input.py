@@ -461,7 +461,6 @@ def prepare_dataset(config:str):
         filename = os.path.join("../dataset/social_i_qa/", config + ".txt")
         split = config[12:]
         for doc in ds[split]:
-            prepared_ds.append(doc["context"] + " " + doc["question"])
             for label in ["answerA" ,"answerB", "answerC"]:
                 prepared_ds.append(doc[label])
     elif config[:14] == "commonsense_qa":
@@ -473,11 +472,12 @@ def prepare_dataset(config:str):
             prepared_ds.append(doc["question"])
             for option in doc["choices"]["text"]:
                 # prepared_ds.append(option)
-                tokens = nltk.pos_tag(nltk.word_tokenize(option))
-                first_tag = tokens[0][1]
-                if first_tag in ('VB', 'VBP'):
-                    option = "to " + option
-                prepared_ds.append("The answer is " + option)
+                #tokens = nltk.pos_tag(nltk.word_tokenize(option))
+                #first_tag = tokens[0][1]
+                #if first_tag in ('VB', 'VBP'):
+                #    option = "to " + option
+                #prepared_ds.append("The answer is " + option)
+                prepared_ds.append(option)
     else: # file_split_key
         split = config.split("_")
         key = split[2]

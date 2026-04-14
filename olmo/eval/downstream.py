@@ -2772,8 +2772,7 @@ class BasicArithmetic(ArcEasy):
         )
 
 
-# TODO:
-class CommonsenseQA(ArcEasy):
+class CommonsenseQA(ICLMultiChoiceTaskDataset):
     """CommonsenseQA
     Example:
     {'id': 'e68fb2448fd74e402aae9982aa76e527',
@@ -2785,18 +2784,80 @@ class CommonsenseQA(ArcEasy):
     """
 
     metric_type = "len_norm"
+    CSQAPATH = "./dataset/commonsense_qa"
+    shots_list = ["61fe6e879ff18686d7552425a36344c8", "02e821a3e53cb320790950aab4489e85", 
+                  "23505889b94e880c3e89cff4ba119860", "a76403b4921a9281b6ee2a7241a5ec9f", 
+                  "6dc921840aa1e5dda3333b79007f630b", "e8a8b3a2061aa0e6d7c6b522e9612824", 
+                  "527e72eb38950b8031ee6217ef531960"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="tau/commonsense_qa",
         dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//6, idx % 6
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["choices"]["text"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
+
+    def doc_to_label(self, doc):
+        return ["A", "B", "C", "D", "E"].index(doc["answerKey"].strip())
+
+    def doc_to_domain_conditional(self, doc):
+        return "<(S><(NP> The answer<NP)><(VP> is"
 
 
 # TODO:
