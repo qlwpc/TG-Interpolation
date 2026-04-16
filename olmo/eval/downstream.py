@@ -405,7 +405,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
                         f"input_ids is {self.token_decode(query)}\n" + 
                         f"query is {query}\n" +  
-                        f"continuation is {continuation}" + 
+                        f"continuation is {continuation}\n" + 
                         f"ctx_len is {actual_ctx_len}"
                     )
 
@@ -1527,6 +1527,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
     metric_type = "acc"
     BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
     shots_list = [0, 1, 7, 11, 3, 4, 5]
+
     def __init__(
         self,
         tokenizer,
@@ -2553,25 +2554,77 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "len_norm"
+    OpenBookQAPATH = "./dataset/openbookqa"
+    shots_list = ["7-584", "7-870", "9-732", "9-782", "8-72", "9-87", "1046", "1591", "7-1167"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="openbookqa",
         dataset_name="main",
+        model_ctx_len=2048,
+        split="test",
+        shots_num=5,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
-    def doc_to_text(self, doc):
-        return doc["question_stem"]
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//4, idx % 4
+                dataset[id_entry]["choices"]["text"][num] = convert_TG_format(line.strip())
+        for item in dataset:
+            choices = item["choices"]["text"]
+            idx = os.path.commonprefix(choices).rfind('>') + 1
+            # stem = item["question_stem"]
+            item["question_stem"] = choices[0][:idx]
+            item["choices"]["text"] = [s[idx:] for s in choices]
+            #if len(item["question_stem"]) < len(stem):
+            #    print(f'Oh no! {item["question_stem"]=} {item["choices"]["text"]=}')
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + choice for choice in doc["choices"]["text"]]
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + doc["question_stem"]
+        # return (self.shots_prompt if single_shot==False else "") + " \n<(NP> Question<NP)> :" + doc["question_stem"] + " \n<(NP> Answer<NP)> :"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
 
     def doc_to_label(self, doc):
         return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
@@ -2738,7 +2791,7 @@ class BasicArithmetic(ArcEasy):
         )
 
 
-class CommonsenseQA(ArcEasy):
+class CommonsenseQA(ICLMultiChoiceTaskDataset):
     """CommonsenseQA
     Example:
     {'id': 'e68fb2448fd74e402aae9982aa76e527',
@@ -2750,20 +2803,83 @@ class CommonsenseQA(ArcEasy):
     """
 
     metric_type = "len_norm"
+    CSQAPATH = "./dataset/commonsense_qa"
+    shots_list = ["61fe6e879ff18686d7552425a36344c8", "02e821a3e53cb320790950aab4489e85", 
+                  "23505889b94e880c3e89cff4ba119860", "a76403b4921a9281b6ee2a7241a5ec9f", 
+                  "6dc921840aa1e5dda3333b79007f630b", "e8a8b3a2061aa0e6d7c6b522e9612824", 
+                  "527e72eb38950b8031ee6217ef531960"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="tau/commonsense_qa",
         dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//6, idx % 6
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["choices"]["text"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
+
+    def doc_to_label(self, doc):
+        return ["A", "B", "C", "D", "E"].index(doc["answerKey"].strip())
+
+    def doc_to_domain_conditional(self, doc):
+        return "<(S><(NP> The answer<NP)><(VP> is"
+
+
+# TODO:
 class SocialIQa(ICLMultiChoiceTaskDataset):
     """SocialIQa
     Example:
@@ -2788,22 +2904,72 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
             dataset_name=dataset_name,
         )
 
-    def doc_to_text(self, doc):
-        return "Question: " + doc["context"] + " " + doc["question"] + " \nAnswer:"
+    metric_type = "len_norm"
+    SIQAPATH = "./dataset/social_i_qa"
+    shots_list = [0, 8, 1, 13, 2, 7, 18, 9]
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [
-            " " + doc["answerA"],
-            " " + doc["answerB"],
-            " " + doc["answerC"],
-        ]
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="social_i_qa",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+        )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.txt"), "r") as file:
+            item_list = ["context", "question", "answerA", "answerB", "answerC"]
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                dataset[id_entry][item_list[num]] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+
+    def get_shots(self, train):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["context"] + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is<(NP>"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return [doc["answerA"], doc["answerB"], doc["answerC"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"]) - 1
 
     def doc_to_domain_conditional(self, doc):
-        return "Answer:"
+        return "<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
 
 class MRPC(ICLMultiChoiceTaskDataset):
