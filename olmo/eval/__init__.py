@@ -105,7 +105,8 @@ def build_downstream_evaluator(
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type, 
                            vocab_path=train_config.tokenizer.vocabulary,
-                            tree_eval_type=ds_eval_dataset.tree_eval_type)
+                            tree_eval_type=ds_eval_dataset.tree_eval_type,
+                            doc_group=ds_eval_dataset.doc_group)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
         assert(300 % eval_batch_size == 0)

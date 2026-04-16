@@ -29,13 +29,20 @@ class Evaluator:
     def compute_metrics(self) -> Dict[str, float]:
         if self.label in ["syntactic_generalization","BLiMP"] or self.type == EvaluatorType.rouge:
             return self.eval_metric.compute()
-        elif self.type == EvaluatorType.downstream or self.type in [EvaluatorType.tg_sent, EvaluatorType.tg_doc]:
+        elif self.type in [EvaluatorType.tg_sent, EvaluatorType.tg_doc]:
             assert isinstance(self.eval_metric, Metric)
             value = self.eval_metric.compute().item()
             key = f"eval/downstream/{self.label}_{self.eval_metric.metric_type}"
             if self.eval_metric.metric_type in ["ce_loss", "bpb"]:
                 key = key.replace("/downstream/", f"/downstream_{self.eval_metric.metric_type}/")
             return {key: value}
+        elif self.type == EvaluatorType.downstream:
+            assert isinstance(self.eval_metric, Metric)
+            score : Dict = self.eval_metric.compute()
+            key = f"eval/downstream/{self.label}_{self.eval_metric.metric_type}"
+            if self.eval_metric.metric_type in ["ce_loss", "bpb"]:
+                key = key.replace("/downstream/", f"/downstream_{self.eval_metric.metric_type}/")
+            return {key + "_" + old_key: value for old_key, value in score.items()}
         elif self.type == EvaluatorType.lm:
             # Metric(s) = cross entropy loss
             metrics: Dict[str, Metric]
