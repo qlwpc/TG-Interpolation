@@ -441,6 +441,104 @@ def prepare_dataset(config:str):
             prepared_ds.append(doc["question"])
             for option in doc["choices"]:
                 prepared_ds.append(option)
+    elif config[:9] == "MMLUREDUX":
+        category = config[9:]
+        filename = os.path.join("../dataset/mmluredux/", category + ".txt")
+        _subcategories = {
+            "abstract_algebra": ["math"],
+            "anatomy": ["health"],
+            "astronomy": ["physics"],
+            "business_ethics": ["business"],
+            "clinical_knowledge": ["health"],
+            "college_biology": ["biology"],
+            "college_chemistry": ["chemistry"],
+            "college_computer_science": ["computer science"],
+            "college_mathematics": ["math"],
+            "college_medicine": ["health"],
+            "college_physics": ["physics"],
+            "computer_security": ["computer science"],
+            "conceptual_physics": ["physics"],
+            "econometrics": ["economics"],
+            "electrical_engineering": ["engineering"],
+            "elementary_mathematics": ["math"],
+            "formal_logic": ["philosophy"],
+            "global_facts": ["other"],
+            "high_school_biology": ["biology"],
+            "high_school_chemistry": ["chemistry"],
+            "high_school_computer_science": ["computer science"],
+            "high_school_european_history": ["history"],
+            "high_school_geography": ["geography"],
+            "high_school_government_and_politics": ["politics"],
+            "high_school_macroeconomics": ["economics"],
+            "high_school_mathematics": ["math"],
+            "high_school_microeconomics": ["economics"],
+            "high_school_physics": ["physics"],
+            "high_school_psychology": ["psychology"],
+            "high_school_statistics": ["math"],
+            "high_school_us_history": ["history"],
+            "high_school_world_history": ["history"],
+            "human_aging": ["health"],
+            "human_sexuality": ["culture"],
+            "international_law": ["law"],
+            "jurisprudence": ["law"],
+            "logical_fallacies": ["philosophy"],
+            "machine_learning": ["computer science"],
+            "management": ["business"],
+            "marketing": ["business"],
+            "medical_genetics": ["health"],
+            "miscellaneous": ["other"],
+            "moral_disputes": ["philosophy"],
+            "moral_scenarios": ["philosophy"],
+            "nutrition": ["health"],
+            "philosophy": ["philosophy"],
+            "prehistory": ["history"],
+            "professional_accounting": ["other"],
+            "professional_law": ["law"],
+            "professional_medicine": ["health"],
+            "professional_psychology": ["psychology"],
+            "public_relations": ["politics"],
+            "security_studies": ["politics"],
+            "sociology": ["culture"],
+            "us_foreign_policy": ["politics"],
+            "virology": ["health"],
+            "world_religions": ["philosophy"],
+        }
+        def correct_redux(record):
+            error_type = record['error_type']
+            choices = record['choices']
+            target_index_list = [int(record['answer'])]
+            correct_answer = record['correct_answer']
+            if error_type == 'no_correct_answer' and correct_answer:
+                choices[target_index_list[0]] = correct_answer
+            elif error_type == 'wrong_groundtruth' and correct_answer:
+                try:
+                    target_index_list = [int(correct_answer)]
+                except ValueError:
+                    choice_index = ord(correct_answer) - ord('A')
+                    target_index_list = [choice_index]
+            elif error_type == 'multiple_correct_answers' and correct_answer:
+                correct_answer = correct_answer.strip('()')
+                try:
+                    correct_answer = correct_answer.replace(' and ', ',').replace(' or ', ',')
+                    target_index_list = list(map(int, correct_answer.split(',')))
+                except ValueError:
+                    try:
+                        target_index_list = [ord(c) - ord('A') for c in correct_answer.split(',')]
+                    except TypeError:
+                        # find the index of the correct answer in choices
+                        target_index_list = [choices.index(c) for c in correct_answer.split(',') if c in choices]
+                        if target_index_list == []:
+                            target_index_list = [int(record['answer'])]
+            record["choices"] = choices
+            record["answer"] = target_index_list
+            return record
+        ds = load_dataset("edinburgh-dawg/mmlu-redux-2.0", category, split="test")
+        ds = list(ds)
+        for doc in ds:
+            correct_redux(doc)
+            prepared_ds.append(doc["question"])
+            for option in doc["choices"]:
+                prepared_ds.append(option)
     elif config[:10] == "openbookqa":
         ds = load_dataset("allenai/openbookqa", "additional")
         os.makedirs("../dataset/openbookqa/", exist_ok=True)
@@ -469,6 +567,11 @@ def main(args_list=None):
     args = parser.parse_args(args_list)
     logger.info(args.input_list)
     result_list = args.input_list.split(',') if args.input_list else []
+    MMLUCATEGORIES = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions']
+    for split in result_list:
+        if split == "MMLUREDUX":
+            result_list.extend(['MMLUREDUX' + cate for cate in MMLUCATEGORIES])
+            result_list.remove(split)
     logger.info("Received list:", result_list) # [ "CC-MAIN-2014-41"]
     config = result_list
     for split in config:
