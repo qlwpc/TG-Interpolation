@@ -1,7 +1,7 @@
 import abc
 import logging
 import re
-from typing import Any, Dict, List, Optional, Sequence, Union, Callable
+from typing import Any, Dict, List, Optional, Sequence, Union, Callable, Set
 
 import datasets
 import torch
@@ -31,12 +31,13 @@ class ICLMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
 
-    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None) -> None:
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None, doc_group: List[str]=None) -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
         self.tree_eval_type = tree_eval_type
+        self.doc_group = doc_group
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         # self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
@@ -119,12 +120,14 @@ class ICLMetric(Metric):
         # states should have been synced from all accelerators at this point
         # account for duplicates here because of DistributedSampler compensating for drop_last=False
         loglikelihood_dict: Dict[int, Dict[int, float]] = {}
-        label_dict = {}
+        label_dict : Dict[int, Set[int]] = {}
 
         # collect labels
         for doc_id, cont_id, label_id in self.labels:
-            if doc_id.item() not in label_dict:
-                label_dict[doc_id.item()] = label_id.item()
+            doc_id = doc_id.item()
+            if doc_id not in label_dict:
+                label_dict[doc_id] = set()
+            label_dict[doc_id].add(label_id.item())
 
         # collect loglikelihoods
         for doc_id, cont_id, loglikelihood in self.loglikelihoods:
@@ -135,15 +138,18 @@ class ICLMetric(Metric):
                 loglikelihood_dict[int(doc_id.item())][int(cont_id.item())] = loglikelihood
 
         # compute acc
-        correct = []
+        correct = {}
         preds: Optional[List[float]] = None
         labels: Optional[List[int]] = None
         if self.metric_type == "f1":
-            preds = []
-            labels = []
+            preds = {}
+            labels = {}
 
         for doc_id in loglikelihood_dict:
             # each doc_id might have a different number of continuation
+            group = "_" if self.doc_group is None else self.doc_group[doc_id]
+            if group not in correct:
+                correct[group] = []
             num_continuations = len(loglikelihood_dict[doc_id].keys())
             loglikelihoods = torch.tensor([-float("inf")] * num_continuations)
 
@@ -159,26 +165,37 @@ class ICLMetric(Metric):
             if skip_document:
                 continue
             if self.metric_type in ["ce_loss", "bpb"]:
-                correct.append(loglikelihoods[0])  # Only one answer is scored
+                correct[group].append(loglikelihoods[0])  # Only one answer is scored
             else:
                 # print(f"{doc_id} is {'correct' if torch.argmax(loglikelihoods).item() == label_dict[doc_id] else 'wrong'}")
-                correct.append(1.0 if torch.argmax(loglikelihoods).item() == label_dict[doc_id] else 0.0)
+                correct[group].append(1.0 if torch.argmax(loglikelihoods).item() in label_dict[doc_id] else 0.0)
 
             if self.metric_type == "f1":
                 assert preds is not None
                 assert labels is not None
-                preds.append(torch.argmax(loglikelihoods).item())
-                labels.append(label_dict[doc_id])
+                if group not in pred:
+                    preds[group] = []
+                    labels[group] = []
+                pred = torch.argmax(loglikelihoods).item()
+                preds[group].append(pred)
+                labels[group].append(label_dict[doc_id][0] if pred not in label_dict[doc_id] else pred)
 
+        score_dict = {}
         if self.metric_type == "f1":
             assert preds is not None
             assert labels is not None
             # for NLI tasks, continuations are yes, no, neither, so idx=0 assigned to pos label
-            score = f1_score(labels, preds, pos_label=0)
+            for group in labels:
+                score_dict[group] = f1_score(labels[group], preds[group], pos_label=0)
         else:
-            score = sum(correct) / len(correct)
-
-        return torch.tensor(score)
+            for group in correct:
+                score_dict[group] = sum(correct[group]) / len(correct[group])
+        
+        all = 0.0
+        for group in score_dict:
+            all += score_dict[group]
+        score_dict["_"] = all / len(score_dict)
+        return score_dict
     
 
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
@@ -223,6 +240,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.transformer_grammar_type = transformer_grammar_type
         print(f"vocab path is {vocab_path}")
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.doc_group = None
 
         self.samples: List[Dict[str, Any]] = []
         dataset_names: Sequence[Optional[str]]
@@ -372,7 +390,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             "cont_byte_len": cont_byte_len,
                             "query": query,  # remove last token from continuation
                             "dc_query": dc_query,
-                            "label_id": label_id,
+                            "label_id": label_id if isinstance(label_id, int) else (cont_id if cont_id in label_id else label_id[0]), 
+                                                # since some benchmarks have multiple correct labels
                             "cont_mask": mask,
                         }
                     )
@@ -386,7 +405,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         + f" \ndoc_text: {doc_text} \ncontinuations: {continuations} \n" +
                         f"input_ids is {self.token_decode(query)}\n" + 
                         f"query is {query}\n" +  
-                        f"continuation is {continuation}" + 
+                        f"continuation is {continuation}\n" + 
                         f"ctx_len is {actual_ctx_len}"
                     )
 
@@ -1508,6 +1527,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
     metric_type = "acc"
     BoolQPATH = "./dataset/SuperGLUE/BoolQ/"
     shots_list = [0, 1, 7, 11, 3, 4, 5]
+
     def __init__(
         self,
         tokenizer,
@@ -2534,25 +2554,77 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "len_norm"
+    OpenBookQAPATH = "./dataset/openbookqa"
+    shots_list = ["7-584", "7-870", "9-732", "9-782", "8-72", "9-87", "1046", "1591", "7-1167"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="openbookqa",
         dataset_name="main",
+        model_ctx_len=2048,
+        split="test",
+        shots_num=5,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
-    def doc_to_text(self, doc):
-        return doc["question_stem"]
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//4, idx % 4
+                dataset[id_entry]["choices"]["text"][num] = convert_TG_format(line.strip())
+        for item in dataset:
+            choices = item["choices"]["text"]
+            idx = os.path.commonprefix(choices).rfind('>') + 1
+            # stem = item["question_stem"]
+            item["question_stem"] = choices[0][:idx]
+            item["choices"]["text"] = [s[idx:] for s in choices]
+            #if len(item["question_stem"]) < len(stem):
+            #    print(f'Oh no! {item["question_stem"]=} {item["choices"]["text"]=}')
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + choice for choice in doc["choices"]["text"]]
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + doc["question_stem"]
+        # return (self.shots_prompt if single_shot==False else "") + " \n<(NP> Question<NP)> :" + doc["question_stem"] + " \n<(NP> Answer<NP)> :"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
 
     def doc_to_label(self, doc):
         return ["A", "B", "C", "D"].index(doc["answerKey"].strip())
@@ -2719,7 +2791,7 @@ class BasicArithmetic(ArcEasy):
         )
 
 
-class CommonsenseQA(ArcEasy):
+class CommonsenseQA(ICLMultiChoiceTaskDataset):
     """CommonsenseQA
     Example:
     {'id': 'e68fb2448fd74e402aae9982aa76e527',
@@ -2731,20 +2803,83 @@ class CommonsenseQA(ArcEasy):
     """
 
     metric_type = "len_norm"
+    CSQAPATH = "./dataset/commonsense_qa"
+    shots_list = ["61fe6e879ff18686d7552425a36344c8", "02e821a3e53cb320790950aab4489e85", 
+                  "23505889b94e880c3e89cff4ba119860", "a76403b4921a9281b6ee2a7241a5ec9f", 
+                  "6dc921840aa1e5dda3333b79007f630b", "e8a8b3a2061aa0e6d7c6b522e9612824", 
+                  "527e72eb38950b8031ee6217ef531960"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="tau/commonsense_qa",
         dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
         )
 
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx//6, idx % 6
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                else:
+                    dataset[id_entry]["choices"]["text"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
+
+    def doc_to_label(self, doc):
+        return ["A", "B", "C", "D", "E"].index(doc["answerKey"].strip())
+
+    def doc_to_domain_conditional(self, doc):
+        return "<(S><(NP> The answer<NP)><(VP> is"
+
+
+# TODO:
 class SocialIQa(ICLMultiChoiceTaskDataset):
     """SocialIQa
     Example:
@@ -2769,22 +2904,72 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
             dataset_name=dataset_name,
         )
 
-    def doc_to_text(self, doc):
-        return "Question: " + doc["context"] + " " + doc["question"] + " \nAnswer:"
+    metric_type = "len_norm"
+    SIQAPATH = "./dataset/social_i_qa"
+    shots_list = [0, 8, 1, 13, 2, 7, 18, 9]
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [
-            " " + doc["answerA"],
-            " " + doc["answerB"],
-            " " + doc["answerC"],
-        ]
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path="social_i_qa",
+        dataset_name=None,
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+    ):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+        )
+
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.txt"), "r") as file:
+            item_list = ["context", "question", "answerA", "answerB", "answerC"]
+            for idx, line in enumerate(file):
+                id_entry, num = idx//5, idx % 5
+                dataset[id_entry][item_list[num]] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
+
+    def get_shots(self, train):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["context"] + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is<(NP>"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return [doc["answerA"], doc["answerB"], doc["answerC"]]
 
     def doc_to_label(self, doc):
         return int(doc["label"]) - 1
 
     def doc_to_domain_conditional(self, doc):
-        return "Answer:"
+        return "<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
 
 class MRPC(ICLMultiChoiceTaskDataset):
@@ -2995,13 +3180,14 @@ class MMLU(ICLMultiChoiceTaskDataset):
     }
 
     _MMLUPATH = "./dataset/mmlu"
+    _REDUXPATH = "./dataset/mmluredux"
     shots_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     def __init__(
         self,
         tokenizer: Tokenizer,
-        dataset_path: str = "cais/mmlu",
-        dataset_name: Union[str, Sequence[str], None] = None,
+        dataset_path: str = "edinburgh-dawg/mmlu-redux-2.0",
+        dataset_name: Union[str, Sequence[str], None] = "all",
         model_ctx_len: int = 2048,
         split="test",
         metric_type=None,  # Override default metric type
@@ -3015,33 +3201,6 @@ class MMLU(ICLMultiChoiceTaskDataset):
         mc_labels=False,
     ):
         self.mc_labels = mc_labels
-        # dataset_names = []
-        # # Collect the relevant categories
-        # if dataset_name in MMLU._categories:
-        #     for sub_cat in MMLU._categories[dataset_name]:
-        #         for name, cats in MMLU._subcategories.items():
-        #             if sub_cat in cats:
-        #                 dataset_names.append(name)
-        # elif dataset_name in MMLU._subcategories:
-        #     dataset_names.append(dataset_name)
-        # else:  # E.g., "math"
-        #     for name, cats in MMLU._subcategories.items():
-        #         if dataset_name in cats:
-        #             dataset_names.append(name)
-        # self.dev_set = {}
-        # self.mc_labels = mc_labels
-        # prompts: List[Union[None, str]] = [None]
-        # if prompts is not None:
-        #     if prompts == 1:
-        #         prompts = [None, "inst", "inst+1", "inst+2", "inst+3", "inst+4", "inst+5"]
-        #     elif prompts == 2:
-        #         prompts = ["inst+5"]
-        #     else:
-        #         raise ValueError(f"Unknown prompt variations: {prompts}")
-        #     # Need to grab the dev set for the few-shot prompts
-        #     for name in dataset_names:
-        #         dev_set = load_hf_dataset(dataset_path, name, "dev")
-        #         self.dev_set[name] = dev_set
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
@@ -3054,10 +3213,13 @@ class MMLU(ICLMultiChoiceTaskDataset):
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
         )
+        self.doc_group = []
+        for doc in self.dataset:
+            self.doc_group.append(doc["subject"])
     
     def prepare_shots(self, split="validation"):
         self.shots_prompt : Dict[str, str] = {}
-        shots_split = self.load_local_datasets(split=split, ret=True)
+        shots_split = self.load_local_datasets(split=split, ret=True, dataset_path="cais/mmlu")
         self.shots = {}
         for doc in shots_split:
             subject = doc["subject"]
@@ -3071,17 +3233,62 @@ class MMLU(ICLMultiChoiceTaskDataset):
                 prompt += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc, single_shot=True)[self.doc_to_label(doc)] + " \n \n"
             self.shots_prompt[category] = prompt
     
-    def load_local_datasets(self, split=None, ret=False):
+    def load_local_datasets(self, split=None, ret=False, dataset_path=None):
         split = self.split if split is None else split
-        dataset = datasets.load_dataset("cais/mmlu", "all", split=split)
-        dataset = list(dataset)
-        with open(os.path.join(self._MMLUPATH, f"mmlu{split}.txt"), "r") as file:
-            for idx, line in enumerate(file):
-                id_entry, num = idx//5, idx % 5
-                if num==0:
-                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
-                else:
-                    dataset[id_entry]["choices"][num - 1] = convert_TG_format(line.strip())
+        dataset_path = self.dataset_path if dataset_path is None else dataset_path
+        def correct_redux(record: Dict[str, Any]):
+            error_type = record['error_type']
+            choices = record['choices']
+            target_index_list = [int(record['answer'])]
+            correct_answer = record['correct_answer']
+            if error_type == 'no_correct_answer' and correct_answer:
+                choices[target_index_list[0]] = correct_answer
+            elif error_type == 'wrong_groundtruth' and correct_answer:
+                try:
+                    target_index_list = [int(correct_answer)]
+                except ValueError:
+                    choice_index = ord(correct_answer) - ord('A')
+                    target_index_list = [choice_index]
+            elif error_type == 'multiple_correct_answers' and correct_answer:
+                correct_answer = correct_answer.strip('()')
+                try:
+                    correct_answer = correct_answer.replace(' and ', ',').replace(' or ', ',')
+                    target_index_list = list(map(int, correct_answer.split(',')))
+                except ValueError:
+                    try:
+                        target_index_list = [ord(c) - ord('A') for c in correct_answer.split(',')]
+                    except TypeError:
+                        # find the index of the correct answer in choices
+                        target_index_list = [choices.index(c) for c in correct_answer.split(',') if c in choices]
+                        if target_index_list == []:
+                            target_index_list = [int(record['answer'])]
+            record["choices"] = choices
+            record["answer"] = target_index_list
+            return record
+        
+        def load_local_mmlu(file_path, dataset):
+            with open(file_path, "r") as file:
+                for idx, line in enumerate(file):
+                    id_entry, num = idx//5, idx % 5
+                    if num==0:
+                        dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                    else:
+                        dataset[id_entry]["choices"][num - 1] = convert_TG_format(line.strip())
+            return
+        if dataset_path=="cais/mmlu":
+            dataset = datasets.load_dataset(dataset_path, self.dataset_name, split=split)
+            dataset = list(dataset)
+            load_local_mmlu(os.path.join(self._MMLUPATH, f"mmlu{split}.txt"), dataset)
+        else:
+            dataset = []
+            for category in self._subcategories:
+                sub_dataset = datasets.load_dataset(dataset_path, category, split=split)
+                sub_dataset = list(sub_dataset)
+                for doc in sub_dataset:
+                    correct_redux(doc)
+                    doc["subject"] = category
+                load_local_mmlu(os.path.join(self._REDUXPATH, f"{category}.txt"), sub_dataset)
+                dataset.extend(sub_dataset)
 
         # if split!="train":
         #     dataset = dataset[:1000]
@@ -3094,39 +3301,6 @@ class MMLU(ICLMultiChoiceTaskDataset):
         return ("" if single_shot==True else f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {doc['subject']}<NP)><PP)><NP)><VP)> .<S)> \n")  \
            +  (self.shots_prompt[doc["subject"]] if single_shot==False else "")   \
            + "<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is"
-        # def format_example(doc, keys):
-        #     question_prefix = ""
-        #     if not self.mc_labels:
-        #         question_prefix = "Question: "  # To make context more clear
-        #     question = question_prefix + doc["question"].strip()
-        #     choices = ""
-        #     if self.mc_labels:
-        #         choices = "".join([f"{key}. {choice} \n" for key, choice in zip(keys, doc["choices"])])
-        #     prompt = f"{question} \n{choices}Answer:"
-        #     return prompt
-
-        # keys = ["A", "B", "C", "D"]
-        # output_text = format_example(doc, keys)
-
-        # if self.current_prompt is not None:
-        #     prefix = ""
-        #     if "inst" in self.current_prompt:
-        #         subject = doc.get("subject").replace("_", " ")
-        #         prefix = f"<(S><(NP> The following<NP)><(VP> are<(NP><(NP><(NML> multiple choice<NML)> questions<NP)> (<(PP> with<(NP> answers<NP)><PP)> )<(PP> about<(NP> {subject}<NP)><PP)><NP)><VP)> .<S)>: \n \n"
-        #     num_shots = re.findall("\\+(\\d+)", self.current_prompt)
-        #     if num_shots:
-        #         dev_set = self.dev_set.get(doc.get("subject"), [])
-        #         num_shots_int = int(num_shots[0])
-        #         for idx, dev_doc in enumerate(dev_set):
-        #             if idx >= num_shots_int:
-        #                 break
-        #             if self.mc_labels:
-        #                 answer = keys[dev_doc["answer"]]
-        #             else:
-        #                 answer = dev_doc["choices"][dev_doc["answer"]]
-        #             prefix += format_example(dev_doc, keys) + " " + answer + " \n \n"
-        #     output_text = prefix + output_text
-        # return output_text
 
     def doc_to_continuations(self, doc, single_shot=False):
         # add spaces in front of continuation
@@ -3409,7 +3583,8 @@ Super_GLUE = {
     "wic": WiC, 
     "wsc": WSC,
     "hellaswag": HellaSwag,
-    "mmlu": MMLU,
+    "mmlu": (MMLU, {"dataset_path": "cais/mmlu"}),
+    "mmluredux": (MMLU, {"dataset_path": "edinburgh-dawg/mmlu-redux-2.0"}),
 }
 
 label_to_task_map = {
@@ -3430,7 +3605,7 @@ label_to_task_map = {
     "natural_qs_open_ppl": NaturalQuestionsCELoss,
     "winogrande_term" : (WinoGrande, {"tree_eval_type": "terminal"}),
     "hellaswag_term" : (HellaSwag, {"tree_eval_type": "terminal"}),
-    "mmlu_term": (MMLU, {"tree_eval_type": "terminal"}),
+    "mmlu_term": (MMLU, {"dataset_path": "cais/mmlu", "tree_eval_type": "terminal"}),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),
