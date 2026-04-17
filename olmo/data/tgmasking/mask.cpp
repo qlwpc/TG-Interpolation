@@ -44,6 +44,7 @@ public:
     int64_t newline;
     int64_t bosent;
     int64_t eosent;
+    int64_t pause;
     std::pair<int64_t, int64_t> opening_non_terminals;
     std::pair<int64_t, int64_t> closing_non_terminals;
     std::vector<std::string> tokens;
@@ -51,19 +52,19 @@ public:
     SentencepieceVocab() {}
     SentencepieceVocab(
         int64_t pad, int64_t bos, int64_t eos, int64_t unk,
-        int64_t whitespace, int64_t newline, int64_t bosent, int64_t eosent,
+        int64_t whitespace, int64_t newline, int64_t bosent, int64_t eosent, int64_t pause,
         std::pair<int64_t, int64_t> opening_non_terminals,
         std::pair<int64_t, int64_t> closing_non_terminals,
         std::vector<std::string> tokens
     ) : pad(pad), bos(bos), eos(eos), unk(unk),
-        whitespace(whitespace), newline(newline), bosent(bosent), eosent(eosent),
+        whitespace(whitespace), newline(newline), bosent(bosent), eosent(eosent), pause(pause),
         opening_non_terminals(opening_non_terminals),
         closing_non_terminals(closing_non_terminals),
         tokens(tokens) {}
 
     static SentencepieceVocab from_vocab_file(const std::string& vocab_file) {
         int64_t pad = -1, bos = -1, eos = -1, unk = -1;
-        int64_t  whitespace = -1, newline = -1, bosent = -1, eosent = -1;
+        int64_t  whitespace = -1, newline = -1, bosent = -1, eosent = -1, pause = -1;
         std::pair<int64_t, int64_t> opening_non_terminals(-1, -1);
         std::pair<int64_t, int64_t> closing_non_terminals(-1, -1);
         std::vector<std::string> tokens;
@@ -120,6 +121,7 @@ public:
                     else if (token == "(S1" || token == "(TOP") bosent = index;
                     else if (token == "S1)" || token == "TOP)") eosent = index;
                     else if (token == "▁" || token=="Ġ") whitespace = index;
+                    else if (token == "<|SEP|>") pause = index;
                     else if (token == "Ċ") newline = index;
                     else if (std::regex_match(token, opening_pattern)) {
                         if (opening_non_terminals.first == -1)
@@ -172,7 +174,7 @@ public:
 
         return SentencepieceVocab(
             pad, bos, eos, unk,
-            whitespace, newline, bosent, eosent,
+            whitespace, newline, bosent, eosent, pause,
             opening_non_terminals,
             closing_non_terminals,
             tokens
@@ -1199,6 +1201,7 @@ PYBIND11_MODULE(tg_mask, m) {
         .def_readwrite("newline", &SentencepieceVocab::newline)
         .def_readwrite("bosent", &SentencepieceVocab::bosent)
         .def_readwrite("eosent", &SentencepieceVocab::eosent)
+        .def_readwrite("pause", &SentencepieceVocab::pause)
         .def_readwrite("opening_non_terminals", &SentencepieceVocab::opening_non_terminals)
         .def_readwrite("closing_non_terminals", &SentencepieceVocab::closing_non_terminals)
         .def("convert_treenpy_to_TG", &SentencepieceVocab::convert_treenpy_to_TG, 
@@ -1223,13 +1226,14 @@ PYBIND11_MODULE(tg_mask, m) {
                     v.newline,
                     v.bosent,
                     v.eosent,
+                    v.pause,
                     v.opening_non_terminals,
                     v.closing_non_terminals,
                     v.tokens
                 );
             },
             [](py::tuple t) { // __setstate__
-                if (t.size() != 11)
+                if (t.size() != 12)
                     throw std::runtime_error("Invalid state!");
                     
                 return SentencepieceVocab(
@@ -1241,9 +1245,10 @@ PYBIND11_MODULE(tg_mask, m) {
                     t[5].cast<int64_t>(),
                     t[6].cast<int64_t>(),
                     t[7].cast<int64_t>(),
-                    t[8].cast<std::pair<int64_t, int64_t>>(),
+                    t[8].cast<int64_t>(),
                     t[9].cast<std::pair<int64_t, int64_t>>(),
-                    t[10].cast<std::vector<std::string>>()
+                    t[10].cast<std::pair<int64_t, int64_t>>(),
+                    t[11].cast<std::vector<std::string>>()
                 );
             }
         ))
