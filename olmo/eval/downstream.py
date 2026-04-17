@@ -16,7 +16,7 @@ from olmo.util import load_hf_dataset, load_oe_eval_requests
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
-from ..data.util import encode_TG_string, convert_TG_format
+from ..data.util import encode_TG_string, convert_TG_format, pause_input_ids
 from ..data.collator import DataCollator
 from ..config import PaddingDirection
 
@@ -217,7 +217,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         transformer_grammar_type="",
         generate_TG_attention_bias=None,
         vocab_path=None,
-        tree_eval_type="default"
+        tree_eval_type="default",
+        pause_token_id=None,
     ):
         super().__init__()
 
@@ -225,8 +226,10 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.dataset_path = dataset_path
         self.dataset_name = dataset_name
         self.model_ctx_len = model_ctx_len
-        if transformer_grammar_type[:8] == "pause1/2":
-            self.model_ctx_len //= 2
+        self.transformer_grammar_type = transformer_grammar_type
+        if self.ispause:
+            assert self.model_ctx_len % (1+self.ispause) == 0, f"model_ctx_len {self.model_ctx_len} should be divided by pause length {(1+self.ispause)}"
+            self.model_ctx_len //= (1+self.ispause)
         self.prompts = prompts
         self.current_prompt = None
         self.shots_num = shots_num
@@ -237,9 +240,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.tree_eval_type = tree_eval_type
         self.log_instances = 5  # Set to > 0 to log the first few instances as a sanity check
         self.generate_TG_attention_bias = generate_TG_attention_bias
-        self.transformer_grammar_type = transformer_grammar_type
         print(f"vocab path is {vocab_path}")
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.pause_token_id = pause_token_id
         self.doc_group = None
 
         self.samples: List[Dict[str, Any]] = []
@@ -268,13 +271,23 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def __len__(self):
         return len(self.samples)
+
+    @property
+    def ispause(self):
+        if self.transformer_grammar_type[:5]=="pause":
+            numstr = self.transformer_grammar_type[5:]
+            if numstr == "1/2" or numstr == "1/2_label":   # due to early config set, 1/2 means 1 pause token 1 normal token in total 2 tokens
+                return 1
+            else:
+                return int(numstr)
+        return 0
     
     def convert_grammar_input(self, input_ids, grammar_type=None) -> List[int]:
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
         if grammar_type is None:
             grammar_type = self.transformer_grammar_type
-        if grammar_type[:8] in ["terminal", "pause1/2"]:
+        if grammar_type[:8] == "terminal" or grammar_type[:5] == "pause":
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
         elif grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
@@ -355,25 +368,13 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         cont_byte_len = len(terminal_continuation_str[1:].encode("utf-8"))
 
 
-                    if self.transformer_grammar_type[:8] == "pause1/2":
-                        paused_input = query + query
-                        paused_input[::2] = query
-                        paused_input[1::2] = query
-                        query = paused_input
-                        pause_dc = dc_query + dc_query
-                        pause_dc[::2] = dc_query
-                        pause_dc[1::2] = dc_query
-                        dc_query = pause_dc
-                        tmp_cont = continuation + continuation
-                        tmp_cont[::2] = continuation
-                        tmp_cont[1::2] = continuation
-                        continuation = tmp_cont[:-1]
-                        actual_ctx_len *= 2
+                    if self.ispause:
+                        query = pause_input_ids(query, self.pause_token_id, pause_num=self.ispause)
+                        dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=self.ispause)
+                        continuation = pause_input_ids(continuation, self.pause_token_id, pause_num=self.ispause)[:-self.ispause]
+                        actual_ctx_len *= 1 + self.ispause
                         if mask is not None:
-                            tmp_mask = mask + mask
-                            tmp_mask[::2] = mask
-                            tmp_mask[1::2] = mask
-                            mask = tmp_mask[:-1]
+                            mask = pause_input_ids(mask, pause_token_id=None, pause_num=self.ispause)[:-self.ispause]
 
                     self.samples.append(
                         {
@@ -474,7 +475,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     input_ids = np.array(input_ids)
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
                 input_ids = input_ids.tolist()
-            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=None if self.transformer_grammar_type[:8]!="pause1/2" else self.model_ctx_len * 2))
+            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=self.model_ctx_len * (1 + self.ispause)))
             queries.append(input_ids)
 
             label_mask = None
@@ -606,7 +607,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
 
-        if transformer_grammar_type[:8] == "pause1/2":
+        if transformer_grammar_type[:5] == "pause":
             self.model_ctx_len //= 2
             self.prompts_TG_tokens = self.vocab.convert_treenpy_to_terminal(self.prompts_TG_tokens)
         passages = []
@@ -649,13 +650,13 @@ class XsumDataset(metaclass=abc.ABCMeta):
         passage = self.passages[index]
         passage_tokens = encode_TG_string(self.tokenizer, passage)
         passage_TG_tokens = self.vocab.convert_treenpy_to_TG(passage_tokens)
-        if self.transformer_grammar_type[:8] == "pause1/2":
+        if self.transformer_grammar_type[:5] == "pause":
             passage_TG_tokens = self.vocab.convert_treenpy_to_terminal(passage_tokens)
         if self.train_summary is not None:
             train_summary = self.train_summary[index]
             train_summary_tokens = encode_TG_string(self.tokenizer, train_summary)
             train_summary_TG_tokens = self.vocab.convert_treenpy_to_TG(train_summary_tokens)
-            if self.transformer_grammar_type[:8] == "pause1/2":
+            if self.transformer_grammar_type[:5] == "pause":
                 train_summary_TG_tokens = self.vocab.convert_treenpy_to_terminal(train_summary_TG_tokens)
             passage_truncate_length = self.model_ctx_len - len(train_summary_TG_tokens) - len(self.prompts_TG_tokens) - 1 - 1 # one for bos and one for eos
             input_ids = np.concatenate([
@@ -1540,6 +1541,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -1552,6 +1554,7 @@ class BoolQ(ICLMultiChoiceTaskDataset):
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -1771,28 +1774,11 @@ class COPA(ICLMultiChoiceTaskDataset):
             return [choices_list[label]]
         else:
             return choices_list
-        def convert_choice(sent):
-            tokens = sent.split()
-            for i, token in enumerate(tokens):
-                if token[0] != '(':
-                    tokens[i] = token[0].lower() + token[1:]
-                    break
-            return ' '.join(tokens[:-2])
-        
-        choices_list = [" " + convert_choice(doc["choice1"]), " " + convert_choice(doc["choice2"])]
-        label = doc["label"]
-        del doc
-        # add spaces in front of continuation
-        if self.split=="train":
-            return [choices_list[label]]
-        else:
-            return choices_list
 
     def doc_to_label(self, doc):
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
-        connector = "because" if doc["question"] == "cause" else "therefore"
         connector = "because" if doc["question"] == "cause" else "therefore"
         del doc
         return "<(SBAR>" + connector
@@ -2197,7 +2183,8 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         shots_num=5,
-        tree_eval_type=None
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -2209,7 +2196,8 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
-            tree_eval_type=tree_eval_type
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     @classmethod
@@ -2314,7 +2302,8 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         shots_num=5,
-        tree_eval_type=None
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         # all winogrande datasets have same val set
         super().__init__(
@@ -2327,7 +2316,8 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
-            tree_eval_type=tree_eval_type
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -2426,25 +2416,13 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                                 
                 cont_str_len = len(self.token_decode(continuation)) - 1
 
-                if self.transformer_grammar_type[:8] == "pause1/2":
-                    paused_input = query + query
-                    paused_input[::2] = query
-                    paused_input[1::2] = query
-                    query = paused_input
-                    pause_dc = dc_query + dc_query
-                    pause_dc[::2] = dc_query
-                    pause_dc[1::2] = dc_query
-                    dc_query = pause_dc
-                    tmp_cont = continuation + continuation
-                    tmp_cont[::2] = continuation
-                    tmp_cont[1::2] = continuation
-                    continuation = tmp_cont[:-1]
-                    actual_ctx_len *= 2
+                if self.ispause:
+                    query = pause_input_ids(query, self.pause_token_id, pause_num=self.ispause)
+                    dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=self.ispause)
+                    continuation = pause_input_ids(continuation, self.pause_token_id, pause_num=self.ispause)[:-self.ispause]
+                    actual_ctx_len *= 1 + self.ispause
                     if mask is not None:
-                        tmp_mask = mask + mask
-                        tmp_mask[::2] = mask
-                        tmp_mask[1::2] = mask
-                        mask = tmp_mask[:-1]
+                        mask = pause_input_ids(mask, pause_token_id=None, pause_num=self.ispause)[:-self.ispause]
 
                 # form a sample
                 self.samples.append(
@@ -2569,6 +2547,7 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -2581,6 +2560,7 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -2821,6 +2801,7 @@ class CommonsenseQA(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -2833,6 +2814,7 @@ class CommonsenseQA(ICLMultiChoiceTaskDataset):
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -2879,7 +2861,6 @@ class CommonsenseQA(ICLMultiChoiceTaskDataset):
         return "<(S><(NP> The answer<NP)><(VP> is"
 
 
-# TODO:
 class SocialIQa(ICLMultiChoiceTaskDataset):
     """SocialIQa
     Example:
@@ -2889,20 +2870,6 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
      'answerB': "happy that he doesn't need to do the cooking on the trip",
      'answerC': 'very proud and accomplished about the camping trip', 'label': '1'}
     """
-
-    metric_type = "len_norm"
-
-    def __init__(
-        self,
-        tokenizer,
-        dataset_path="social_i_qa",
-        dataset_name=None,
-    ):
-        super().__init__(
-            tokenizer=tokenizer,
-            dataset_path=dataset_path,
-            dataset_name=dataset_name,
-        )
 
     metric_type = "len_norm"
     SIQAPATH = "./dataset/social_i_qa"
@@ -2920,6 +2887,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -2932,6 +2900,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
     def load_local_datasets(self, split=None, ret=False):
@@ -3198,6 +3167,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
         generate_TG_attention_bias=None,
         vocab_path=None,
         tree_eval_type="default",
+        pause_token_id=None,
         mc_labels=False,
     ):
         self.mc_labels = mc_labels
@@ -3212,6 +3182,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
             generate_TG_attention_bias=generate_TG_attention_bias,
             vocab_path=vocab_path,
             tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
         self.doc_group = []
         for doc in self.dataset:
@@ -3280,15 +3251,9 @@ class MMLU(ICLMultiChoiceTaskDataset):
             dataset = list(dataset)
             load_local_mmlu(os.path.join(self._MMLUPATH, f"mmlu{split}.txt"), dataset)
         else:
-            dataset = []
-            for category in self._subcategories:
-                sub_dataset = datasets.load_dataset(dataset_path, category, split=split)
-                sub_dataset = list(sub_dataset)
-                for doc in sub_dataset:
-                    correct_redux(doc)
-                    doc["subject"] = category
-                load_local_mmlu(os.path.join(self._REDUXPATH, f"{category}.txt"), sub_dataset)
-                dataset.extend(sub_dataset)
+            dataset = datasets.load_from_disk(os.path.join(self._REDUXPATH, "all"))
+            dataset = list(dataset)
+            load_local_mmlu(os.path.join(self._REDUXPATH, f"all.txt"), dataset)
 
         # if split!="train":
         #     dataset = dataset[:1000]
@@ -3605,7 +3570,11 @@ label_to_task_map = {
     "natural_qs_open_ppl": NaturalQuestionsCELoss,
     "winogrande_term" : (WinoGrande, {"tree_eval_type": "terminal"}),
     "hellaswag_term" : (HellaSwag, {"tree_eval_type": "terminal"}),
+    "social_iqa_term": (SocialIQa, {"tree_eval_type": "terminal"}),
+    "commonsense_qa_term": (CommonsenseQA, {"tree_eval_type": "terminal"}),
+    "openbook_qa_term": (OpenBookQA, {"tree_eval_type": "terminal"}),
     "mmlu_term": (MMLU, {"dataset_path": "cais/mmlu", "tree_eval_type": "terminal"}),
+    "mmluredux_term": (MMLU, {"dataset_path": "edinburgh-dawg/mmlu-redux-2.0", "tree_eval_type": "terminal"}),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),

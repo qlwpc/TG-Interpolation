@@ -117,14 +117,19 @@ def build_memmap_dataset(
             metadata.extend([{"label": label}] * len(label_paths))
     else:
         raise OLMoConfigurationError("One of DataConfig.paths or DataConfig.datasets is required")
+    seq_length = train_config.model.max_sequence_length
+    if train_config.model.transformer_grammar_type[:5]=="pause": 
+        assert seq_length % (1+train_config.model.ispause) == 0,  f"model_ctx_len {seq_length} should be divided by pause length {(1+train_config.model.ispause)}"
+        seq_length //= 1 + train_config.model.ispause 
     return MemMapDataset(
         *paths,
-        chunk_size=train_config.model.max_sequence_length if train_config.model.transformer_grammar_type[:8]!="pause1/2" else train_config.model.max_sequence_length//2,
+        chunk_size=seq_length,
         memmap_dtype=data_config.effective_memmap_dtype,
         metadata=metadata,
         include_instance_metadata=include_instance_metadata,
         pad_token_id=train_config.model.pad_token_id,
         eos_token_id=train_config.model.eos_token_id,
+        pause_token_id=train_config.model.pause_token_id,
         generate_attention_mask=data_config.generate_attention_mask,
         generate_doc_lengths=data_config.generate_doc_lengths,
         label_mask_paths=cast(Optional[List[PathOrStr]], data_config.label_mask_paths),

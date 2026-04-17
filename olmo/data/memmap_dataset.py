@@ -13,7 +13,7 @@ from olmo.exceptions import OLMoEnvironmentError
 from ..aliases import PathOrStr
 from ..config import InstanceFilterConfig
 from ..util import _get_s3_client, file_size, get_bytes_range
-from .util import find_periodic_sequences, get_document_lengths
+from .util import find_periodic_sequences, get_document_lengths, pause_input_ids
 
 __all__ = ["MemMapDataset"]
 log = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         generate_doc_lengths: bool = False,
         pad_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
+        pause_token_id: Optional[int] = None,
         label_mask_paths: Optional[List[PathOrStr]] = None,
         instance_filter_config: Optional[InstanceFilterConfig] = None,
         generate_TG_attention_bias: Optional[Callable] = None,
@@ -91,6 +92,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         self._generate_doc_lengths = generate_doc_lengths
         self._pad_token_id = pad_token_id
         self._eos_token_id = eos_token_id
+        self._pause_token_id = pause_token_id
         self.instance_filter_config = instance_filter_config
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.transformer_grammar_type = transformer_grammar_type
@@ -200,11 +202,8 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
 
         # Read the data from file.
         input_ids = self._read_chunk_from_memmap(self._memmap_paths[memmap_index], memmap_local_index)
-        if self.transformer_grammar_type[:8]=="pause1/2":
-            paused_input = torch.zeros(2 * len(input_ids), dtype=input_ids.dtype, device=input_ids.device)
-            paused_input[::2] = input_ids
-            paused_input[1::2] = input_ids
-            input_ids = paused_input
+        if self.transformer_grammar_type[:5]=="pause":
+            input_ids = pause_input_ids(input_ids, self._pause_token_id, self.transformer_grammar_type)
         out: Dict[str, Any] = {"input_ids": input_ids}
         if self.generate_TG_attention_bias is not None:
             out["attention_bias"], out["label_mask"] = self.generate_TG_attention_bias(input_ids)

@@ -447,6 +447,12 @@ class ModelConfig(BaseConfig):
     The ID of the token to use for padding. Defaults to the ID of the EOS token.
     """
 
+    pause_token_id: Optional[int] = None
+    """
+    The ID of the token to use for pause. Defaults to the ID of the <|SEP|> token.
+    None means pause token is repeat the token sequence.
+    """
+
     init_device: Optional[str] = None
     """
     The torch device to use when initializing the model parameters, e.g. "cpu", "cuda:0", "meta".
@@ -493,7 +499,7 @@ class ModelConfig(BaseConfig):
 
     transformer_grammar_type : str = "terminal"
     """
-    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle"] 
+    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}"] 
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
     """
@@ -526,6 +532,15 @@ class ModelConfig(BaseConfig):
                 raise OLMoConfigurationError(
                     "You can't set `multi_query_attention` and `n_kv_heads` at the same time."
                 )
+    @property
+    def ispause(self) -> int:
+        if self.transformer_grammar_type[:5]=="pause":
+            numstr = self.transformer_grammar_type[5:]
+            if numstr == "1/2" or numstr == "1/2_label":   # due to early config set, 1/2 means 1 pause token 1 normal token in total 2 tokens
+                return 1
+            else:
+                return int(numstr)
+        return 0
 
 
 class OptimizerType(StrEnum):

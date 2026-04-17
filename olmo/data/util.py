@@ -1,4 +1,4 @@
-from typing import Generator, List, NamedTuple, Iterator
+from typing import Generator, List, NamedTuple, Iterator, Union
 
 import numpy as np
 import torch
@@ -188,7 +188,32 @@ def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndar
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))
     return ids
 
-
+def pause_input_ids(input_ids, pause_token_id:int=None, pause_num:Union[int, str]=1):
+    if isinstance(pause_num, str):
+        number = 1
+        try:
+            number = int(pause_num)
+        except ValueError:
+            number = int(pause_num[5:])
+        pause_num = number
+    pause_ids = None
+    if isinstance(input_ids, list):
+        pause_ids = input_ids * (1 + pause_num)
+    elif isinstance(input_ids, np.ndarray):
+        assert len(input_ids.shape)==1
+        pause_ids = np.zeros((1+pause_num)*len(input_ids), dtype=input_ids.dtype)
+    elif isinstance(input_ids, torch.Tensor):
+        assert len(input_ids.shape)==1
+        pause_ids = torch.zeros(((1+pause_num)*len(input_ids), ), dtype=input_ids.dtype, device=input_ids.device)
+    else:
+        raise NotImplementedError(f"Unknown pause input ids type: {type(input_ids)}")
+    if pause_token_id is None:
+        for i in range(1+pause_num):
+            pause_ids[i::(1+pause_num)] = input_ids
+    else:
+        pause_ids = pause_token_id
+        pause_ids[0::(1+pause_num)] = input_ids
+    return pause_ids
 
 class SequentialDistributedSampler(Sampler):
     def __init__(self, dataset, num_replicas=None, rank=None, 

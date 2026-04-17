@@ -740,8 +740,6 @@ class Trainer:
         # shape: (batch_size, seq_len)
         ignore_id = self.cfg.model.pad_token_id
         labels = self.get_labels(batch, ignore_id=ignore_id)
-        if self.cfg.model.transformer_grammar_type=="pause1/2_label":
-            labels[:, 0:-1:2] = labels[:, 1:-1:2]
         # shape: (batch_size * seq_len,)
         labels = labels.view(-1)
         ce_loss, z_loss = self.loss_fn(
@@ -1019,7 +1017,7 @@ class Trainer:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
-                    if self.cfg.model.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
+                    if self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause:
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits = self.model_forward(sent, loss_reduction="none")
@@ -1068,7 +1066,7 @@ class Trainer:
                             transformer_grammar_type = self.cfg.model.transformer_grammar_type,
                         )
                     predictions = predictions[0]["input_ids"].numpy()
-                    if self.cfg.model.transformer_grammar_type=="pause1/2_label":
+                    if self.cfg.model.transformer_grammar_type[:5]=="pause":  #TODO: fixed extract pause tokens
                         predictions = predictions[1::2]
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
                     predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
