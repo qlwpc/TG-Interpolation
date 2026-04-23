@@ -2221,7 +2221,7 @@ class HellaSwag(ICLMultiChoiceTaskDataset):
                 dataset[-1]["ctx_b"] = " " + dataset[-1]["ctx_b"].capitalize()
         with open(os.path.join(self.SwagPATH, f"hellaswag_{split}.txt"), "r") as file:
             for idx, line in enumerate(file):
-                id_entry, num = idx//5, idx % 5
+                id_entry, num = idx // 5, idx % 5
                 if num==0:
                     dataset[id_entry]["ctx_a"] = convert_TG_format(line.strip())
                 else:
@@ -2326,7 +2326,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         dataset = list(dataset)
         with open(os.path.join(self.WinoPATH, f"winogrande_{split}.txt"), "r") as file:
             for idx, line in enumerate(file):
-                id_entry, num = idx//2, idx % 2
+                id_entry, num = idx // 2, idx % 2
                 if num==0:
                     dataset[id_entry]["parsed"] = ["", ""]
                 dataset[id_entry]["parsed"][num] = convert_TG_format(line.strip())
@@ -2474,6 +2474,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
         return [doc["option1"], doc["option2"]]
 
 
+# TODO:
 class PIQA(ICLMultiChoiceTaskDataset):
     """PIQA sends context in the following fashion: "Question: GOAL \nAnswer:"
     space added as prefix to each continuation
@@ -2489,32 +2490,73 @@ class PIQA(ICLMultiChoiceTaskDataset):
     """
 
     metric_type = "len_norm"
+    PIQAPATH = "./dataset/piqa"
+    shots_list = [9, 3, 4, 5, 6, 7, 8]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="piqa",
         dataset_name="plain_text",
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
-    def doc_to_text(self, doc):
-        return "Question: " + doc["goal"] + " \nAnswer:"
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.PIQAPATH, f"piqa_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.PIQAPATH, f"piqa_{split}.txt"), "r") as file:
+            item_list = ["goal", "sol1", "sol2"]
+            for idx, line in enumerate(file):
+                id_entry, num = idx // 3, idx % 3
+                dataset[id_entry][item_list[num]] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + doc["sol1"], " " + doc["sol2"]]
+    def get_shots(self, train):
+        self.shots = []
+        for shot_id in self.shots_list:
+            self.shots.append(train[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Goal<NP)> :" + doc["goal"] + " \n<(NP> Answer<NP)> :"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return [doc["sol1"], doc["sol2"]]
 
     def doc_to_label(self, doc):
         return doc["label"]
 
     def doc_to_domain_conditional(self, doc):
-        del doc
-        return "Answer:"
+        return "<(NP> Answer<NP)> :"
 
 
 class OpenBookQA(ICLMultiChoiceTaskDataset):
@@ -2571,7 +2613,7 @@ class OpenBookQA(ICLMultiChoiceTaskDataset):
                 dataset.append(json.loads(line.strip()))
         with open(os.path.join(self.OpenBookQAPATH, f"openbookqa_{split}.txt"), "r") as file:
             for idx, line in enumerate(file):
-                id_entry, num = idx//4, idx % 4
+                id_entry, num = idx // 4, idx % 4
                 dataset[id_entry]["choices"]["text"][num] = convert_TG_format(line.strip())
         for item in dataset:
             choices = item["choices"]["text"]
@@ -2664,6 +2706,7 @@ class SciQ(ICLMultiChoiceTaskDataset):
         return "Answer:"
 
 
+# TODO:
 class ArcEasy(ICLMultiChoiceTaskDataset):
     """ArcEasy creates context with "Question: QUESTION \nAnswer:" and sends the choices as continuations
         space added as prefix to each continuation
@@ -2676,26 +2719,76 @@ class ArcEasy(ICLMultiChoiceTaskDataset):
     }
     """
 
-    metric_type = "acc"
+    metric_type = "len_norm"
+    ArcPATH = "./dataset/ai2_arc/ARC-Easy"
+    shots_list = ["MCAS_2007_8_5189", "Mercury_SC_401169", "MCAS_2004_8_27",
+                  "NYSEDREGENTS_2006_8_10", "Mercury_7013388", "Mercury_7179953",
+                  "Mercury_7205118", "MCAS_2016_8_13"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="ai2_arc",
         dataset_name="ARC-Easy",
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
-    def doc_to_text(self, doc):
-        return "Question: " + doc["question"] + " \nAnswer:"
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.ArcPATH, f"arc_easy_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.ArcPATH, f"arc_easy_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx // 6, idx % 6
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                elif num-1 < len(dataset[id_entry]["choices"]["label"]):
+                    dataset[id_entry]["choices"]["text"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
-    def doc_to_continuations(self, doc):
-        # add spaces in front of continuation
-        return [" " + choice for choice in doc["choices"]["text"]]
+    def get_shots(self, train):
+        shots = {}
+        self.shots = []
+        for data in train:
+            if data["id"] in self.shots_list:
+                shots[data["id"]] = data
+        for shot_id in self.shots_list:
+            self.shots.append(shots[shot_id])
+        return self.shots
+
+    def doc_to_text(self, doc, single_shot=False):
+        return (self.shots_prompt if single_shot==False else "") + "<(NP> Question<NP)> :" + doc["question"] + " \n<(S><(NP> The answer<NP)><(VP> is"
+
+    def doc_to_continuations(self, doc, single_shot=False):
+        return doc["choices"]["text"]
 
     def doc_to_label(self, doc):
         # some doc["answerKey"] are stored as numbers
@@ -2707,42 +2800,70 @@ class ArcEasy(ICLMultiChoiceTaskDataset):
         return ["A", "B", "C", "D", "E"].index(doc["answerKey"])
 
     def doc_to_domain_conditional(self, doc):
-        del doc
-        return "Answer:"
+        return "<(S><(NP> The answer<NP)><(VP> is"
 
 
+# TODO:
 class ArcChallenge(ArcEasy):
     """ArcChallenge follows the same prompt format as ArcEasy.
     implement PMI_DC
     """
 
-    metric_type = "len_norm"  # Ideally "pmi_dc"
+    metric_type = "len_norm"
+    ArcPATH = "./dataset/ai2_arc/ARC-Challenge"
+    shots_list = ["Mercury_SC_415702", "MCAS_2009_5_6516", "Mercury_7233695", 
+                  "Mercury_7041615", "MCAS_1998_4_3", "Mercury_7041860", 
+                  "ACTAAP_2013_5_11", "MDSA_2008_5_30", "MEA_2016_8_14",
+                  "Mercury_SC_401653", "Mercury_7106908"]
 
     def __init__(
         self,
         tokenizer,
         dataset_path="ai2_arc",
         dataset_name="ARC-Challenge",
+        model_ctx_len=2048,
+        split="validation",
+        shots_num=3,
+        transformer_grammar_type:str = "",
+        generate_TG_attention_bias=None,
+        vocab_path=None,
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
             dataset_name=dataset_name,
+            model_ctx_len=model_ctx_len,
+            split=split,
+            shots_num=shots_num,
+            transformer_grammar_type=transformer_grammar_type,
+            generate_TG_attention_bias=generate_TG_attention_bias,
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
 
-
-class ArcEasyCELoss(ArcEasy):
-    """ArcEasyCELoss is ARCEasy using an alternate ce_loss metric"""
-
-    metric_type = "ce_loss"
-
-    def doc_to_continuations(self, doc):
-        # We only consider the correct answer for this metric
-        answer = doc["choices"]["text"][self.doc_to_label(doc)]
-        return [" " + answer]
-
-    def doc_to_label(self, doc):
-        return 0
+    def load_local_datasets(self, split=None, ret=False):
+        split = self.split if split is None else split
+        dataset = []
+        with open(os.path.join(self.ArcPATH, f"arc_challenge_{split}.jsonl"), "r") as file:
+            for line in file:
+                dataset.append(json.loads(line.strip()))
+        with open(os.path.join(self.ArcPATH, f"arc_challenge_{split}.txt"), "r") as file:
+            for idx, line in enumerate(file):
+                id_entry, num = idx // 6, idx % 6
+                if num==0:
+                    dataset[id_entry]["question"] = convert_TG_format(line.strip())
+                elif num-1 < len(dataset[id_entry]["choices"]["label"]):
+                    dataset[id_entry]["choices"]["text"][num-1] = convert_TG_format(line.strip())
+        
+        # if split!="train":
+        #     dataset = dataset[:1000]
+        if ret:
+            return dataset
+        else:
+            self.dataset = dataset
 
 
 class BasicArithmetic(ArcEasy):
@@ -2825,7 +2946,7 @@ class CommonsenseQA(ICLMultiChoiceTaskDataset):
                 dataset.append(json.loads(line.strip()))
         with open(os.path.join(self.CSQAPATH, f"commonsense_qa_{split}.txt"), "r") as file:
             for idx, line in enumerate(file):
-                id_entry, num = idx//6, idx % 6
+                id_entry, num = idx // 6, idx % 6
                 if num==0:
                     dataset[id_entry]["question"] = convert_TG_format(line.strip())
                 else:
@@ -2912,7 +3033,7 @@ class SocialIQa(ICLMultiChoiceTaskDataset):
         with open(os.path.join(self.SIQAPATH, f"social_i_qa_{split}.txt"), "r") as file:
             item_list = ["context", "question", "answerA", "answerB", "answerC"]
             for idx, line in enumerate(file):
-                id_entry, num = idx//5, idx % 5
+                id_entry, num = idx // 5, idx % 5
                 dataset[id_entry][item_list[num]] = convert_TG_format(line.strip())
         
         # if split!="train":
@@ -3240,7 +3361,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
         def load_local_mmlu(file_path, dataset):
             with open(file_path, "r") as file:
                 for idx, line in enumerate(file):
-                    id_entry, num = idx//5, idx % 5
+                    id_entry, num = idx // 5, idx % 5
                     if num==0:
                         dataset[id_entry]["question"] = convert_TG_format(line.strip())
                     else:
@@ -3558,7 +3679,6 @@ label_to_task_map = {
     "openbook_qa": OpenBookQA,
     "sciq": SciQ,
     "arc_easy": ArcEasy,
-    "arc_easy_ppl": ArcEasyCELoss,
     "arc_challenge": ArcChallenge,
     "basic_arithmetic": BasicArithmetic,
     "commitment_bank": CommitmentBank,

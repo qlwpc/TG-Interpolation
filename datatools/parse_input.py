@@ -578,6 +578,26 @@ def prepare_dataset(config:str):
                 #    option = "to " + option
                 #prepared_ds.append("The answer is " + option)
                 prepared_ds.append(option)
+    elif config[:4] == "piqa":
+        ds = load_dataset("ybisk/piqa", "plain_text")
+        os.makedirs("../dataset/piqa/", exist_ok=True)
+        filename = os.path.join("../dataset/piqa/", config + ".txt")
+        split = config[5:]
+        for doc in ds[split]:
+            prepared_ds.append(doc["goal"])
+            prepared_ds.append(doc["sol1"])
+            prepared_ds.append(doc["sol2"])
+    elif config[:4] == "arc_":
+        split = config.split("_")
+        name = "ARC-"+ split[1].capitalize()
+        ds = load_dataset("ai2_arc", name)
+        filename = os.path.join("../dataset/ai2_arc/", name, config + ".txt")
+        for doc in ds[split[2]]:
+            prepared_ds.append(doc["question"])
+            for option in doc["choices"]["text"]:
+                prepared_ds.append(option)
+            if len(doc["choices"]["text"]) < 5:
+                prepared_ds.extend(["dummy"] * (5 - len(doc["choices"]["text"])))
     else: # file_split_key
         split = config.split("_")
         key = split[2]
