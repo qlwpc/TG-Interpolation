@@ -3247,7 +3247,7 @@ class MMLU(ICLMultiChoiceTaskDataset):
                         dataset[id_entry]["choices"][num - 1] = convert_TG_format(line.strip())
             return
         if dataset_path=="cais/mmlu":
-            dataset = datasets.load_dataset(dataset_path, self.dataset_name, split=split)
+            dataset = datasets.load_from_disk(os.path.join(self._MMLUPATH, split)) #(dataset_path, self.dataset_name, split=split)
             dataset = list(dataset)
             load_local_mmlu(os.path.join(self._MMLUPATH, f"mmlu{split}.txt"), dataset)
         else:
