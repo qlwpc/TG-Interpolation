@@ -40,6 +40,7 @@ def build_downstream_evaluator(
         task_class, task_kwargs = task_class
         if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label=="BLiMP":
             task_kwargs["device_eval_batch_size"] = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
+    task_kwargs["model_ctx_len"] = train_config.model.max_sequence_length
     task_kwargs["vocab_path"] = train_config.tokenizer.vocabulary
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
     task_kwargs["transformer_grammar_type"] = train_config.model.transformer_grammar_type
