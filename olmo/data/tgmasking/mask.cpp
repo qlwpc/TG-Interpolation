@@ -1183,7 +1183,7 @@ PYBIND11_MODULE(tg_mask, m) {
     py::class_<SentencepieceVocab>(m, "SentencepieceVocab")
         .def(py::init<
             int64_t, int64_t, int64_t, int64_t, 
-            int64_t, int64_t, int64_t, int64_t,
+            int64_t, int64_t, int64_t, int64_t, int64_t,
             std::pair<int64_t, int64_t>,
             std::pair<int64_t, int64_t>,
             std::vector<std::string>>())

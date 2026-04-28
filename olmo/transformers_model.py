@@ -18,11 +18,11 @@ __all__ = [
 ]
 
 class HuggingModel(nn.Module):
-    def __init__(self, config: ModelConfig, init_params: bool = True):
+    def __init__(self, config: ModelConfig, init_params: bool = True, train_config:TrainConfig=None):
         super().__init__()
         self.transformer = AutoModelForCausalLM.from_pretrained(config.modelname, 
                                                                 attn_implementation= "flash_attention_2" if config.flash_attention else "eager",
-                                                                torch_dtype="auto")
+                                                                torch_dtype=train_config.autocast_precision)
         self.tokenizer = AutoTokenizer.from_pretrained(config.modelname)
         self.config = config
         self.transformer.to(config.init_device)

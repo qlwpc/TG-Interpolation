@@ -141,7 +141,7 @@ def main(cfg: TrainConfig) -> None:
             for block in olmo_model.transformer.blocks:
                 block.compile(**cfg.compile.asdict())
     else:
-        olmo_model = HuggingModel(cfg.model)
+        olmo_model = HuggingModel(cfg.model, train_config=cfg)
         olmo_model.add_tokens_and_initialize(new_tokenizer=Tokenizer.from_file(cfg.tokenizer.identifier))
 
     log.info(f"Total number of parameters: {olmo_model.num_params():,d}")
