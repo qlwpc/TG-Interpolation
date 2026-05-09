@@ -484,7 +484,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 while len(attention_bias.shape) < 3:
                     attention_bias = attention_bias.unsqueeze(0)
                 all_attention_bias.append(attention_bias)
-            if self.transformer_grammar_type[-4:] == "mask":
+            if self.transformer_grammar_type == "tree_shuffle_mask":
                 cur_label_mask = self.vocab.get_non_terminal_mask(input_ids)
                 if label_mask is not None:
                     label_mask = torch.bitwise_and(label_mask, torch.tensor(cur_label_mask))
@@ -603,12 +603,17 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.collator.vocab = self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
-        self.prompts = " \n <(S> <(VP> Summarize <(NP> the above article <NP)> <(PP> in <(NP> 1 sentence <NP)> <PP)> <VP)> . <S)>  \n"
+        self.prompts = " \n<(S><(VP> Summarize<(NP> the above article<NP)><(PP> in<(NP> 1 sentence<NP)><PP)><VP)> .<S)> \n"
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
 
         if transformer_grammar_type[:5] == "pause":
-            self.model_ctx_len //= 2
+            numstr = transformer_grammar_type[5:]
+            if numstr == "1/2" or numstr == "1/2_label":
+                pause_num = 1
+            else:
+                pause_num = int(numstr) if numstr else 1
+            self.model_ctx_len //= (1 + pause_num)
             self.prompts_TG_tokens = self.vocab.convert_treenpy_to_terminal(self.prompts_TG_tokens)
         passages = []
         gold_summary = []
@@ -684,11 +689,11 @@ class XsumDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_treenpy_to_terminal(loss_tokens)
-        elif self.transformer_grammar_type[:4] == "tree":
+        elif self.transformer_grammar_type == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
-        elif self.transformer_grammar_type[:8] == "pause1/2":
+        elif self.transformer_grammar_type[:5] == "pause":
             paused_input = np.zeros(2 * len(input_ids))
             paused_input[::2] = input_ids
             paused_input[1::2] = input_ids # 50260  # Special token
@@ -1212,7 +1217,7 @@ class SGDataset(metaclass=abc.ABCMeta):
                         sent["tag_start"] = start + 1  # add bos token position
                         sent["tag_end"] = end + 1      # add bos token position
                         assert(sum(sent['tag'][0]) == end-start)
-                        if self.transformer_grammar_type[:8] == "pause1/2":
+                        if self.transformer_grammar_type[:5] == "pause":
                             sent["tag"][0] = [0] + sent["tag"][0]
                             pause_tag = sent["tag"][0] + sent["tag"][0]
                             pause_tag[0::2] = sent["tag"][0]
@@ -1307,7 +1312,7 @@ class BLiMPMetric(Metric):
         self.dataset_length = dataset_length
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
 
-        if dataset_name[:8] in ["terminal", "pause1/2"]:
+        if dataset_name[:8] == "terminal" or dataset_name[:5] == "pause":
             self.SENT_SIZE = 1
             self.add_state("loglikelihoods", default=torch.zeros((dataset_length), dtype=torch.float32), dist_reduce_fx="sum")
         else:
@@ -1425,7 +1430,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.batch_size = device_eval_batch_size
         self.transformer_grammar_type = transformer_grammar_type
 
-        if transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
+        if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.SENT_SIZE = 1
         else:
             self.SENT_SIZE = samples_per_sent
@@ -1433,7 +1438,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.length = len(self.task_list) * self.TASK_SIZE 
 
         self.samples: List[Dict[str, Any]] = []
-        if transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
+        if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.dataset_name = "terminal"
         elif transformer_grammar_type[:4] == "tree":
             self.dataset_name = "tree_300"
@@ -1470,7 +1475,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         # pad according to max_lengths
         for sample in data:
             cur_input_id = sample["input_ids"]
-            if self.transformer_grammar_type[:8] == "pause1/2":
+            if self.transformer_grammar_type[:5] == "pause":
                 paused_input = torch.zeros(2 * len(cur_input_id), dtype=cur_input_id.dtype, device=cur_input_id.device)
                 paused_input[::2] = cur_input_id
                 paused_input[1::2] = torch.where(cur_input_id != self.vocab.pad, 50260, self.vocab.pad)  # Special token

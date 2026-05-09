@@ -391,7 +391,7 @@ public:
     std::vector<int64_t> buffer; 
 
     TG_Cache () = default;
-    TG_Cache(int64_t max_length, torch::Dtype dtype = torch::Dtype::Int) 
+    TG_Cache(int64_t max_length, torch::Dtype dtype = torch::Dtype::Int)
         : start(0), end(0), max_length(max_length),
           buffer(max_length, 0) {}
 
@@ -400,16 +400,40 @@ public:
     }
 
     void add_end(int64_t T) {
+        if (max_length <= 0) return;
         end = (end + T) % max_length;
     }
 
     int64_t& operator [] (int64_t i) {
+        if (max_length <= 0) {
+            throw std::out_of_range(
+                "TG_Cache::operator[]: max_length is zero. "
+                "The cache must be initialized with a positive max_length."
+            );
+        }
         return buffer[(start + i) % max_length];
     }
 
     void append(const torch::Tensor& input_ids, bool update_state) {
         auto T = input_ids.size(0);
-        auto input_data = input_ids.data_ptr<int64_t>();  // input_ids is Long Tensor
+        auto input_data = input_ids.data_ptr<int64_t>();
+
+        if (max_length <= 0) {
+            throw std::out_of_range(
+                "TG_Cache::append: max_length is zero."
+            );
+        }
+
+        // Guard against input longer than the cache capacity.
+        // The caller should truncate input to max_length; this is a safety net.
+        if (T > max_length) {
+            throw std::out_of_range(
+                "TG_Cache::append: input length (" + std::to_string(T) +
+                ") exceeds cache capacity (" + std::to_string(max_length) +
+                "). Truncate the input before calling."
+            );
+        }
+
         if (end + T > max_length) {
             int64_t fir_len = max_length - end;
             std::memcpy(buffer.data() + end, input_data, fir_len * sizeof(int64_t));
@@ -426,9 +450,11 @@ public:
     }
 
     void pop_front(int64_t pop_length) {
+        if (max_length <= 0) return;
         start = (start + pop_length) % max_length;
     }
     void pop_end(int64_t pop_length) {
+        if (max_length <= 0) return;
         end = (end - pop_length + max_length) % max_length;
     }
 };
@@ -497,13 +523,25 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor> operator()(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+        int64_t T_skip = 0;  // tokens to skip at the beginning if T > max_length_
+
+        // Guard: if a single input is longer than max_length_, truncate from the left.
+        // This can happen in evaluation when a sentence exceeds the model context.
+        torch::Tensor truncated_ids = input_ids;
+        if (T > max_length_) {
+            T_skip = T - max_length_;
+            truncated_ids = input_ids.slice(0, T_skip, T);
+            T = max_length_;
+        }
+
         int64_t update_T = T;
         int64_t top = top_;
         int64_t last_token = last_token_;
-        cached_input_.append(input_ids, update_state);
+        cached_input_.append(truncated_ids, update_state);
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
+
         // Find stack beginning
         int64_t stk_beg = 0;
         bool found = false;
@@ -519,10 +557,10 @@ public:
             std::memcpy(stk_copy_.data(), stk_.data(), (top+1) * sizeof(int64_t));
         }
         auto stk = update_state ? stk_.data() : stk_copy_.data();
-        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_mask = torch::ones_like(truncated_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
 
-        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto input_acc = truncated_ids.accessor<int64_t, 1>();
         auto mask_acc = mask.accessor<bool, 2>();
         auto label_acc = label_mask.accessor<bool, 1>();
         for (int64_t i = 0; i < T; ++i) {
@@ -533,16 +571,28 @@ public:
                 --update_T;
                 continue;
             }
-            if (should_compose(token, last_token, input_ids, i)) {
+            if (should_compose(token, last_token, truncated_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
                     j = stk[top];
                     top--;
                     mask_acc[i][j - remove_len] = true;
                 }
+                // Guard against stack overflow
+                if (top + 1 >= static_cast<int64_t>(stk_.size())) {
+                    throw std::out_of_range(
+                        "TG_attention_bias: stack overflow at position " + std::to_string(i) +
+                        ". Input may have too many nested non-terminals for the configured max_length."
+                    );
+                }
                 stk[++top] = cur_length_ + i;
             } else {
                 if (!vocab_.is_closing_non_terminal(token) && token != vocab_.pad) {
+                    if (top + 1 >= static_cast<int64_t>(stk_.size())) {
+                        throw std::out_of_range(
+                            "TG_attention_bias: stack overflow at position " + std::to_string(i)
+                        );
+                    }
                     stk[++top] = cur_length_ + i;
                 } else {
                     label_acc[i] = false;
@@ -596,11 +646,18 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor> operator()(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+
+        // Guard: truncate if a single segment exceeds max_length_
+        torch::Tensor truncated_ids = input_ids;
+        if (T > max_length_) {
+            truncated_ids = input_ids.slice(0, T - max_length_, T);
+            T = max_length_;
+        }
+
         int64_t update_T = T;
         int64_t top = top_;
         int64_t last_token = last_token_;
-        cached_input_.append(input_ids, update_state);
-        auto input_ptr = input_ids.data_ptr<int64_t>();
+        cached_input_.append(truncated_ids, update_state);
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
@@ -622,10 +679,10 @@ public:
         }
         auto stk = update_state ? stk_.data() : stk_copy_.data();
 
-        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_mask = torch::ones_like(truncated_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
 
-        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto input_acc = truncated_ids.accessor<int64_t, 1>();
         auto mask_acc = mask.accessor<bool, 2>();
         auto label_acc = label_mask.accessor<bool, 1>();
 
@@ -637,16 +694,28 @@ public:
                 continue;
             }
 
-            if (should_compose(token, last_token, input_ids, i)) {
+            if (should_compose(token, last_token, truncated_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
                     j = stk[top];
                     top--;
                     mask_acc[i][j - remove_len] = true;
                 }
+                if (top + 1 >= static_cast<int64_t>(stk_.size())) {
+                    throw std::out_of_range(
+                        "KProximal_TG_attention_bias: stack overflow at position " +
+                        std::to_string(i)
+                    );
+                }
                 stk[++top] = cur_length_ + i;
             } else {
                 if (!vocab_.is_closing_non_terminal(token) && token != vocab_.pad) {
+                    if (top + 1 >= static_cast<int64_t>(stk_.size())) {
+                        throw std::out_of_range(
+                            "KProximal_TG_attention_bias: stack overflow at position " +
+                            std::to_string(i)
+                        );
+                    }
                     stk[++top] = cur_length_ + i;
                 } else {
                     label_acc[i] = false;
@@ -663,7 +732,7 @@ public:
                     mask_acc[i][stk[k] - remove_len] = true;
                 }
             }
-            
+
             cached_label_[cur_length_ + i] = label_acc[i];
 
 
@@ -696,10 +765,18 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> get_alibi_rel_pos(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+
+        // Guard: truncate if a single segment exceeds max_length_
+        torch::Tensor truncated_ids = input_ids;
+        if (T > max_length_) {
+            truncated_ids = input_ids.slice(0, T - max_length_, T);
+            T = max_length_;
+        }
+
         int64_t top = top_;
         int64_t last_token = last_token_;
-        cached_input_.append(input_ids, update_state);
-        auto input_ptr = input_ids.data_ptr<int64_t>();
+        cached_input_.append(truncated_ids, update_state);
+        auto input_ptr = truncated_ids.data_ptr<int64_t>();
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
@@ -717,11 +794,11 @@ public:
         }
         if (!found) stk_beg = top + 1;
 
-        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_mask = torch::ones_like(truncated_ids, torch::kBool);
         auto mask = torch::full({T, pastT + T}, std::numeric_limits<float>::lowest(), torch::kFloat32);
         auto rel_pos = torch::zeros({T, pastT + T}, torch::kFloat32);
 
-        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto input_acc = truncated_ids.accessor<int64_t, 1>();
         auto label_acc = label_mask.accessor<bool, 1>();
         auto mask_acc = mask.accessor<float, 2>();
         auto rel_pos_acc = rel_pos.accessor<float, 2>();
@@ -730,7 +807,7 @@ public:
             mask_acc[i][pastT + i] = 0.0;
             int64_t token = input_acc[i];
 
-            if (should_compose(token, last_token, input_ids, i)) {
+            if (should_compose(token, last_token, truncated_ids, i)) {
                 int64_t j = cur_length_ + i;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
                     j = stk_[top];
@@ -744,13 +821,13 @@ public:
                 } else {
                     label_acc[i] = false;
                 }
-                
+
                 for (int64_t k = doc_begin; k < pastT + i; ++k) {
                     if (cached_label_[k - pastT + cur_length_])
                         mask_acc[i][k] = 0.0, rel_pos_acc[i][k] = k - (pastT + i);
                 }
             }
-            
+
             cached_label_[cur_length_ + i] = label_acc[i];
 
 
@@ -804,10 +881,17 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor> operator()(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+
+        // Guard: truncate if a single segment exceeds max_length_
+        torch::Tensor truncated_ids = input_ids;
+        if (T > max_length_) {
+            truncated_ids = input_ids.slice(0, T - max_length_, T);
+            T = max_length_;
+        }
+
         int64_t top = top_;
         int64_t last_token = last_token_;
-        cached_input_.append(input_ids, update_state);
-        auto input_ptr = input_ids.data_ptr<int64_t>();
+        cached_input_.append(truncated_ids, update_state);
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
@@ -825,20 +909,20 @@ public:
         }
         if (!found) stk_beg = top + 1;
 
-        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_mask = torch::ones_like(truncated_ids, torch::kBool);
         auto mask = torch::zeros({T, pastT + T}, torch::kBool);
 
-        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto input_acc = truncated_ids.accessor<int64_t, 1>();
         auto mask_acc = mask.accessor<bool, 2>();
         auto label_acc = label_mask.accessor<bool, 1>();
 
         for (int64_t i = 0; i < T; ++i) {
             mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
-            if (token == vocab_.pad) 
+            if (token == vocab_.pad)
                 continue;
 
-            if (should_compose(token, last_token, input_ids, i)) {
+            if (should_compose(token, last_token, truncated_ids, i)) {
                 int64_t j = cur_length_ + i;
                 int64_t max_height=0;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
@@ -857,22 +941,17 @@ public:
                     label_acc[i] = false;
                     cached_height_[cur_length_ + i] = 0;
                 }
-                
+
                 for (int64_t k = doc_begin; k < pastT + i; ++k) {
-                    mask_acc[i][k] = cached_height_[k - pastT + cur_length_] >= Height_H || 
+                    mask_acc[i][k] = cached_height_[k - pastT + cur_length_] >= Height_H ||
                                      (cached_height_[k - pastT + cur_length_]>0 && pastT + i - k <= Prox_K_);
                 }
                 for (int64_t k = stk_beg; k <= top; ++k) {
                     mask_acc[i][stk_[k] - remove_len] = true;
                 }
             }
-            
+
             last_token = token;
-            // if (token == vocab_.eos) {
-            //     top = -1;
-            //     stk_beg = 0;
-            //     doc_begin = pastT + i + 1;
-            // }
         }
 
         if (update_state) {
@@ -900,10 +979,17 @@ public:
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> get_alibi_rel_pos(const torch::Tensor& input_ids, bool update_state=false) {
         int64_t T = input_ids.size(0);
+
+        // Guard: truncate if a single segment exceeds max_length_
+        torch::Tensor truncated_ids = input_ids;
+        if (T > max_length_) {
+            truncated_ids = input_ids.slice(0, T - max_length_, T);
+            T = max_length_;
+        }
+
         int64_t top = top_;
         int64_t last_token = last_token_;
-        cached_input_.append(input_ids, update_state);
-        auto input_ptr = input_ids.data_ptr<int64_t>();
+        cached_input_.append(truncated_ids, update_state);
 
         int64_t remove_len = (cur_length_ + T > max_length_) ? (cur_length_ + T - max_length_) : 0;
         int64_t pastT = (cur_length_ + T > max_length_) ? (max_length_ - T) : cur_length_;
@@ -921,11 +1007,11 @@ public:
         }
         if (!found) stk_beg = top + 1;
 
-        auto label_mask = torch::ones_like(input_ids, torch::kBool);
+        auto label_mask = torch::ones_like(truncated_ids, torch::kBool);
         auto mask = torch::full({T, pastT + T}, std::numeric_limits<float>::lowest(), torch::kFloat32);
         auto rel_pos = torch::zeros({T, pastT + T}, torch::kFloat32);
 
-        auto input_acc = input_ids.accessor<int64_t, 1>();
+        auto input_acc = truncated_ids.accessor<int64_t, 1>();
         auto label_acc = label_mask.accessor<bool, 1>();
         auto mask_acc = mask.accessor<float, 2>();
         auto rel_pos_acc = rel_pos.accessor<float, 2>();
@@ -934,7 +1020,7 @@ public:
             mask_acc[i][pastT + i] = true;
             int64_t token = input_acc[i];
 
-            if (should_compose(token, last_token, input_ids, i)) {
+            if (should_compose(token, last_token, truncated_ids, i)) {
                 int64_t j = cur_length_ + i;
                 int64_t max_height=0;
                 while (top >= stk_beg && !vocab_.is_opening_non_terminal(cached_input_[j])) {
@@ -953,14 +1039,14 @@ public:
                     label_acc[i] = false;
                     cached_height_[cur_length_ + i] = 0;
                 }
-                
+
                 for (int64_t k = doc_begin; k < pastT + i; ++k) {
                     if (cached_height_[k - pastT + cur_length_])
-                        mask_acc[i][k] = 0.0, 
+                        mask_acc[i][k] = 0.0,
                         rel_pos_acc[i][k] = cached_height_[k - pastT + cur_length_];
                 }
             }
-            
+
             last_token = token;
             if (token == vocab_.eos) {
                 top = -1;
