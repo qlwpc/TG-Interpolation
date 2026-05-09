@@ -18,7 +18,6 @@ model:
   alibi: false
   rope: true
   flash_attention: true
-  flex_attention: true
   attention_dropout: 0.0
   attention_layer_norm: false
   clip_qkv: null
@@ -41,7 +40,6 @@ model:
   init_fn: normal
   init_std: 0.02
   init_cutoff_factor: 3
-  transformer_grammar_type : tg
 
 ddp:
   grad_sync_mode: batch
@@ -51,7 +49,7 @@ compile: null
 
 optimizer:
   name: adamw
-  learning_rate: 0.003864
+  learning_rate: 1.0e-4
   weight_decay: 0.1
   eps: 1e-8
   betas:
@@ -61,7 +59,7 @@ optimizer:
 
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 2000
+  t_warmup: 100
   min_lr: 1e-5
   warmup_min_lr: 0
 
@@ -75,14 +73,14 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 10000
-save_num_unsharded_checkpoints_to_keep: 1
+save_interval_unsharded: 3000
+save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
 
-max_duration: 21637
-stop_at: 2000000000
-global_train_batch_size: 80
+max_duration: 5ep
+stop_at: 10000
+global_train_batch_size: 40
 device_train_microbatch_size: 10
 
 precision: amp_bf16
@@ -94,36 +92,24 @@ max_grad_norm: 1.0
 max_grad_norm_ratio: null
 
 speed_monitor:
-  window_size: 20
+  window_size: 20 
 
-eval_interval: 500
+eval_interval: 50000
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
+reset_optimizer_state: true
+reset_trainer_state: true
+finetune_task: rte
 evaluators:
-  - label: TG-ppl-validation
-    data:
-      num_workers: 1
-      prefetch_factor : 1
-      pin_memory: true
-      drop_last: false
-      paths:
-        - /dev/shm/dataset/bbc-news/tg/dev.npy
-  - label: TG-ppl-validation-test
-    data:
-      num_workers: 1
-      pin_memory: true
-      drop_last: false
-      paths:
-        - /dev/shm/dataset/bbc-news/tg/test.npy
-
+  - label: rte
+    type: downstream
 data:
   pad_direction: right
-  # generate_doc_lengths: true
-  num_workers: 4
+  num_workers: 1
   drop_last: true
   pin_memory: true
   prefetch_factor: 8
   persistent_workers: true
   timeout: 0
-  paths:
-    - /dev/shm/dataset/bbc-news/tg/train.npy
+  paths: 
+    - /home/wangpch/TG-Interpolation/dataset/bbc-news/tg/dev.npy

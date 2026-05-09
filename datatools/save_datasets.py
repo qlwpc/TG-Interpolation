@@ -61,19 +61,31 @@ _subcategories = {
         "world_religions": ["philosophy"],
     }
 
+
+
 split = "test"
 dataset_path = "edinburgh-dawg/mmlu-redux-2.0"
+local_path = "../dataset/mmluredux"
+with open(os.path.join(local_path, "all.txt"), "w") as outfile:
+    for category in _subcategories:
+        with open(os.path.join(local_path, f"{category}.txt"), "r") as infile:
+            content = infile.read()
+            outfile.write(content)
+            if not content.endswith("\n"):
+                outfile.write("\n")
+        
+        print(f"-", end="")
 
 dataset = []
 for category in _subcategories:
-    sub_dataset = datasets.load_dataset(dataset_path, category, split=split)
+    ds_dict = datasets.load_dataset(dataset_path, category, split=split)
     def add_custom_column(example):
         example["subject"] = category
         return example
     ds_dict = ds_dict.map(add_custom_column)
-    dataset.extend(sub_dataset)
+    dataset.append(ds_dict)
 
-combined_dataset = dataset.concatenate_datasets(list(ds_dict.values()))
+combined_dataset = datasets.concatenate_datasets(dataset)
 final_ds = datasets.DatasetDict({
     "all": combined_dataset
 })

@@ -51,7 +51,7 @@ compile:
 
 optimizer:
   name: adamw
-  learning_rate: 6.0e-4
+  learning_rate: 0.002917
   weight_decay: 0.1
   eps: 1e-8
   betas:
@@ -75,14 +75,14 @@ save_folder: workspace/${run_name}  # doesn't matter since we'll upload to S3
 save_overwrite: true
 
 # Unsharded checkpoints (for ddp)
-save_interval_unsharded: 10000
+save_interval_unsharded: 5000
 save_num_unsharded_checkpoints_to_keep: -1
 
 load_path: null
 
 max_duration: 1ep
-stop_at: 2000000000
-global_train_batch_size: 144
+stop_at: 14425
+global_train_batch_size: 48
 device_train_microbatch_size: 12
 
 precision: amp_bf16
@@ -100,24 +100,32 @@ eval_interval: 200
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  - label: TG-ppl-validation
+  # - label: TG-ppl-validation
+  #   data:
+  #     num_workers: 1
+  #     prefetch_factor : 1
+  #     pin_memory: true
+  #     drop_last: false
+  #     generate_doc_lengths: true
+  #     paths:
+  #       - /dev/shm/dataset/bbc-news/terminal/dev.npy
+  - label: TG-ppl-validation-test
     data:
       num_workers: 1
       pin_memory: true
       drop_last: false
       generate_doc_lengths: true
       paths:
-        - ${workspace}/dataset/bbc-news/terminal/dev.npy
-  # - label: syntactic_generalization
-  #   type: downstream
+        - /dev/shm/dataset/bbc-news/terminal/test.npy
 
 data:
   pad_direction: right
-  num_workers: 1
+  # generate_doc_lengths: true
+  num_workers: 4
   drop_last: true
   pin_memory: true
   prefetch_factor: 8
   persistent_workers: true
   timeout: 0
-  paths: 
-    - ${workspace}/dataset/bbc-news/terminal/train.npy
+  paths:
+    - /dev/shm/dataset/bbc-news/terminal/train.npy

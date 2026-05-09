@@ -27,32 +27,22 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False):
                 "Ċ" : "\n"
             }
             out = mapping[child] if child in mapping else child
-            return out
+            return " " + out
         else:
             childstrs.append(repr(child))
     # print(f"label {self._label} child {childstrs}")
     if isinstance(self._label, str):
         if self._label=="qlwpcRegen":
-            return " ".join(childstrs)
+            return "".join(childstrs)
         else:
-            return "<{}{}{}> {} <{}{}>".format(
+            return "<{}{}{}>{}<{}{}>".format(
                 parens[0],
                 self._label,
                 nodesep,
-                " ".join(childstrs),
+                "".join(childstrs),
                 self._label,
                 parens[1],
             )
-    else:
-        assert(0)
-        return "{}{}{} {} {}{}".format(
-            parens[0],
-            repr(self._label),
-            nodesep,
-            " ".join(childstrs),
-            repr(self._label),
-            parens[1],
-        )
 
 def convert_TG_format(input:str) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
