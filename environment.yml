@@ -87,8 +87,9 @@ dependencies:
       - google-resumable-media==2.7.2
       - googleapis-common-protos==1.66.0
       - grpcio==1.71.0
+      - hf-xet==1.4.3
       - huggingface==0.0.1
-      - huggingface-hub==0.26.2
+      - huggingface-hub==0.36.2
       - idna==3.11
       - importlib-resources==6.4.5
       - iniconfig==2.0.0
@@ -232,7 +233,7 @@ dependencies:
       - thinc==8.3.10
       - threadpoolctl==3.5.0
       - tinycss2==1.2.1
-      - tokenizers==0.20.3
+      - tokenizers==0.22.2
       - tomli==2.0.1
       - torch==2.7.1
       - torch-struct==0.5
@@ -244,7 +245,7 @@ dependencies:
       - tornado==6.4
       - tqdm==4.67.3
       - traitlets==5.14.0
-      - transformers==4.46.3
+      - transformers==4.57.3
       - triton==3.3.1
       - typeguard==2.13.3
       - typer-slim==0.21.0
