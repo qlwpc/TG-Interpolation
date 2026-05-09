@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = 'Qwen/Qwen3-0.6B-Base'  # <- 请替换为你要使用的模型 id
+MODEL_NAME = 'allenai/OLMo-1B-0724-hf'  # <- 请替换为你要使用的模型 id
 NEW_TOKENS = [f"<extra_token_{i}>" for i in range(20)]
 USE_FLASH_ATTENTION = False
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

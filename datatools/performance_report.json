@@ -1,0 +1,806 @@
+{
+  "generated_at": "2025-12-29T14:56:07.065454",
+  "total_time": 3223.1491698690015,
+  "functions": [
+    {
+      "function": "memory_profiler.py:1185(wrapper)",
+      "total_time": 1.2311000000000001e-05,
+      "cumulative_time": 317.167332142,
+      "percentage": 9.84029331025007,
+      "call_count": 1,
+      "average_time": 1.2311000000000001e-05
+    },
+    {
+      "function": "memory_profiler.py:759(f)",
+      "total_time": 1.5571e-05,
+      "cumulative_time": 317.115449918,
+      "percentage": 9.838683635324534,
+      "call_count": 1,
+      "average_time": 1.5571e-05
+    },
+    {
+      "function": "parse_input.py:411(main)",
+      "total_time": 0.155641939,
+      "cumulative_time": 317.11539491300005,
+      "percentage": 9.838681928763743,
+      "call_count": 1,
+      "average_time": 0.155641939
+    },
+    {
+      "function": "parse_input.py:267(parse_batch)",
+      "total_time": 0.12499520900000001,
+      "cumulative_time": 137.34845312000002,
+      "percentage": 4.261312334035792,
+      "call_count": 226,
+      "average_time": 0.0005530761460176991
+    },
+    {
+      "function": "parse_input.py:278(append_batch)",
+      "total_time": 0.08467967200000001,
+      "cumulative_time": 136.98390114400001,
+      "percentage": 4.250001905731452,
+      "call_count": 200,
+      "average_time": 0.00042339836000000004
+    },
+    {
+      "function": "nltk_plugin.py:177(parse_sents)",
+      "total_time": 0.285160155,
+      "cumulative_time": 132.058064941,
+      "percentage": 4.097175091228162,
+      "call_count": 12512,
+      "average_time": 2.279093310421995e-05
+    },
+    {
+      "function": "parse_input.py:312(prepare_dataset)",
+      "total_time": 2.211681574,
+      "cumulative_time": 117.94865835700001,
+      "percentage": 3.6594228855313515,
+      "call_count": 1,
+      "average_time": 2.211681574
+    },
+    {
+      "function": "parse_chart.py:405(parse)",
+      "total_time": 0.030654468,
+      "cumulative_time": 116.28894985900001,
+      "percentage": 3.607929504042357,
+      "call_count": 225,
+      "average_time": 0.00013624208
+    },
+    {
+      "function": "arrow_dataset.py:2357(__iter__)",
+      "total_time": 7.919742348000001,
+      "cumulative_time": 113.912627255,
+      "percentage": 3.5342027703803036,
+      "call_count": 396001,
+      "average_time": 1.9999298860356414e-05
+    },
+    {
+      "function": "formatting.py:602(format_table)",
+      "total_time": 5.016520046,
+      "cumulative_time": 105.162883124,
+      "percentage": 3.262737080464512,
+      "call_count": 396000,
+      "average_time": 1.2667979914141415e-05
+    },
+    {
+      "function": "formatting.py:401(__call__)",
+      "total_time": 0.9612756140000001,
+      "cumulative_time": 96.104323029,
+      "percentage": 2.98169020309122,
+      "call_count": 396000,
+      "average_time": 2.427463671717172e-06
+    },
+    {
+      "function": "formatting.py:440(format_row)",
+      "total_time": 1.8313009610000002,
+      "cumulative_time": 95.14304741500001,
+      "percentage": 2.9518660912261443,
+      "call_count": 396000,
+      "average_time": 4.624497376262627e-06
+    },
+    {
+      "function": "parse_chart.py:361(_parse_encoded)",
+      "total_time": 0.24585519800000002,
+      "cumulative_time": 83.884178104,
+      "percentage": 2.6025533936863776,
+      "call_count": 12512,
+      "average_time": 1.9649552269820974e-05
+    },
+    {
+      "function": "parse_chart.py:249(forward)",
+      "total_time": 30.966988944,
+      "cumulative_time": 71.85040513300001,
+      "percentage": 2.2291988780624825,
+      "call_count": 225,
+      "average_time": 0.13763106197333333
+    },
+    {
+      "function": "formatting.py:221(decode_row)",
+      "total_time": 0.9757455810000001,
+      "cumulative_time": 68.823458415,
+      "percentage": 2.135286168520621,
+      "call_count": 396000,
+      "average_time": 2.4640039924242425e-06
+    },
+    {
+      "function": "features.py:2030(decode_example)",
+      "total_time": 2.8775955800000004,
+      "cumulative_time": 67.847712834,
+      "percentage": 2.105013117861918,
+      "call_count": 396000,
+      "average_time": 7.266655505050506e-06
+    },
+    {
+      "function": "features.py:2044(<dictcomp>)",
+      "total_time": 18.982078218,
+      "cumulative_time": 61.974254302000006,
+      "percentage": 1.9227857922728049,
+      "call_count": 396000,
+      "average_time": 4.793454095454546e-05
+    },
+    {
+      "function": "{built-in method gc.collect}",
+      "total_time": 44.319383193,
+      "cumulative_time": 44.319383193,
+      "percentage": 1.3750335729823289,
+      "call_count": 200,
+      "average_time": 0.221596915965
+    },
+    {
+      "function": "py_utils.py:322(zip_dict)",
+      "total_time": 17.200941275,
+      "cumulative_time": 42.992176084,
+      "percentage": 1.3338562324668124,
+      "call_count": 4356000,
+      "average_time": 3.948792762855831e-06
+    },
+    {
+      "function": "module.py:1747(_wrapped_call_impl)",
+      "total_time": 1.072451542,
+      "cumulative_time": 40.631681734000004,
+      "percentage": 1.2606205792098477,
+      "call_count": 239850,
+      "average_time": 4.4713426808421935e-06
+    },
+    {
+      "function": "module.py:1755(_call_impl)",
+      "total_time": 5.183649964000001,
+      "cumulative_time": 40.622094103,
+      "percentage": 1.2603231176126735,
+      "call_count": 239850,
+      "average_time": 2.1612049047321244e-05
+    },
+    {
+      "function": "modeling_t5.py:1578(forward)",
+      "total_time": 0.016438971,
+      "cumulative_time": 39.261179669,
+      "percentage": 1.2180999885461614,
+      "call_count": 225,
+      "average_time": 7.306209333333333e-05
+    },
+    {
+      "function": "modeling_t5.py:951(forward)",
+      "total_time": 0.940390049,
+      "cumulative_time": 39.183590302,
+      "percentage": 1.2156927351765272,
+      "call_count": 450,
+      "average_time": 0.0020897556644444443
+    },
+    {
+      "function": "modeling_t5.py:659(forward)",
+      "total_time": 0.9937001780000001,
+      "cumulative_time": 36.890425900000004,
+      "percentage": 1.14454603109478,
+      "call_count": 10800,
+      "average_time": 9.200927574074075e-05
+    },
+    {
+      "function": "formatting.py:144(extract_row)",
+      "total_time": 20.722395412,
+      "cumulative_time": 24.488288039,
+      "percentage": 0.759762789383877,
+      "call_count": 396000,
+      "average_time": 5.232928134343435e-05
+    },
+    {
+      "function": "module.py:2836(train)",
+      "total_time": 3.920766383,
+      "cumulative_time": 19.879053928,
+      "percentage": 0.6167587313002937,
+      "call_count": 503100,
+      "average_time": 7.79321483402902e-06
+    },
+    {
+      "function": "modeling_t5.py:464(forward)",
+      "total_time": 2.34349652,
+      "cumulative_time": 17.910930813,
+      "percentage": 0.5556966143682377,
+      "call_count": 16200,
+      "average_time": 0.00014466027901234569
+    },
+    {
+      "function": "parse_input.py:184(split_text_into_sents)",
+      "total_time": 0.004031247,
+      "cumulative_time": 16.956275118,
+      "percentage": 0.5260778891809451,
+      "call_count": 200,
+      "average_time": 2.0156235e-05
+    },
+    {
+      "function": "language.py:1020(__call__)",
+      "total_time": 0.021414953,
+      "cumulative_time": 16.563224668,
+      "percentage": 0.5138832798319781,
+      "call_count": 200,
+      "average_time": 0.000107074765
+    },
+    {
+      "function": "modeling_t5.py:581(forward)",
+      "total_time": 0.583857064,
+      "cumulative_time": 15.222497327000001,
+      "percentage": 0.4722864665807164,
+      "call_count": 10800,
+      "average_time": 5.4060839259259264e-05
+    },
+    {
+      "function": "py_utils.py:296(unique_values)",
+      "total_time": 13.787050656000002,
+      "cumulative_time": 14.150470636000001,
+      "percentage": 0.439026240804583,
+      "call_count": 4356000,
+      "average_time": 3.1650713168044083e-06
+    },
+    {
+      "function": "parse_chart.py:414(<listcomp>)",
+      "total_time": 0.029768972,
+      "cumulative_time": 12.494272614000002,
+      "percentage": 0.38764177379068704,
+      "call_count": 225,
+      "average_time": 0.00013230654222222223
+    },
+    {
+      "function": "parse_chart.py:189(encode)",
+      "total_time": 0.084687811,
+      "cumulative_time": 12.464503642,
+      "percentage": 0.38671817483726934,
+      "call_count": 12287,
+      "average_time": 6.892472613331163e-06
+    },
+    {
+      "function": "retokenization.py:149(__call__)",
+      "total_time": 0.420951248,
+      "cumulative_time": 12.369650859,
+      "percentage": 0.3837753143613499,
+      "call_count": 12287,
+      "average_time": 3.425988833726703e-05
+    },
+    {
+      "function": "trainable_pipe.pyx:40(__call__)",
+      "total_time": 6.594983647,
+      "cumulative_time": 11.822640087,
+      "percentage": 0.3668040001847171,
+      "call_count": 400,
+      "average_time": 0.016487459117500002
+    },
+    {
+      "function": "py_utils.py:326(<genexpr>)",
+      "total_time": 11.640764173,
+      "cumulative_time": 11.640764173,
+      "percentage": 0.3611611985514501,
+      "call_count": 11880000,
+      "average_time": 9.798623041245793e-07
+    },
+    {
+      "function": "parse_input.py:23(my_retokenize)",
+      "total_time": 2.7631775210000002,
+      "cumulative_time": 11.618294590000001,
+      "percentage": 0.3604640672113914,
+      "call_count": 12287,
+      "average_time": 0.0002248862636119476
+    },
+    {
+      "function": "module.py:1944(__setattr__)",
+      "total_time": 7.637622073,
+      "cumulative_time": 11.301720213000001,
+      "percentage": 0.3506421706650126,
+      "call_count": 505575,
+      "average_time": 1.5106803289324038e-05
+    },
+    {
+      "function": "modeling_t5.py:615(forward)",
+      "total_time": 0.400017852,
+      "cumulative_time": 10.405752982000001,
+      "percentage": 0.32284428779394414,
+      "call_count": 5400,
+      "average_time": 7.407738e-05
+    },
+    {
+      "function": "module.py:2858(eval)",
+      "total_time": 0.000790745,
+      "cumulative_time": 9.884647987000001,
+      "percentage": 0.306676714792004,
+      "call_count": 225,
+      "average_time": 3.514422222222222e-06
+    },
+    {
+      "function": "modeling_t5.py:337(forward)",
+      "total_time": 0.497751286,
+      "cumulative_time": 8.913892422,
+      "percentage": 0.2765584821617886,
+      "call_count": 10800,
+      "average_time": 4.608808203703704e-05
+    },
+    {
+      "function": "nltk_plugin.py:239(_with_missing_fields_filled)",
+      "total_time": 0.23215407500000002,
+      "cumulative_time": 8.550154466,
+      "percentage": 0.26527330928178866,
+      "call_count": 12287,
+      "average_time": 1.8894284609750144e-05
+    },
+    {
+      "function": "linear.py:124(forward)",
+      "total_time": 0.403500823,
+      "cumulative_time": 8.139264221000001,
+      "percentage": 0.2525252103467121,
+      "call_count": 89325,
+      "average_time": 4.517221640078365e-06
+    },
+    {
+      "function": "modeling_t5.py:243(forward)",
+      "total_time": 3.7993311700000003,
+      "cumulative_time": 7.606833177,
+      "percentage": 0.23600624035992618,
+      "call_count": 27450,
+      "average_time": 0.0001384091500910747
+    },
+    {
+      "function": "decode_chart.py:149(charts_from_pytorch_scores_batched)",
+      "total_time": 0.09503621400000001,
+      "cumulative_time": 7.568504856000001,
+      "percentage": 0.23481708283168315,
+      "call_count": 225,
+      "average_time": 0.0004223831733333334
+    },
+    {
+      "function": "tokenization_utils_base.py:2944(__call__)",
+      "total_time": 0.856693594,
+      "cumulative_time": 7.458240909000001,
+      "percentage": 0.2313960824004657,
+      "call_count": 12377,
+      "average_time": 6.921657865395492e-05
+    },
+    {
+      "function": "{built-in method torch._C._nn.linear}",
+      "total_time": 7.109947335,
+      "cumulative_time": 7.109947335,
+      "percentage": 0.22059008008273379,
+      "call_count": 89325,
+      "average_time": 7.959638774139379e-05
+    },
+    {
+      "function": "utils.py:159(__get__)",
+      "total_time": 0.00471684,
+      "cumulative_time": 7.068011585000001,
+      "percentage": 0.21928900005851315,
+      "call_count": 225,
+      "average_time": 2.0963733333333334e-05
+    },
+    {
+      "function": "distributions.py:122(argmax)",
+      "total_time": 0.090889206,
+      "cumulative_time": 7.059658947000001,
+      "percentage": 0.21902985480771053,
+      "call_count": 225,
+      "average_time": 0.00040395202666666666
+    },
+    {
+      "function": "ptb_unescape.py:58(guess_space_after)",
+      "total_time": 1.9502945820000002,
+      "cumulative_time": 7.0380619620000004,
+      "percentage": 0.21835979630710198,
+      "call_count": 12287,
+      "average_time": 0.00015872829673638805
+    },
+    {
+      "function": "helpers.py:83(marginals)",
+      "total_time": 0.014130047000000001,
+      "cumulative_time": 6.967516634000001,
+      "percentage": 0.21617108817471148,
+      "call_count": 225,
+      "average_time": 6.28002088888889e-05
+    },
+    {
+      "function": "parse_base.py:129(to_tree)",
+      "total_time": 0.259139553,
+      "cumulative_time": 6.808282542000001,
+      "percentage": 0.2112307616925068,
+      "call_count": 12287,
+      "average_time": 2.109054716366892e-05
+    },
+    {
+      "function": "tokenization_utils_base.py:3036(_call_one)",
+      "total_time": 0.81509317,
+      "cumulative_time": 6.575636435000001,
+      "percentage": 0.20401278651547036,
+      "call_count": 12377,
+      "average_time": 6.585547143895936e-05
+    },
+    {
+      "function": "tokenization_utils_base.py:3154(encode_plus)",
+      "total_time": 0.7678408600000001,
+      "cumulative_time": 5.737573252000001,
+      "percentage": 0.17801140901688992,
+      "call_count": 12377,
+      "average_time": 6.20377199644502e-05
+    },
+    {
+      "function": "parse_base.py:151(helper)",
+      "total_time": 5.030325389000001,
+      "cumulative_time": 5.453103825,
+      "percentage": 0.1691855864437584,
+      "call_count": 255406,
+      "average_time": 1.9695408052277552e-05
+    },
+    {
+      "function": "model.py:330(predict)",
+      "total_time": 0.002214455,
+      "cumulative_time": 4.924895165000001,
+      "percentage": 0.15279761827468144,
+      "call_count": 400,
+      "average_time": 5.5361375e-06
+    },
+    {
+      "function": "{built-in method builtins.any}",
+      "total_time": 1.5523160790000001,
+      "cumulative_time": 4.916741674000001,
+      "percentage": 0.1525446516705844,
+      "call_count": 306241,
+      "average_time": 5.068936161389233e-06
+    },
+    {
+      "function": "model.py:307(__call__)",
+      "total_time": 0.059221187,
+      "cumulative_time": 4.887615224,
+      "percentage": 0.1516409873204425,
+      "call_count": 14400,
+      "average_time": 4.112582430555556e-06
+    },
+    {
+      "function": "tokenization_utils_fast.py:579(_encode_plus)",
+      "total_time": 0.9198921350000001,
+      "cumulative_time": 4.741771303,
+      "percentage": 0.147116098358945,
+      "call_count": 12377,
+      "average_time": 7.432270622929629e-05
+    },
+    {
+      "function": "module.py:2731(children)",
+      "total_time": 2.054326157,
+      "cumulative_time": 4.689105884,
+      "percentage": 0.1454821243718788,
+      "call_count": 1005750,
+      "average_time": 2.042581314441959e-06
+    },
+    {
+      "function": "{built-in method torch.matmul}",
+      "total_time": 4.644163574,
+      "cumulative_time": 4.644163574,
+      "percentage": 0.14408776414740845,
+      "call_count": 32400,
+      "average_time": 0.00014333838191358026
+    },
+    {
+      "function": "chain.py:48(forward)",
+      "total_time": 0.091312445,
+      "cumulative_time": 4.571451243,
+      "percentage": 0.1418318235387721,
+      "call_count": 5000,
+      "average_time": 1.8262489e-05
+    },
+    {
+      "function": "modeling_t5.py:283(forward)",
+      "total_time": 0.261402609,
+      "cumulative_time": 4.523847932000001,
+      "percentage": 0.14035490427468683,
+      "call_count": 10800,
+      "average_time": 2.4203945277777777e-05
+    },
+    {
+      "function": "tok2vec.py:108(predict)",
+      "total_time": 0.00270711,
+      "cumulative_time": 4.499678359000001,
+      "percentage": 0.1396050297970814,
+      "call_count": 200,
+      "average_time": 1.353555e-05
+    },
+    {
+      "function": "__init__.py:364(grad)",
+      "total_time": 0.020778915000000002,
+      "cumulative_time": 4.318879724,
+      "percentage": 0.13399565134540553,
+      "call_count": 225,
+      "average_time": 9.235073333333334e-05
+    },
+    {
+      "function": "graph.py:815(_engine_run_backward)",
+      "total_time": 0.004868213000000001,
+      "cumulative_time": 4.271572642000001,
+      "percentage": 0.13252792275120204,
+      "call_count": 225,
+      "average_time": 2.1636502222222225e-05
+    },
+    {
+      "function": "{method 'run_backward' of 'torch._C._EngineBase' objects}",
+      "total_time": 4.2649239240000005,
+      "cumulative_time": 4.2649239240000005,
+      "percentage": 0.13232164256838724,
+      "call_count": 225,
+      "average_time": 0.01895521744
+    },
+    {
+      "function": "language.py:1126(_ensure_doc)",
+      "total_time": 0.001338433,
+      "cumulative_time": 4.147786767,
+      "percentage": 0.12868739696489379,
+      "call_count": 200,
+      "average_time": 6.692165e-06
+    },
+    {
+      "function": "language.py:1114(make_doc)",
+      "total_time": 0.0014746800000000001,
+      "cumulative_time": 4.146381065,
+      "percentage": 0.12864378427662165,
+      "call_count": 200,
+      "average_time": 7.3734e-06
+    },
+    {
+      "function": "tokenizer.pyx:152(__call__)",
+      "total_time": 0.000647516,
+      "cumulative_time": 4.144828407,
+      "percentage": 0.12859561219651705,
+      "call_count": 200,
+      "average_time": 3.23758e-06
+    },
+    {
+      "function": "tokenizer.pyx:164(_tokenize_affixes)",
+      "total_time": 0.07839623500000001,
+      "cumulative_time": 4.11937405,
+      "percentage": 0.127805876579005,
+      "call_count": 200,
+      "average_time": 0.000391981175
+    },
+    {
+      "function": "tokenizer.pyx:393(_tokenize)",
+      "total_time": 0.056204148,
+      "cumulative_time": 3.9756382680000004,
+      "percentage": 0.12334639380533487,
+      "call_count": 70748,
+      "average_time": 7.944273760388987e-07
+    },
+    {
+      "function": "with_array.py:32(forward)",
+      "total_time": 0.006657955,
+      "cumulative_time": 3.9525887550000003,
+      "percentage": 0.12263126981369732,
+      "call_count": 600,
+      "average_time": 1.1096591666666666e-05
+    },
+    {
+      "function": "{built-in method builtins.isinstance}",
+      "total_time": 1.3776560210000002,
+      "cumulative_time": 3.9144747050000004,
+      "percentage": 0.12144876016269195,
+      "call_count": 6116399,
+      "average_time": 2.2523972373286966e-07
+    },
+    {
+      "function": "formatting.py:127(_unnest)",
+      "total_time": 1.012446584,
+      "cumulative_time": 3.7658926270000004,
+      "percentage": 0.11683891835366272,
+      "call_count": 396000,
+      "average_time": 2.5566832929292934e-06
+    },
+    {
+      "function": "tree.py:801(pformat)",
+      "total_time": 0.044292044,
+      "cumulative_time": 3.4514094600000003,
+      "percentage": 0.10708190276344783,
+      "call_count": 8567,
+      "average_time": 5.170076339442045e-06
+    },
+    {
+      "function": "tree.py:864(_pformat_flat)",
+      "total_time": 3.169102382,
+      "cumulative_time": 3.4056853510000002,
+      "percentage": 0.10566328678912548,
+      "call_count": 277604,
+      "average_time": 1.1415910368726675e-05
+    },
+    {
+      "function": "formatting.py:436(__init__)",
+      "total_time": 1.181515858,
+      "cumulative_time": 3.349287989,
+      "percentage": 0.10391352718981124,
+      "call_count": 396001,
+      "average_time": 2.9836183696505816e-06
+    },
+    {
+      "function": "tokenizer.pyx:454(_attach_tokens)",
+      "total_time": 0.20721261600000002,
+      "cumulative_time": 3.326314881,
+      "percentage": 0.10320077370589682,
+      "call_count": 70748,
+      "average_time": 2.9288830214281677e-06
+    },
+    {
+      "function": "tokenization_utils_fast.py:488(_batch_encode_plus)",
+      "total_time": 1.182232392,
+      "cumulative_time": 3.2381230750000003,
+      "percentage": 0.10046457375510198,
+      "call_count": 12377,
+      "average_time": 9.55184933344106e-05
+    },
+    {
+      "function": "features.py:2049(<dictcomp>)",
+      "total_time": 2.95794439,
+      "cumulative_time": 2.95794439,
+      "percentage": 0.0917718738447411,
+      "call_count": 396000,
+      "average_time": 7.4695565404040406e-06
+    },
+    {
+      "function": "module.py:1927(__getattr__)",
+      "total_time": 2.911105528,
+      "cumulative_time": 2.911105528,
+      "percentage": 0.09031867203708466,
+      "call_count": 525825,
+      "average_time": 5.536263068511387e-06
+    },
+    {
+      "function": "vocab.pyx:189(get)",
+      "total_time": 0.071352469,
+      "cumulative_time": 2.863272626,
+      "percentage": 0.08883462958422034,
+      "call_count": 90370,
+      "average_time": 7.895592453247759e-07
+    },
+    {
+      "function": "vocab.pyx:221(_new_lexeme)",
+      "total_time": 0.574788256,
+      "cumulative_time": 2.7919201570000003,
+      "percentage": 0.08662087945229889,
+      "call_count": 18696,
+      "average_time": 3.07439161317929e-05
+    },
+    {
+      "function": "formatting.py:129(<dictcomp>)",
+      "total_time": 2.700099869,
+      "cumulative_time": 2.700099869,
+      "percentage": 0.0837721038244637,
+      "call_count": 396000,
+      "average_time": 6.818434012626263e-06
+    },
+    {
+      "function": "module.py:2740(named_children)",
+      "total_time": 2.541249027,
+      "cumulative_time": 2.634779727,
+      "percentage": 0.08174551000092513,
+      "call_count": 1005750,
+      "average_time": 2.5267203847874723e-06
+    },
+    {
+      "function": "cky_crf.py:16(logpartition)",
+      "total_time": 0.333408497,
+      "cumulative_time": 2.620005393,
+      "percentage": 0.08128712805142943,
+      "call_count": 225,
+      "average_time": 0.0014818155422222222
+    },
+    {
+      "function": "with_array.py:70(_list_forward)",
+      "total_time": 0.005790702,
+      "cumulative_time": 2.574812677,
+      "percentage": 0.07988499884120003,
+      "call_count": 200,
+      "average_time": 2.895351e-05
+    },
+    {
+      "function": "residual.py:28(forward)",
+      "total_time": 0.08881722,
+      "cumulative_time": 2.490283052,
+      "percentage": 0.07726242009770874,
+      "call_count": 800,
+      "average_time": 0.00011102152500000001
+    },
+    {
+      "function": "maxout.py:45(forward)",
+      "total_time": 0.133699612,
+      "cumulative_time": 2.179005187,
+      "percentage": 0.06760485078909834,
+      "call_count": 1000,
+      "average_time": 0.000133699612
+    },
+    {
+      "function": "formatting.py:396(__init__)",
+      "total_time": 1.427092779,
+      "cumulative_time": 2.167772131,
+      "percentage": 0.06725633896392405,
+      "call_count": 396001,
+      "average_time": 3.6037605435339813e-06
+    },
+    {
+      "function": "ptb_unescape.py:74(<genexpr>)",
+      "total_time": 1.7561154300000001,
+      "cumulative_time": 1.914459037,
+      "percentage": 0.05939715899273162,
+      "call_count": 1683248,
+      "average_time": 1.043289776669867e-06
+    },
+    {
+      "function": "parse_input.py:295(load_shrunk_dataset)",
+      "total_time": 0.00144026,
+      "cumulative_time": 1.7691278750000001,
+      "percentage": 0.05488817866508806,
+      "call_count": 1,
+      "average_time": 0.00144026
+    },
+    {
+      "function": "{method 'to' of 'torch._C.TensorBase' objects}",
+      "total_time": 1.7682645380000002,
+      "cumulative_time": 1.7682645380000002,
+      "percentage": 0.054861393153326124,
+      "call_count": 30825,
+      "average_time": 5.7364624103811845e-05
+    },
+    {
+      "function": "numpy_ops.pyx:91(gemm)",
+      "total_time": 1.757935272,
+      "cumulative_time": 1.7659557240000001,
+      "percentage": 0.05478976091174129,
+      "call_count": 1600,
+      "average_time": 0.001098709545
+    },
+    {
+      "function": "load.py:1909(load_dataset)",
+      "total_time": 0.00011434800000000001,
+      "cumulative_time": 1.7639911700000002,
+      "percentage": 0.05472880952859201,
+      "call_count": 1,
+      "average_time": 0.00011434800000000001
+    },
+    {
+      "function": "load.py:1738(load_dataset_builder)",
+      "total_time": 0.000134863,
+      "cumulative_time": 1.7224399750000001,
+      "percentage": 0.05343966053764757,
+      "call_count": 1,
+      "average_time": 0.000134863
+    },
+    {
+      "function": "load.py:1451(dataset_module_factory)",
+      "total_time": 0.000103856,
+      "cumulative_time": 1.6935606970000001,
+      "percentage": 0.052543664836611687,
+      "call_count": 1,
+      "average_time": 0.000103856
+    },
+    {
+      "function": "load.py:920(__init__)",
+      "total_time": 1.0771e-05,
+      "cumulative_time": 1.673040343,
+      "percentage": 0.05190700941303308,
+      "call_count": 1,
+      "average_time": 1.0771e-05
+    },
+    {
+      "function": "load.py:282(increase_load_count)",
+      "total_time": 4.2220000000000006e-05,
+      "cumulative_time": 1.6730295720000001,
+      "percentage": 0.051906675236752915,
+      "call_count": 1,
+      "average_time": 4.2220000000000006e-05
+    }
+  ]
+}
