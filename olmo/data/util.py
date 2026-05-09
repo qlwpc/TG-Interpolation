@@ -135,32 +135,49 @@ def get_document_lengths(input_ids: torch.Tensor, eos_token_id: int) -> torch.Te
     return doc_boundaries[1:] - doc_boundaries[:-1]
 
 
-def pformat_flat(self, nodesep="", parens="()", quotes=False):
+def _get_bracket_mapping_from_tokenizer(tokenizer) -> bool:
+    """Determine if bracket mapping should be applied based on tokenizer config.
+
+    Both GPT-2 and Qwen3 tokenizers have '<-LRB->' added as special tokens,
+    so auto-detection by vocabulary lookup is unreliable. Instead, read
+    the ``use_bracket_mapping`` flag from the tokenizer if available,
+    otherwise default to False (safe for GPT-2).
+    """
+    if hasattr(tokenizer, 'use_bracket_mapping'):
+        return bool(tokenizer.use_bracket_mapping)
+    return False
+
+
+def pformat_flat(self, nodesep="", parens="()", quotes=False,
+                 use_bracket_mapping=True):
     childstrs = []
     for child in self:
         if isinstance(child, Tree):
-            childstrs.append(pformat_flat(child, nodesep, parens, quotes))
+            childstrs.append(pformat_flat(child, nodesep, parens, quotes,
+                                          use_bracket_mapping=use_bracket_mapping))
         elif isinstance(child, tuple):
             childstrs.append("/".join(child))
         elif isinstance(child, str) and not quotes:
-            mapping = {
-                "-LRB-": "(",
-                "-RRB-": ")",
-                "-LCB-": "{",
-                "-RCB-": "}",
-                "-LSB-": "[",
-                "-RSB-": "]",
-                "Ċ" : "\n"
-            }
-            out = mapping[child] if child in mapping else child
-            for old, new in mapping.items():
-                out = out.replace(old, " " + new)
+            if use_bracket_mapping:
+                mapping = {
+                    "-LRB-": "(",
+                    "-RRB-": ")",
+                    "-LCB-": "{",
+                    "-RCB-": "}",
+                    "-LSB-": "[",
+                    "-RSB-": "]",
+                    "Ċ": "\n",
+                }
+                out = mapping[child] if child in mapping else child
+                for old, new in mapping.items():
+                    out = out.replace(old, " " + new)
+            else:
+                out = child
             return " " + out
         else:
             childstrs.append(repr(child))
-    # print(f"label {self._label} child {childstrs}")
     if isinstance(self._label, str):
-        if self._label=="qlwpcRegen":
+        if self._label == "qlwpcRegen":
             return "".join(childstrs)
         else:
             return "<{}{}{}>{}<{}{}>".format(
@@ -174,15 +191,20 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False):
     else:
         raise NotImplementedError
 
-def convert_TG_format(input:str) -> str:
+
+def convert_TG_format(input: str, use_bracket_mapping: bool = True) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
     tree = Tree.fromstring(line, remove_empty_top_bracketing=False)
-    outputstr = pformat_flat(tree)
+    outputstr = pformat_flat(tree, use_bracket_mapping=use_bracket_mapping)
     return outputstr
 
-def encode_TG_string(tokenizer, input:str, string_with_POS_tags=True) -> np.ndarray:
+
+def encode_TG_string(tokenizer, input: str, string_with_POS_tags: bool = True,
+                     use_bracket_mapping: bool = None) -> np.ndarray:
+    if use_bracket_mapping is None:
+        use_bracket_mapping = _get_bracket_mapping_from_tokenizer(tokenizer)
     if string_with_POS_tags:
-        TG_str = convert_TG_format(input)
+        TG_str = convert_TG_format(input, use_bracket_mapping=use_bracket_mapping)
     else:
         TG_str = input
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))

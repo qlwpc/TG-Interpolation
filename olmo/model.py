@@ -525,7 +525,7 @@ class OLMoBlock(nn.Module):
         # See https://github.com/pytorch/pytorch/issues/110966.
         if bias.device.type == "cuda" and torch.is_autocast_enabled():
             target_dtype = torch.get_autocast_gpu_dtype()
-        elif bias.device.type == "cpu" and torch.is_autocast_cpu_enabled():
+        elif bias.device.type == "cpu" and torch.is_autocast_enabled('cpu'):
             target_dtype = torch.get_autocast_cpu_dtype()
         if bias.dtype != target_dtype:
             bias = bias.to(target_dtype)

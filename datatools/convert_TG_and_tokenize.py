@@ -9,62 +9,67 @@ import os
 from joblib import Parallel, delayed
 import subprocess
 
-def pformat_flat(self, nodesep="", parens="()", quotes=False):
+def _is_qwen3_style_tokenizer(tokenizer) -> bool:
+    """Check if tokenizer has bracket mapping enabled.
+
+    Reads the ``use_bracket_mapping`` flag from the tokenizer object
+    if available, defaults to False otherwise (safe for GPT-2).
+    """
+    if hasattr(tokenizer, 'use_bracket_mapping'):
+        return bool(tokenizer.use_bracket_mapping)
+    return False
+
+
+def pformat_flat(self, nodesep="", parens="()", quotes=False,
+                 use_bracket_mapping=True):
     childstrs = []
     for child in self:
         if isinstance(child, Tree):
-            childstrs.append(pformat_flat(child, nodesep, parens, quotes))
+            childstrs.append(pformat_flat(child, nodesep, parens, quotes,
+                                          use_bracket_mapping=use_bracket_mapping))
         elif isinstance(child, tuple):
             childstrs.append("/".join(child))
         elif isinstance(child, str) and not quotes:
-            mapping = {
-                "-LRB-": "(",
-                "-RRB-": ")",
-                "-LCB-": "{",
-                "-RCB-": "}",
-                "-LSB-": "[",
-                "-RSB-": "]",
-                "Ċ" : "\n"
-            }
-            out = mapping[child] if child in mapping else child
-            return out
+            if use_bracket_mapping:
+                mapping = {
+                    "-LRB-": "(",
+                    "-RRB-": ")",
+                    "-LCB-": "{",
+                    "-RCB-": "}",
+                    "-LSB-": "[",
+                    "-RSB-": "]",
+                    "Ċ": "\n",
+                }
+                out = mapping[child] if child in mapping else child
+            else:
+                out = child
+            return " " + out
         else:
             childstrs.append(repr(child))
-    # print(f"label {self._label} child {childstrs}")
     if isinstance(self._label, str):
-        if self._label=="qlwpcRegen":
-            return " ".join(childstrs)
+        if self._label == "qlwpcRegen":
+            return "".join(childstrs)
         else:
-            return "<{}{}{}> {} <{}{}>".format(
+            return "<{}{}{}>{}<{}{}>".format(
                 parens[0],
                 self._label,
                 nodesep,
-                " ".join(childstrs),
+                "".join(childstrs),
                 self._label,
                 parens[1],
             )
-    else:
-        assert(0)
-        return "{}{}{} {} {}{}".format(
-            parens[0],
-            repr(self._label),
-            nodesep,
-            " ".join(childstrs),
-            repr(self._label),
-            parens[1],
-        )
 
-def convert_TG_format(input:str) -> str:
+
+def convert_TG_format(input: str, use_bracket_mapping: bool = True) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
     try:
         tree = Tree.fromstring(line, remove_empty_top_bracketing=False)
-        outputstr = pformat_flat(tree)
+        outputstr = pformat_flat(tree, use_bracket_mapping=use_bracket_mapping)
     except Exception as e:
         print("error occurs when processing data: ")
         print(line)
         print(e)
         outputstr = ""
-    # outputstr = re.sub(" \n", "\n", outputstr)
     return outputstr
 
 def count_lines_linux_style(filename):
