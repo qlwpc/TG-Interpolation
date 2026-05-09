@@ -711,7 +711,13 @@ class TruncationDirection(StrEnum):
 class TokenizerConfig(BaseConfig):
     identifier: str = "gpt2"
     truncate_direction: TruncationDirection = TruncationDirection.right
-    vocabulary: Optional[str] = "../TG-LLaMA/dataset/spm.vocab"
+    vocabulary: Optional[str] = "./dataset/TG_QWEN3_tokenizer.json"
+    use_bracket_mapping: bool = False
+    """
+    If ``True``, map Penn Treebank bracket tokens (-LRB-, -RRB-, etc.)
+    back to literal brackets in ``pformat_flat`` / ``convert_TG_format``.
+    Required for Qwen3-based tokenizers; should be False for GPT-2 tokenizers.
+    """
 
 
 @dataclass
