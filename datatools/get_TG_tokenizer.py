@@ -31,12 +31,12 @@ tokenizer.add_special_tokens([sum, cls, sep])
 
 # BLLIP special parentheses -LRB- : ( and -RRB- : ) 
 # add in tokenizers but we don't use in data
-LRB = AddedToken("<-LRB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # (
-RRB = AddedToken("<-RRB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # )
-LCB = AddedToken("<-LCB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # {
-RCB = AddedToken("<-RCB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # }
-LSB = AddedToken("<-LSB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # [ 
-RSB = AddedToken("<-RSB->", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # ]
+LRB = AddedToken("-LRB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # (
+RRB = AddedToken("-RRB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # )
+LCB = AddedToken("-LCB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # {
+RCB = AddedToken("-RCB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # }
+LSB = AddedToken("-LSB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # [ 
+RSB = AddedToken("-RSB-", single_word=False, lstrip=False, rstrip=False, normalized=False, special=False) # ]
 
 tokenizer.add_tokens([LRB, RRB, LCB, RCB, LSB, RSB])
 

@@ -34,6 +34,7 @@ class Tokenizer:
         pad_token_id: Optional[int] = None,
         truncate_to: Optional[int] = None,
         truncate_direction: Union[str, TruncationDirection] = TruncationDirection.right,
+        use_bracket_mapping: bool = False,
     ):
         self.base_tokenizer = base_tokenizer
         self.base_tokenizer.no_truncation()
@@ -41,6 +42,7 @@ class Tokenizer:
         self.pad_token_id = pad_token_id if pad_token_id is not None else eos_token_id
         self.truncate_to = truncate_to
         self.truncate_direction = TruncationDirection(truncate_direction)
+        self.use_bracket_mapping = use_bracket_mapping
 
     @property
     def vocab_size(self) -> int:
@@ -77,6 +79,7 @@ class Tokenizer:
                 eos_token_id=config.model.eos_token_id,
                 pad_token_id=config.model.pad_token_id,
             )
+        tokenizer.use_bracket_mapping = config.tokenizer.use_bracket_mapping
         if config.model.vocab_size != tokenizer.vocab_size:
             raise OLMoConfigurationError("vocab size mismatch between config and tokenizer")
         return tokenizer
