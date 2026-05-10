@@ -136,6 +136,7 @@ ALL_GRAMMAR_TYPES = [
     "tgproximal", "tgheight",
     "pause1", "pause2", "pause3", "pause1/2", "pause1/2_label",
     "tree_shuffle", "tree_shuffle_mask",
+    "tree_noont", "tree_compress", "tree_triplecnt",
     "mixing",
 ]
 
@@ -147,6 +148,7 @@ SAFE_EVAL_TYPES = [
     "terminal", "tree",
     "pause1", "pause2", "pause3", "pause1/2", "pause1/2_label",
     "tree_shuffle", "tree_shuffle_mask",
+    "tree_noont", "tree_compress", "tree_triplecnt",
 ]
 # Types that use C++ TG bias (may crash in test due to extension issues)
 TG_BIAS_TYPES = ["tg", "tgnomask", "tgnomaskaug", "tgproximal", "tgheight", "mixing"]

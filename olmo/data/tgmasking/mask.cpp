@@ -312,6 +312,127 @@ public:
             throw std::runtime_error("Unsupported data type");
     }
 
+    // --- New format conversion: tree_noont (T + CNT only, ONT stripped) ---
+    template <typename T>
+    py::array_t<T> convert_treenpy_to_noont_impl(py::array_t<T> tree) {
+        auto buf_tree = tree.template unchecked<1>();
+        size_t N = 0;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i)
+            if (!is_opening_non_terminal(buf_tree[i]))
+                N += 1;
+
+        auto result = py::array_t<T>(N);
+        auto buf_result = result.template mutable_unchecked<1>();
+
+        size_t j = 0;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            T token = buf_tree[i];
+            if (!is_opening_non_terminal(token))
+                buf_result[j++] = token;
+        }
+        return result;
+    }
+
+    py::array convert_treenpy_to_noont(py::array tree) {
+        auto dtype = tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_treenpy_to_noont_impl<uint16_t>(tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_treenpy_to_noont_impl<uint32_t>(tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_treenpy_to_noont_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
+    // --- New format conversion: tree_compress (merge consecutive CNTs) ---
+    // Uses '<X)>' (the last closing non-terminal) as the merge marker.
+    template <typename T>
+    py::array_t<T> convert_treenpy_to_compress_impl(py::array_t<T> tree) {
+        auto buf_tree = tree.template unchecked<1>();
+        size_t N = 0;
+        bool in_cnt = false;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            if (is_closing_non_terminal(buf_tree[i])) {
+                if (!in_cnt) { N++; in_cnt = true; }
+            } else {
+                N++; in_cnt = false;
+            }
+        }
+
+        auto result = py::array_t<T>(N);
+        auto buf_result = result.template mutable_unchecked<1>();
+
+        size_t j = 0;
+        in_cnt = false;
+        T merge_token = static_cast<T>(closing_non_terminals.second - 1);  // '<X)>'
+
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            T token = buf_tree[i];
+            if (is_closing_non_terminal(token)) {
+                if (!in_cnt) {
+                    buf_result[j++] = merge_token;
+                    in_cnt = true;
+                }
+            } else {
+                buf_result[j++] = token;
+                in_cnt = false;
+            }
+        }
+        return result;
+    }
+
+    py::array convert_treenpy_to_compress(py::array tree) {
+        auto dtype = tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_treenpy_to_compress_impl<uint16_t>(tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_treenpy_to_compress_impl<uint32_t>(tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_treenpy_to_compress_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
+    // --- New format conversion: tree_triplecnt (CNT tripled) ---
+    template <typename T>
+    py::array_t<T> convert_treenpy_to_triplecnt_impl(py::array_t<T> tree) {
+        auto buf_tree = tree.template unchecked<1>();
+        size_t N = tree.size();
+        for (size_t i = 0; i < buf_tree.shape(0); ++i)
+            if (is_closing_non_terminal(buf_tree[i]))
+                N += 2;  // add 2 extra copies (3 total: original + 2)
+
+        auto result = py::array_t<T>(N);
+        auto buf_result = result.template mutable_unchecked<1>();
+
+        size_t j = 0;
+        for (size_t i = 0; i < buf_tree.shape(0); ++i) {
+            T token = buf_tree[i];
+            buf_result[j++] = token;
+            if (is_closing_non_terminal(token)) {
+                buf_result[j++] = token;  // CNT2
+                buf_result[j++] = token;  // CNT3
+            }
+        }
+        if (j != N) {
+            throw std::runtime_error("convert_treenpy_to_triplecnt: size mismatch");
+        }
+        return result;
+    }
+
+    py::array convert_treenpy_to_triplecnt(py::array tree) {
+        auto dtype = tree.dtype();
+        if (dtype.is(py::dtype::of<uint16_t>()))
+            return convert_treenpy_to_triplecnt_impl<uint16_t>(tree);
+        else if (dtype.is(py::dtype::of<uint32_t>()))
+            return convert_treenpy_to_triplecnt_impl<uint32_t>(tree);
+        else if (dtype.is(py::dtype::of<int64_t>()))
+            return convert_treenpy_to_triplecnt_impl<int64_t>(tree);
+        else
+            throw std::runtime_error("Unsupported data type");
+    }
+
     std::vector<int> select_from_range(int n, int k, std::mt19937 &gen) {
         std::vector<int> result;
         std::vector<int> range(n);
@@ -1298,8 +1419,14 @@ PYBIND11_MODULE(tg_mask, m) {
             py::arg("TG_tree"), "Convert TG sequence to tree format")
         .def("random_shuffle_tree", &SentencepieceVocab::random_shuffle_tree,
                 py::arg("TG_tree"), "Convert Tree sequence to Random_tree format")
-        .def("get_non_terminal_mask", &SentencepieceVocab::get_non_terminal_mask, 
+        .def("get_non_terminal_mask", &SentencepieceVocab::get_non_terminal_mask,
             py::arg("input_ids"), "Generate tree Sequence Non terminal mask")
+        .def("convert_treenpy_to_noont", &SentencepieceVocab::convert_treenpy_to_noont,
+            py::arg("tree"), "Convert tree sequence to noont format (T + CNT only)")
+        .def("convert_treenpy_to_compress", &SentencepieceVocab::convert_treenpy_to_compress,
+            py::arg("tree"), "Convert tree sequence to compress format (merge consecutive CNTs)")
+        .def("convert_treenpy_to_triplecnt", &SentencepieceVocab::convert_treenpy_to_triplecnt,
+            py::arg("tree"), "Convert tree sequence to triplecnt format (CNT tripled)")
         // Add other property readers...
         .def(py::pickle(
             [](const SentencepieceVocab &v) { // __getstate__

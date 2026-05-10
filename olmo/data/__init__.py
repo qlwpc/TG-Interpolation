@@ -76,15 +76,24 @@ class TGCausalBias:
         return mask, None
 
 #TODO: promote parameter forwarding 
+# Types that use tree-format data with standard causal attention (no TG bias)
+_CAUSAL_TREE_TYPES = {"tree", "tgtree", "tree_shuffle", "tree_shuffle_mask",
+                      "tree_noont", "tree_compress", "tree_triplecnt",
+                      "terminal"}
+
+
 def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int] = None, TG_type:Optional[str]=None) -> TG_attention_bias:
     generate_TG_attention_bias = None
     vocab_path = train_config.tokenizer.vocabulary
     max_length = max_length if max_length is not None else train_config.model.max_sequence_length
     if TG_type is None:
         TG_type = train_config.model.transformer_grammar_type
-        if TG_type == "tgtree": # when single bias, return causal mask "None"
+        # Causal-only types (including new tree_noont, tree_compress, tree_triplecnt)
+        if TG_type in _CAUSAL_TREE_TYPES:
             return None
-    
+        if TG_type[:5] == "pause":
+            return None
+
     if TG_type == "mixing":
         generate_TG_attention_bias = HeadMixingBias(train_config.model.mix_head_type, train_config, max_length)
     elif TG_type=="tg":
@@ -95,7 +104,7 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
         generate_TG_attention_bias = KProximal_TG_attention_bias(vocab_path, max_length, max_length, TG_type[-3:]=="aug")
     elif TG_type=="tgtree":
         generate_TG_attention_bias = TGCausalBias(vocab_path, max_length)
-    
+
     return generate_TG_attention_bias
 
 def build_memmap_dataset(

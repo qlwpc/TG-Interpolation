@@ -289,6 +289,18 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             grammar_type = self.transformer_grammar_type
         if grammar_type[:8] == "terminal" or grammar_type[:5] == "pause":
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+        elif grammar_type == "tree_noont":
+            # Convert TG → tree, then strip opening non-terminals
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
+        elif grammar_type == "tree_compress":
+            # Convert TG → tree, then merge consecutive CNTs
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
+        elif grammar_type == "tree_triplecnt":
+            # Convert TG → tree, then triple CNTs (3 copies instead of 1)
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_triplecnt(input_ids)
         elif grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
@@ -689,6 +701,15 @@ class XsumDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_treenpy_to_terminal(loss_tokens)
+        elif self.transformer_grammar_type == "tree_noont":
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
+        elif self.transformer_grammar_type == "tree_compress":
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
+        elif self.transformer_grammar_type == "tree_triplecnt":
+            input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
+            input_ids = self.vocab.convert_treenpy_to_triplecnt(input_ids)
         elif self.transformer_grammar_type == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
