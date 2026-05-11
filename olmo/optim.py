@@ -825,6 +825,39 @@ class ConstantWithWarmupScheduler(Scheduler):
         return initial_lr
 
 
+@dataclass
+class ConstantThenDecayScheduler(Scheduler):
+    """WSD-style: warmup, then constant LR, then linear decay.
+
+    - step < warmup_steps: linear warmup
+    - warmup_steps <= step < warmup_steps + t_constant: constant LR
+    - step >= warmup_steps + t_constant: linear decay to min_lr
+    """
+
+    warmup_steps: int
+    t_constant: int = 0
+    alpha_f: float = 0.0
+    t_max: Optional[int] = None
+    min_lr: Optional[float] = None
+
+    def get_lr(self, initial_lr: float, step: int, max_steps: int) -> float:
+        max_steps = max_steps if self.t_max is None else self.t_max
+        eta_min = initial_lr * self.alpha_f if self.min_lr is None else self.min_lr
+        decay_start = self.warmup_steps + self.t_constant
+        if step < self.warmup_steps:
+            return self._linear_warmup(initial_lr, step, self.warmup_steps)
+        elif step < decay_start:
+            return initial_lr
+        elif step >= max_steps:
+            return eta_min
+        else:
+            decay_steps = max_steps - decay_start
+            if decay_steps <= 0:
+                return eta_min
+            step_in_decay = step - decay_start
+            return initial_lr - (initial_lr - eta_min) * (step_in_decay / decay_steps)
+
+
 PARAM_GROUP_FIELDS = ("sharded", "max_grad_norm", "max_grad_norm_ratio", "param_names")
 
 
@@ -1044,6 +1077,19 @@ def build_scheduler(cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = Non
             grad_clip_warmup_factor=sched_cfg.grad_clip_warmup_factor,
             warmup_min_lr=sched_cfg.warmup_min_lr,
             warmup_steps=int(sched_cfg.t_warmup),
+        )
+    elif sched_cfg.name == SchedulerType.constant_then_decay:
+        return ConstantThenDecayScheduler(
+            grad_clip_warmup_steps=(
+                None if sched_cfg.grad_clip_warmup_steps is None else int(sched_cfg.grad_clip_warmup_steps)
+            ),
+            grad_clip_warmup_factor=sched_cfg.grad_clip_warmup_factor,
+            warmup_min_lr=sched_cfg.warmup_min_lr,
+            warmup_steps=int(sched_cfg.t_warmup),
+            t_constant=getattr(sched_cfg, "t_constant", 0),
+            alpha_f=sched_cfg.alpha_f,
+            t_max=None if sched_cfg.t_max is None else int(sched_cfg.t_max),
+            min_lr=sched_cfg.min_lr,
         )
     else:
         raise NotImplementedError

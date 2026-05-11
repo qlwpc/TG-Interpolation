@@ -606,6 +606,7 @@ class SchedulerType(StrEnum):
     constant = "constant"
     cosine_linear_envelope = "cosine_linear_envelope"
     constant_with_warmup = "constant_with_warmup"
+    constant_then_decay = "constant_then_decay"
 
 
 class SchedulerUnits(StrEnum):
@@ -635,6 +636,13 @@ class SchedulerConfig(BaseConfig):
     """
     The ratio of the max allowed gradient norm (or norm ratio) for clipping during the warmup period
     vs after the warmup period.
+    """
+
+    t_constant: Union[int, float] = 0
+    """
+    Number of steps (or tokens) to hold learning rate constant after warmup,
+    before starting decay. Used by ``constant_then_decay`` scheduler.
+    Decay starts at step = t_warmup + t_constant.
     """
 
     warmup_min_lr: Optional[float] = None
@@ -727,6 +735,7 @@ class WandbConfig(BaseConfig):
     group: Optional[str] = None
     name: Optional[str] = None
     tags: Optional[List[str]] = field(default_factory=lambda: ["watching"])
+    mode: str = "offline"
     log_artifacts: bool = False
     rank_zero_only: bool = True
     log_interval: int = 1
