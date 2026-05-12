@@ -13,7 +13,7 @@ workspace=${HOME}/TG-Interpolation
 export HF_ENDPOINT=https://hf-mirror.com
 export PYTHONPATH=${PYTHONPATH}:${workspace}
 nvidia-smi
-wandb offline
+
 cd ${workspace}
 run_name=Terminal_test_xsum
 torchrun --nproc-per-node=4 --master_port 15590 scripts/train.py \

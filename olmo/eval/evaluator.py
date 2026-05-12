@@ -43,6 +43,11 @@ class Evaluator:
             if self.eval_metric.metric_type in ["ce_loss", "bpb"]:
                 key = key.replace("/downstream/", f"/downstream_{self.eval_metric.metric_type}/")
             return {key + "_" + old_key: value for old_key, value in score.items()}
+        elif self.type == EvaluatorType.beam_search_icl:
+            assert isinstance(self.eval_metric, Metric)
+            score: Dict = self.eval_metric.compute()
+            key = f"eval/downstream/{self.label}_{self.eval_metric.metric_type}"
+            return {key + "_" + old_key: value for old_key, value in score.items()}
         elif self.type == EvaluatorType.lm:
             # Metric(s) = cross entropy loss
             metrics: Dict[str, Metric]
@@ -102,5 +107,13 @@ class Evaluator:
         elif self.type == EvaluatorType.tg_doc:
             # assert isinstance(self.eval_metric, TGPerplexityDocumentLevelMetric)
             self.eval_metric.update(batch, ce_loss)
+        elif self.type == EvaluatorType.beam_search_icl:
+            doc_id, cont_id, log_likelihood, label_id = batch
+            self.eval_metric.loglikelihoods.append(
+                torch.Tensor((doc_id, cont_id, log_likelihood))
+            )
+            self.eval_metric.labels.append(
+                torch.LongTensor((doc_id, cont_id, label_id))
+            )
         else:
             raise ValueError(f"Unexpected evaluator type '{self.type}'")

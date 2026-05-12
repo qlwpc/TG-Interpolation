@@ -15,7 +15,7 @@ export PYTHONMALLOC=malloc
 # export LD_PRELOAD=/home/wangpch/.conda/envs/LLM/lib/libasan.so
 # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 nvidia-smi
-wandb offline
+
 cd ${workspace}
 run_name=nomask_test_ppl
 # valgrind --leak-check=full --show-leak-kinds=definite,possible --track-origins=yes --suppressions=valgrind-python.supp \

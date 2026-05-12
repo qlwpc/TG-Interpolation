@@ -1040,7 +1040,46 @@ class Trainer:
         evaluator.update_metrics(
             task_name, score_dict
         )
-    
+
+    def beam_search_icl_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
+        vocab = evaluator.eval_loader.dataset.vocab
+        with torch.no_grad():
+            with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
+                for idx in range(batch["input_ids"].shape[0]):
+                    ctx_len = batch["ctx_len"][idx].item()
+                    cont_len = batch["cont_len"][idx].item()
+                    doc_id = batch["doc_id"][idx].item()
+                    cont_id = batch["cont_id"][idx].item()
+                    label_id = batch["label_id"][idx].item()
+
+                    past_input = batch["input_ids"][idx, :ctx_len - 1]
+                    eval_input_ids = batch["continuation"][idx, :cont_len]
+
+                    max_length = len(past_input) + 100 * cont_len
+
+                    beams = self.dist_model.module.word_sync_beam_search(
+                        vocab=vocab,
+                        eval_input_ids=eval_input_ids,
+                        past_input=past_input,
+                        beam_size=300,
+                        generate_TG_bias=self.generate_TG_attention_bias,
+                        strategy=BeamSearchType.word_sync_dfs,
+                        transformer_grammar_type=self.cfg.model.transformer_grammar_type,
+                        max_length=max_length,
+                    )
+
+                    if beams:
+                        logprobs = torch.tensor(
+                            [b["logprob"] for b in beams], device=self.device
+                        )
+                        log_likelihood = torch.logsumexp(logprobs, dim=0).item()
+                    else:
+                        log_likelihood = -float("inf")
+
+                    evaluator.update_metrics(
+                        (doc_id, cont_id, log_likelihood, label_id), 0.0
+                    )
+
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
@@ -1191,6 +1230,8 @@ class Trainer:
                     self.SG_eval_step(eval_batch, evaluator)
                 elif evaluator.type == EvaluatorType.rouge:
                     self.summarization_eval_step(eval_batch, evaluator)
+                elif evaluator.type == EvaluatorType.beam_search_icl:
+                    self.beam_search_icl_eval_step(eval_batch, evaluator)
                 else:
                     self.eval_step(eval_batch, evaluator)
 

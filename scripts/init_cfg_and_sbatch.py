@@ -70,7 +70,10 @@ Device_args = {
 INPUTFORMAT = {
     "terminal": ["terminal", "pause1/2", "pause1/2_label"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
-    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"]
+    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"],
+    "tree_compact" : ["tree_compact"],
+    "tree_noont" : ["tree_noont"],
+    "tree_triplecnt" : ["tree_triplecnt"],
 }
 
 Models = {
@@ -99,6 +102,9 @@ Models = {
     "pauselabel2048": {"model.transformer_grammar_type": "pause1/2_label"},
     "pauselabel4096": {"model.transformer_grammar_type": "pause1/2_label", "model.max_sequence_length": 4096},
     "terminal1024" : {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 1024},
+    "tree_noont" : {"model.transformer_grammar_type": "tree_noont"},
+    "tree_compact" : {"model.transformer_grammar_type": "tree_compact"},
+    "tree_triplecnt" : {"model.transformer_grammar_type": "tree_triplecnt"},
 }
 mixing = {
     "tree_mix_tg" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tg", n_heads=6)],
@@ -235,7 +241,7 @@ date
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
     script_filename = f"{run_name}.sh"
-    script_filename = os.path.join(os.getcwd(), "run_scripts", modelname, script_filename)
+    script_filename = os.path.join(os.getcwd(), "run_folder", modelname, script_filename)
     with open(script_filename, 'w+') as f:
         f.write(str(MainContent))
     
@@ -323,6 +329,9 @@ model_paths = {
     "tgnomask_aug-500M" : "/saved_models/TGnomaskaug_500M/step55853-unsharded",
     "tgnomask_aug-100M-early": "/saved_models/TGnomaskaug_100M_early/step21637-unsharded",
     "tgtree-100M-early": "/saved_models/TGTree_100M_early/step21637-unsharded",
+    "tree_noont": "/saved_models/tree_noont/step42440-unsharded",
+    "tree_triplecnt": "/saved_models/tree_triplecnt/step60045-unsharded",
+    "tree_compact": "/saved_models/tree_compact/step45965-unsharded"
 }
 
 
@@ -386,17 +395,18 @@ if __name__ == "__main__":
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "RTX3090"
-    modelname = "terminal-1B"
-    # task = ["xsum_finetune", "boolq", "rte"]
-    # task += ["docppl"]
+    modelname = "tree_compact"
+    task = ["xsum_finetune", "boolq", "rte"]
+    task += ["docppl"]
+    task = ["SG"]
     # task += ["hellaswag"]
-    task = ["winogrande"]
+    # task = ["winogrande"]
     load_path = True
     if load_path is not None and load_path!=False:
         load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
         robust_directory_check(load_path)
     
-    save_dir = os.path.join(os.getcwd(), "run_scripts", modelname)
+    save_dir = os.path.join(os.getcwd(), "run_folder", modelname)
     os.makedirs(save_dir, exist_ok=True)
     for pertask in task:
         run_name = f"{pertask}_test"

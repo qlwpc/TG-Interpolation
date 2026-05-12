@@ -65,7 +65,7 @@ def build_downstream_evaluator(
             seed=train_config.seed,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
-    if eval_cfg.label in beam_search_tasks:
+    if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl:
         eval_batch_size = 1
     
     ds_eval_dataloader = DataLoader(
@@ -104,6 +104,8 @@ def build_downstream_evaluator(
                              dataset_length=len(ds_eval_dataset))
     elif eval_cfg.type == EvaluatorType.rouge:
         metric = RougeMetric(tokenizer=tokenizer)
+    elif eval_cfg.type == EvaluatorType.beam_search_icl:
+        metric = ICLMetric(metric_type=ds_eval_dataset.metric_type)
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type, 
                            vocab_path=train_config.tokenizer.vocabulary,
@@ -128,7 +130,7 @@ def build_evaluator(
 ) -> Evaluator:
     from ..data import build_eval_dataloader
 
-    if eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent, EvaluatorType.downstream, EvaluatorType.rouge]:
+    if eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent, EvaluatorType.downstream, EvaluatorType.rouge, EvaluatorType.beam_search_icl]:
         # Downstream evaluation.
         return build_downstream_evaluator(train_config, eval_config, tokenizer, device)
     elif eval_config.type == EvaluatorType.lm:
