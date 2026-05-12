@@ -15,7 +15,7 @@ export PYTHONPATH=${PYTHONPATH}:${workspace}
 # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # CUDA_LAUNCH_BLOCKING=1
 nvidia-smi
-wandb offline
+
 cd ${workspace}
 run_name=tree_test_SG
 torchrun --nproc-per-node=1 --master_port 15585 scripts/train.py \

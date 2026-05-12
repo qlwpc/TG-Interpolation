@@ -10,7 +10,7 @@ workspace=${HOME}/TG-Interpolation
 export HF_ENDPOINT=https://hf-mirror.com
 export PYTHONPATH=${PYTHONPATH}:${workspace}
 nvidia-smi
-wandb offline
+
 cd ${workspace}
 run_name=Tree_finetune_xsum_lr1e-4_warmup50_2ep
 torchrun --nproc-per-node=2 --master_port 15590 scripts/train.py \

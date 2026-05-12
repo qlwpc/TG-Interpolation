@@ -499,7 +499,8 @@ class ModelConfig(BaseConfig):
 
     transformer_grammar_type : str = "terminal"
     """
-    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}"] 
+    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}", "tree_triplecnt", 
+                                 "tree_noont", "tree_compact"] 
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
     """
@@ -699,6 +700,7 @@ class EvaluatorType(StrEnum):
     tg_doc = "tg_doc"
     tg_sent = "tg_sent"
     rouge = "rouge"
+    beam_search_icl = "beam_search_icl"
 
 
 @dataclass

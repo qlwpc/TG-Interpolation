@@ -13,7 +13,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 export PYTHONPATH=${PYTHONPATH}:${workspace}
 # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 nvidia-smi
-wandb offline
+
 cd ${workspace}
 run_name=nomask_test_ppl
 torchrun --nproc-per-node=1 --master_port 15596 scripts/train.py \

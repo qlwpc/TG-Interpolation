@@ -196,7 +196,7 @@ class ICLMetric(Metric):
             all += score_dict[group]
         score_dict["_"] = all / len(score_dict)
         return score_dict
-    
+
 
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     """Only supports zero-shot for now."""
@@ -605,7 +605,9 @@ class XsumDataset(metaclass=abc.ABCMeta):
         metric_type="sent",
         generate_TG_attention_bias: Optional[Callable] = None,
         transformer_grammar_type:str = "",
-        vocab_path: str = None):
+        vocab_path: str = None,
+        pause_token_id : int = None,
+        **kwargs):
 
         self.tokenizer = tokenizer
         self.transformer_grammar_type = transformer_grammar_type
@@ -618,6 +620,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.prompts = " \n<(S><(VP> Summarize<(NP> the above article<NP)><(PP> in<(NP> 1 sentence<NP)><PP)><VP)> .<S)> \n"
         self.prompts_tokens = encode_TG_string(self.tokenizer, self.prompts, string_with_POS_tags=False)
         self.prompts_TG_tokens = self.vocab.convert_treenpy_to_TG(self.prompts_tokens)
+        self.pause_token_id = pause_token_id
 
         if transformer_grammar_type[:5] == "pause":
             numstr = transformer_grammar_type[5:]
@@ -626,6 +629,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
             else:
                 pause_num = int(numstr) if numstr else 1
             self.model_ctx_len //= (1 + pause_num)
+            self.ispause = pause_num
             self.prompts_TG_tokens = self.vocab.convert_treenpy_to_terminal(self.prompts_TG_tokens)
         passages = []
         gold_summary = []
@@ -715,11 +719,8 @@ class XsumDataset(metaclass=abc.ABCMeta):
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
         elif self.transformer_grammar_type[:5] == "pause":
-            paused_input = np.zeros(2 * len(input_ids))
-            paused_input[::2] = input_ids
-            paused_input[1::2] = input_ids # 50260  # Special token
-            input_ids = paused_input
-        elif self.generate_TG_attention_bias is not None:            
+            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.ispause)
+        elif self.generate_TG_attention_bias is not None:
             input_ids = torch.tensor(input_ids)
             attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
         
@@ -932,19 +933,29 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         metric_type="sent",  # Override default metric type, whether be sent/doc
         generate_TG_attention_bias: Optional[TG_attention_bias] = None,
         vocab_path: str = None,
-        device_eval_batch_size: int = 60, 
+        device_eval_batch_size: int = 60,
+        transformer_grammar_type: str = "",
+        pause_token_id: int = None,
         **kwargs
     ):
         super().__init__()
         self.tokenizer = tokenizer
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
-        self.dataset_name = dataset_name
+        self.transformer_grammar_type = transformer_grammar_type
+
+        # For tree_noont / tree_compress / tree_triplecnt, the underlying .npy data
+        # is in tree format so we keep dataset_name as "tree" for loading.
+        if transformer_grammar_type in ("tree_noont", "tree_compress", "tree_triplecnt"):
+            self.dataset_name = "tree"
+        else:
+            self.dataset_name = dataset_name
         self.model_ctx_len = model_ctx_len
-        self.metric_type = metric_type 
+        self.metric_type = metric_type
         self.log_instances = 2  # Set to > 0 to log the first few instances as a sanity check
         self.batch_size = device_eval_batch_size
         self.SENT_SIZE = 300
+        self.pause_token_id = pause_token_id
 
         self.samples: List[Dict[str, Any]] = []
         self.term_len: List[int] = []
@@ -963,11 +974,24 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         log.info(f"Loading Dataset finished")
 
     def __getitem__(self, index):
+        input_ids = self.dataset[self.sent_index[index]:self.sent_index[index+1]]
+        input_ids = self._convert_sequence(input_ids)
         return {
-            "sent_id" : index//self.SENT_SIZE + 1, 
+            "sent_id" : index//self.SENT_SIZE + 1,
             "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
-            "input_ids": self.dataset[self.sent_index[index]:self.sent_index[index+1]], 
+            "input_ids": input_ids,
         }
+
+    def _convert_sequence(self, input_ids):
+        if not isinstance(input_ids, np.ndarray):
+            input_ids = np.array(input_ids)
+        if self.transformer_grammar_type == "tree_noont":
+            input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
+        elif self.transformer_grammar_type == "tree_compress":
+            input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
+        elif self.transformer_grammar_type == "tree_triplecnt":
+            input_ids = self.vocab.convert_treenpy_to_triplecnt(input_ids)
+        return input_ids
 
     def __len__(self):
         return self.length
