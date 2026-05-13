@@ -234,6 +234,7 @@ def build_train_dataloader(
             shuffle=True,
             drop_last=train_config.data.drop_last,
             world_size=world_size,
+            index_world_size=train_config.data.index_world_size,
             rank=rank,
             fs_local_rank=fs_local_rank,
             work_dir=work_dir,

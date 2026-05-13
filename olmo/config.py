@@ -682,6 +682,15 @@ class DataConfig(BaseConfig):
     timeout: int = 0
     seed: Optional[int] = None
     instance_filter: Optional[InstanceFilterConfig] = None
+    index_world_size: Optional[int] = None
+    """
+    World size used to compute ``total_size`` and ``drop_last`` truncation when
+    building global data indices. When set, this decouples index-space sizing
+    from the runtime GPU count, so resuming with a different number of GPUs
+    preserves the same global index array.
+
+    Default (``None``) uses the actual runtime world size.
+    """
 
     @property
     def effective_memmap_dtype(self):
