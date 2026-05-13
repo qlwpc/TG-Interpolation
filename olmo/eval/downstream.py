@@ -1457,13 +1457,14 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
         model_ctx_len: int = 2048,
         split="test",
-        metric_type="BLiMP", 
-        generate_TG_attention_bias: Optional[Callable | str] = None, 
+        metric_type="BLiMP",
+        generate_TG_attention_bias: Optional[Callable | str] = None,
         transformer_grammar_type: str = "",
         vocab_path: str = None,
-        device_eval_batch_size: int = 60, 
+        device_eval_batch_size: int = 60,
         samples_per_sent: int = 300,
-        pair_per_task: int = 1000, 
+        pair_per_task: int = 1000,
+        pause_token_id: int = None,
     ):
 
         super().__init__()
@@ -1474,13 +1475,14 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.task_list = BLiMP_TASK_LIST
         self.batch_size = device_eval_batch_size
         self.transformer_grammar_type = transformer_grammar_type
+        self.pause_token_id = pause_token_id
 
         if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.SENT_SIZE = 1
         else:
             self.SENT_SIZE = samples_per_sent
         self.TASK_SIZE = 2 * pair_per_task * self.SENT_SIZE
-        self.length = len(self.task_list) * self.TASK_SIZE 
+        self.length = len(self.task_list) * self.TASK_SIZE
 
         self.samples: List[Dict[str, Any]] = []
         if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
@@ -1497,13 +1499,39 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.reset()
         log.info(f"Loading Dataset finished")
 
+    @property
+    def ispause(self):
+        if self.transformer_grammar_type[:5] == "pause":
+            numstr = self.transformer_grammar_type[5:]
+            if not numstr or numstr == "1/2" or numstr == "1/2_label":
+                return 1
+            else:
+                return int(numstr)
+        return 0
+
     def prep_examples(self):
         return
 
+    def _convert_sequence(self, input_ids):
+        if not isinstance(input_ids, np.ndarray):
+            input_ids = np.array(input_ids)
+        if self.transformer_grammar_type == "tree_noont":
+            input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
+        elif self.transformer_grammar_type == "tree_compress":
+            input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
+        elif self.transformer_grammar_type == "tree_triplecnt":
+            input_ids = self.vocab.convert_treenpy_to_triplecnt(input_ids)
+        return input_ids
+
     def __getitem__(self, index):
+        input_ids = self.dataset[index // self.dataset.shape[1], index % self.dataset.shape[1]].copy()
+        if self.ispause:
+            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.ispause)
+        else:
+            input_ids = self._convert_sequence(input_ids)
         return {
-            "sent_id" : index, 
-            "input_ids": torch.LongTensor(self.dataset[index // self.dataset.shape[1], index % self.dataset.shape[1]].copy()), 
+            "sent_id" : index,
+            "input_ids": torch.LongTensor(input_ids),
         }
 
     def __len__(self):
@@ -1520,11 +1548,6 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         # pad according to max_lengths
         for sample in data:
             cur_input_id = sample["input_ids"]
-            if self.transformer_grammar_type[:5] == "pause":
-                paused_input = torch.zeros(2 * len(cur_input_id), dtype=cur_input_id.dtype, device=cur_input_id.device)
-                paused_input[::2] = cur_input_id
-                paused_input[1::2] = torch.where(cur_input_id != self.vocab.pad, 50260, self.vocab.pad)  # Special token
-                cur_input_id = paused_input
 
             attention_bias, label_mask = None, None
             if self.generate_TG_attention_bias is not None:

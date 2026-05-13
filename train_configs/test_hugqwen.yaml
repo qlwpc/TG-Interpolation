@@ -69,6 +69,7 @@ tokenizer:
   identifier: /data/home/scyb223/run/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json
   vocabulary: /data/home/scyb223/run/TG-Interpolation/dataset/TG_QWEN3_tokenizer.json
   truncate_direction: right
+  use_bracket_mapping: true
 
 save_folder: workspace/${run_name}
 save_overwrite: true
