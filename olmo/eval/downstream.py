@@ -1546,8 +1546,13 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         all_attention_bias = []
         all_label_mask = []
         # pad according to max_lengths
+        max_len = 0
+        for sample in data:
+            max_len = max(max_len, sample["input_ids"].shape[0])
+            
         for sample in data:
             cur_input_id = sample["input_ids"]
+            cur_input_id = F.pad(cur_input_id, (0, max_len - cur_input_id.shape[0]), value=self.vocab.pad)
 
             attention_bias, label_mask = None, None
             if self.generate_TG_attention_bias is not None:

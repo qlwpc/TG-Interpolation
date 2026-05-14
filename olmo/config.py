@@ -500,7 +500,7 @@ class ModelConfig(BaseConfig):
     transformer_grammar_type : str = "terminal"
     """
     transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}", "tree_triplecnt", 
-                                 "tree_noont", "tree_compact"] 
+                                 "tree_noont", "tree_compress"] 
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
     """
