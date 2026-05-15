@@ -1051,6 +1051,8 @@ class Trainer:
                     doc_id = batch["doc_id"][idx].item()
                     cont_id = batch["cont_id"][idx].item()
                     label_id = batch["label_id"][idx].item()
+                    cont_str_len = batch["cont_str_len"][idx].item()
+                    cont_byte_len = batch["cont_byte_len"][idx].item()
 
                     past_input = batch["input_ids"][idx, :ctx_len - 1]
                     eval_input_ids = batch["continuation"][idx, :cont_len]
@@ -1077,7 +1079,8 @@ class Trainer:
                         log_likelihood = -float("inf")
 
                     evaluator.update_metrics(
-                        (doc_id, cont_id, log_likelihood, label_id), 0.0
+                        (doc_id, cont_id, log_likelihood, label_id,
+                         cont_str_len, cont_byte_len), 0.0
                     )
 
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
