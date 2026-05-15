@@ -1663,12 +1663,15 @@ class BoolQ(ICLMultiChoiceTaskDataset):
         return (self.shots_prompt if single_shot==False else "") + doc["passage"] + " \n<(SQ><(NP> Question<NP)> :" + doc["question"] + " ?<SQ)> \n<(S><(NP> The answer<NP)><(VP> is<(NP>"
 
     def doc_to_continuations(self, doc, single_shot=False):
+        label = not doc["label"]
         del doc
         # add spaces in front of continuation
         # (S (NP (DT The) (NN answer)) (VP (VBZ is) (NP (UH yes))) (. .))
         if single_shot:
             return [" yes<NP)><VP)> .<S)>", " no<NP)><VP)> .<S)>"]
         else:
+            if self.split=="train":
+                return [[" yes", " no"][label]]
             return [" yes", " no"]
 
     def doc_to_label(self, doc):
@@ -2037,9 +2040,12 @@ class RTE(ICLMultiChoiceTaskDataset):
         dataset_name=None,
         model_ctx_len=2048,
         split="val",
+        shots_num=0, 
         transformer_grammar_type:str = "",
         generate_TG_attention_bias=None,
         vocab_path=None,
+        tree_eval_type=None,
+        pause_token_id=None,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -2049,7 +2055,9 @@ class RTE(ICLMultiChoiceTaskDataset):
             split=split,
             transformer_grammar_type=transformer_grammar_type,
             generate_TG_attention_bias=generate_TG_attention_bias,
-            vocab_path=vocab_path
+            vocab_path=vocab_path,
+            tree_eval_type=tree_eval_type,
+            pause_token_id=pause_token_id,
         )
     
     def load_local_datasets(self):

@@ -45,6 +45,8 @@ def build_downstream_evaluator(
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
     task_kwargs["transformer_grammar_type"] = train_config.model.transformer_grammar_type
     task_kwargs["pause_token_id"] = train_config.model.pause_token_id
+    if train_config.finetune_task is not None:
+        task_kwargs["shots_num"] = 0
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
     data_config = eval_cfg.data
     if is_unit_test:
