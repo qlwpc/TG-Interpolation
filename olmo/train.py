@@ -1054,8 +1054,25 @@ class Trainer:
                     cont_str_len = batch["cont_str_len"][idx].item()
                     cont_byte_len = batch["cont_byte_len"][idx].item()
 
-                    past_input = batch["input_ids"][idx, :ctx_len - 1]
-                    eval_input_ids = batch["continuation"][idx, :cont_len]
+                    # Force terminal-only format regardless of grammar type.
+                    # Beam search will introduce NT structure during decoding.
+                    past_input_raw = batch["input_ids"][idx, :ctx_len - 1]
+                    past_input = torch.from_numpy(
+                        vocab.convert_treenpy_to_terminal(past_input_raw.cpu().numpy())
+                    ).long()
+
+                    eval_raw = batch["continuation"][idx, :cont_len]
+                    eval_input_ids = torch.from_numpy(
+                        vocab.convert_treenpy_to_terminal(eval_raw.cpu().numpy())
+                    ).long()
+                    cont_len = len(eval_input_ids)
+
+                    # Recompute string lengths from terminal format for
+                    # correct len_norm / ce_loss / bpb normalization.
+                    dataset = evaluator.eval_loader.dataset
+                    term_cont_str = dataset.token_decode(eval_input_ids.tolist())
+                    cont_str_len = len(term_cont_str) - 1
+                    cont_byte_len = len(term_cont_str[1:].encode("utf-8"))
 
                     max_length = len(past_input) + 100 * cont_len
 
