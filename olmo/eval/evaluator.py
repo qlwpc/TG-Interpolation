@@ -108,12 +108,8 @@ class Evaluator:
             # assert isinstance(self.eval_metric, TGPerplexityDocumentLevelMetric)
             self.eval_metric.update(batch, ce_loss)
         elif self.type == EvaluatorType.beam_search_icl:
-            doc_id, cont_id, log_likelihood, label_id = batch
-            self.eval_metric.loglikelihoods.append(
-                torch.Tensor((doc_id, cont_id, log_likelihood))
-            )
-            self.eval_metric.labels.append(
-                torch.LongTensor((doc_id, cont_id, label_id))
-            )
+            doc_id, cont_id, log_likelihood, label_id, cont_str_len, cont_byte_len = batch
+            self.eval_metric.update(doc_id, cont_id, log_likelihood, label_id,
+                                    cont_str_len, cont_byte_len)
         else:
             raise ValueError(f"Unexpected evaluator type '{self.type}'")

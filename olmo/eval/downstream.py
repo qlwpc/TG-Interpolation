@@ -198,6 +198,53 @@ class ICLMetric(Metric):
         return score_dict
 
 
+class BeamSearchICLMetric(ICLMetric):
+    """ICL metric for beam-search-based evaluation.
+
+    Inherits ``compute()`` and state from :class:`ICLMetric`, but overrides
+    ``update()`` to accept a pre-computed log-likelihood scalar instead of
+    deriving it from batch + raw logits.
+
+    Supports all metric types: ``acc``, ``f1``, ``len_norm``, ``ce_loss``, ``bpb``.
+    """
+
+    def __init__(
+        self,
+        metric_type: str = "acc",
+        doc_group: Optional[List[str]] = None,
+    ) -> None:
+        Metric.__init__(self, sync_on_compute=True)
+        self.metric_type = metric_type
+        self.tree_eval_type = None
+        self.doc_group = doc_group
+        self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
+        self.add_state("labels", default=[], dist_reduce_fx=None)
+
+    def update(
+        self,
+        doc_id: int,
+        cont_id: int,
+        log_likelihood: float,
+        label_id: int,
+        cont_str_len: Optional[int] = None,
+        cont_byte_len: Optional[int] = None,
+    ) -> None:
+        # Apply same normalizations as ICLMetric.update()
+        if self.metric_type == "len_norm" and cont_str_len is not None:
+            log_likelihood = log_likelihood / cont_str_len
+        elif self.metric_type == "ce_loss" and cont_str_len is not None:
+            log_likelihood = -log_likelihood / cont_str_len
+        elif self.metric_type == "bpb" and cont_byte_len is not None:
+            log_likelihood = -log_likelihood / cont_byte_len * LOG_2_OF_E
+
+        self.loglikelihoods.append(
+            torch.Tensor((doc_id, cont_id, log_likelihood))
+        )
+        self.labels.append(
+            torch.LongTensor((doc_id, cont_id, label_id))
+        )
+
+
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     """Only supports zero-shot for now."""
 
@@ -558,7 +605,10 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def token_encode(self, string: str) -> List[int]:
         ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
-        ids = self.vocab.convert_treenpy_to_TG(ids)
+        if self.transformer_grammar_type[:5] != "pause":
+            ids = self.vocab.convert_treenpy_to_TG(ids)
+        else:
+            ids = self.vocab.convert_treenpy_to_terminal(ids)
         return ids.tolist()
 
     def token_decode(self, tokens: List[int]) -> str:
