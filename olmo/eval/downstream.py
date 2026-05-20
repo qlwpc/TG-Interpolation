@@ -42,10 +42,12 @@ class ICLMetric(Metric):
         # self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
+        self.add_state("loglikelihoods_term", default=[], dist_reduce_fx=None)
 
     def reset(self):
         self.loglikelihoods = []
         self.labels = []
+        self.loglikelihoods_term = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
         lm_logits = F.log_softmax(lm_logits, dim=-1, dtype=torch.float32)
@@ -65,14 +67,20 @@ class ICLMetric(Metric):
             cont_mask = None
             if "cont_mask" in batch:
                 cont_mask = batch["cont_mask"][idx][: batch["cont_len"][idx]]
-            if self.tree_eval_type=="terminal":
-                cont_tokens_seq = cont_tokens.squeeze()
-                mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+
+            # Always compute terminal mask for decomposition
+            cont_tokens_seq = cont_tokens.squeeze()
+            term_mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+
+            # Compute terminal-only log-likelihood BEFORE any mask is applied
+            lm_log_likelihood_term = (lm_log_likelihood * term_mask.float()).sum()
+
+            if self.tree_eval_type == "terminal":
                 if cont_mask is None:
-                    cont_mask = mask
+                    cont_mask = term_mask
                 else:
-                    cont_mask *= mask
-            
+                    cont_mask *= term_mask
+
             if cont_mask is not None:
                 lm_log_likelihood *= cont_mask
 
@@ -107,6 +115,21 @@ class ICLMetric(Metric):
                 )
             else:
                 raise ValueError(self.metric_type)
+
+            # Store terminal-only score (same normalization as full score)
+            if hasattr(self, 'loglikelihoods_term'):
+                if self.metric_type in ("len_norm", "ce_loss"):
+                    term_log_likelihood = lm_log_likelihood_term / batch["cont_str_len"][idx]
+                    if self.metric_type == "ce_loss":
+                        term_log_likelihood = -term_log_likelihood
+                elif self.metric_type == "bpb":
+                    term_log_likelihood = -lm_log_likelihood_term / batch["cont_byte_len"][idx] * LOG_2_OF_E
+                else:
+                    term_log_likelihood = lm_log_likelihood_term
+
+                self.loglikelihoods_term.append(
+                    torch.Tensor((doc_id, cont_id, term_log_likelihood)).to(batch["continuation"][idx].device)
+                )
 
             # because metric states cannot be dict/list of tuples, store this tuple as tensor: (doc_id, cont_id, metric_state)
             self.loglikelihoods.append(
@@ -243,6 +266,94 @@ class BeamSearchICLMetric(ICLMetric):
         self.labels.append(
             torch.LongTensor((doc_id, cont_id, label_id))
         )
+
+
+class DecomposedICLMetric(ICLMetric):
+    """ICLMetric that records both full and terminal-only scores per choice.
+
+    Used to quantify non-terminal noise in MC evaluation.
+    ``compute()`` returns a dict with ``_`` (full accuracy), ``_term``
+    (terminal-only accuracy), and flip statistics.
+    """
+
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default", doc_group=None):
+        super().__init__(metric_type=metric_type, vocab_path=vocab_path,
+                         tree_eval_type=tree_eval_type, doc_group=doc_group)
+
+    def compute(self):
+        # Get standard accuracy from parent
+        full_result = super().compute()
+
+        # Rebuild terminal-only rankings
+        loglikelihood_dict_term = {}
+        for doc_id, cont_id, loglikelihood in self.loglikelihoods_term:
+            d = int(doc_id.item())
+            c = int(cont_id.item())
+            if d not in loglikelihood_dict_term:
+                loglikelihood_dict_term[d] = {}
+            loglikelihood_dict_term[d][c] = loglikelihood
+
+        # Rebuild full rankings from parent state
+        loglikelihood_dict_full = {}
+        for doc_id, cont_id, loglikelihood in self.loglikelihoods:
+            d = int(doc_id.item())
+            c = int(cont_id.item())
+            if d not in loglikelihood_dict_full:
+                loglikelihood_dict_full[d] = {}
+            loglikelihood_dict_full[d][c] = loglikelihood
+
+        # Build label dict
+        label_dict = {}
+        for doc_id, cont_id, label_id in self.labels:
+            d = doc_id.item()
+            if d not in label_dict:
+                label_dict[d] = set()
+            label_dict[d].add(label_id.item())
+
+        # Compare rankings
+        correct_term = 0
+        n_flips = 0
+        n_flip_to_correct = 0
+        n_flip_to_wrong = 0
+        total = 0
+
+        for doc_id in loglikelihood_dict_full:
+            if doc_id not in loglikelihood_dict_term or doc_id not in label_dict:
+                continue
+            full_choices = loglikelihood_dict_full[doc_id]
+            term_choices = loglikelihood_dict_term[doc_id]
+            if len(full_choices) != len(term_choices):
+                continue
+
+            full_best = max(full_choices, key=full_choices.get)
+            term_best = max(term_choices, key=term_choices.get)
+            label = next(iter(label_dict[doc_id]))
+
+            full_correct = (full_best == label)
+            term_correct = (term_best == label)
+            flipped = (full_best != term_best)
+
+            if term_correct:
+                correct_term += 1
+            total += 1
+            if flipped:
+                n_flips += 1
+                if term_correct and not full_correct:
+                    n_flip_to_correct += 1
+                if full_correct and not term_correct:
+                    n_flip_to_wrong += 1
+
+        acc_full = full_result.get("_", 0.0)
+        acc_term = correct_term / total if total > 0 else 0.0
+        flip_rate = n_flips / total if total > 0 else 0.0
+
+        result = {"_": acc_full}
+        result["_term"] = acc_term
+        result["_flip_rate"] = flip_rate
+        result["_flip_to_correct"] = n_flip_to_correct / total if total > 0 else 0.0
+        result["_flip_to_wrong"] = n_flip_to_wrong / total if total > 0 else 0.0
+        result["_total"] = float(total)
+        return result
 
 
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
@@ -3834,6 +3945,14 @@ label_to_task_map = {
     "openbook_qa_term": (OpenBookQA, {"tree_eval_type": "terminal"}),
     "mmlu_term": (MMLU, {"dataset_path": "cais/mmlu", "tree_eval_type": "terminal"}),
     "mmluredux_term": (MMLU, {"dataset_path": "edinburgh-dawg/mmlu-redux-2.0", "tree_eval_type": "terminal"}),
+    "hellaswag_decomp": (HellaSwag, {"tree_eval_type": "default"}),
+    "piqa_decomp": (PIQA, {"tree_eval_type": "default"}),
+    "winogrande_decomp": (WinoGrande, {"tree_eval_type": "default"}),
+    "arc_easy_decomp": (ArcEasy, {"tree_eval_type": "default"}),
+    "arc_challenge_decomp": (ArcChallenge, {"tree_eval_type": "default"}),
+    "social_iqa_decomp": (SocialIQa, {"tree_eval_type": "default"}),
+    "commonsense_qa_decomp": (CommonsenseQA, {"tree_eval_type": "default"}),
+    "openbook_qa_decomp": (OpenBookQA, {"tree_eval_type": "default"}),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),
