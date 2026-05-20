@@ -9,13 +9,15 @@ from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
 from ..data.util import SequentialDistributedSampler
-from .downstream import ICLMetric, BeamSearchICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
+from .downstream import ICLMetric, BeamSearchICLMetric, DecomposedICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
 
 __all__ = [
     "Evaluator",
     "ICLMetric",
+    "BeamSearchICLMetric",
+    "DecomposedICLMetric",
     "label_to_task_map",
     "build_downstream_evaluator",
     "build_evaluator",
@@ -109,6 +111,13 @@ def build_downstream_evaluator(
     elif eval_cfg.type == EvaluatorType.beam_search_icl:
         metric = BeamSearchICLMetric(
             metric_type=ds_eval_dataset.metric_type,
+            doc_group=ds_eval_dataset.doc_group,
+        )
+    elif eval_cfg.label.endswith("_decomp"):
+        metric = DecomposedICLMetric(
+            metric_type=ds_eval_dataset.metric_type,
+            vocab_path=train_config.tokenizer.vocabulary,
+            tree_eval_type=ds_eval_dataset.tree_eval_type,
             doc_group=ds_eval_dataset.doc_group,
         )
     else:
