@@ -31,7 +31,8 @@ class ICLMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
 
-    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None, doc_group: List[str]=None) -> None:
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None,
+                 doc_group: List[str]=None, tokenizer=None) -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
         super().__init__(sync_on_compute=True)
 
@@ -39,7 +40,7 @@ class ICLMetric(Metric):
         self.tree_eval_type = tree_eval_type
         self.doc_group = doc_group
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
-        # self.tokenizer = Tokenizer.from_file("/data/home/scyb223/run/TG-Interpolation/dataset/TG_OLMO-1B_tokenizer.json")
+        self.tokenizer = tokenizer
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
         self.add_state("loglikelihoods_term", default=[], dist_reduce_fx=None)
@@ -73,7 +74,10 @@ class ICLMetric(Metric):
             term_mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
 
             # Compute terminal-only log-likelihood BEFORE any mask is applied
-            lm_log_likelihood_term = (lm_log_likelihood * term_mask.float()).sum()
+            if cont_mask is not None:
+                lm_log_likelihood_term = (lm_log_likelihood * cont_mask).sum()
+            else:
+                lm_log_likelihood_term = (lm_log_likelihood).sum()
 
             if self.tree_eval_type == "terminal":
                 if cont_mask is None:
@@ -116,14 +120,30 @@ class ICLMetric(Metric):
             else:
                 raise ValueError(self.metric_type)
 
-            # Store terminal-only score (same normalization as full score)
+            # Store terminal-only score.
+            # IMPORTANT: normalize by terminal-only string/byte lengths,
+            # NOT the full string lengths (which include non-terminals).
             if hasattr(self, 'loglikelihoods_term'):
-                if self.metric_type in ("len_norm", "ce_loss"):
-                    term_log_likelihood = lm_log_likelihood_term / batch["cont_str_len"][idx]
-                    if self.metric_type == "ce_loss":
-                        term_log_likelihood = -term_log_likelihood
-                elif self.metric_type == "bpb":
-                    term_log_likelihood = -lm_log_likelihood_term / batch["cont_byte_len"][idx] * LOG_2_OF_E
+                if self.metric_type in ("len_norm", "ce_loss", "bpb"):
+                    # Decode terminal-only continuation to get correct lengths
+                    term_cont_ids = cont_tokens_seq[term_mask].tolist()
+                    if self.tokenizer is not None and len(term_cont_ids) > 0:
+                        term_cont_str = self.tokenizer.decode(term_cont_ids)
+                        cont_str_len_term = len(term_cont_str) - 1  # leading blank
+                        cont_byte_len_term = len(term_cont_str[1:].encode("utf-8"))
+                    else:
+                        # Fallback: use full lengths (old behavior)
+                        cont_str_len_term = batch["cont_str_len"][idx]
+                        cont_byte_len_term = batch["cont_byte_len"][idx]
+
+                    if self.metric_type in ("len_norm", "ce_loss"):
+                        div = cont_str_len_term if cont_str_len_term > 0 else 1
+                        term_log_likelihood = lm_log_likelihood_term / div
+                        if self.metric_type == "ce_loss":
+                            term_log_likelihood = -term_log_likelihood
+                    else:  # bpb
+                        div = cont_byte_len_term if cont_byte_len_term > 0 else 1
+                        term_log_likelihood = -lm_log_likelihood_term / div * LOG_2_OF_E
                 else:
                     term_log_likelihood = lm_log_likelihood_term
 
@@ -276,9 +296,11 @@ class DecomposedICLMetric(ICLMetric):
     (terminal-only accuracy), and flip statistics.
     """
 
-    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default", doc_group=None):
+    def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default",
+                 doc_group=None, tokenizer=None):
         super().__init__(metric_type=metric_type, vocab_path=vocab_path,
-                         tree_eval_type=tree_eval_type, doc_group=doc_group)
+                         tree_eval_type=tree_eval_type, doc_group=doc_group,
+                         tokenizer=tokenizer)
 
     def compute(self):
         # Get standard accuracy from parent
