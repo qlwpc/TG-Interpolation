@@ -119,6 +119,7 @@ def build_downstream_evaluator(
             vocab_path=train_config.tokenizer.vocabulary,
             tree_eval_type=ds_eval_dataset.tree_eval_type,
             doc_group=ds_eval_dataset.doc_group,
+            tokenizer=tokenizer,
         )
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type, 
