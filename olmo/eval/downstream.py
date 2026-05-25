@@ -1647,10 +1647,11 @@ class BLiMPMetric(Metric):
 
 
         ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
+        actual_batch = ce_loss.shape[0]
         if self.SENT_SIZE==1:
-            self.loglikelihoods[sent_id : sent_id + self.device_eval_batch_size] = ce_loss
+            self.loglikelihoods[sent_id : sent_id + actual_batch] = ce_loss
         else:
-            self.loglikelihoods[sent_id, sample_id : sample_id + self.device_eval_batch_size] = ce_loss
+            self.loglikelihoods[sent_id, sample_id : sample_id + actual_batch] = ce_loss
         
         # self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
         # self.cur_batch += self.device_eval_batch_size
