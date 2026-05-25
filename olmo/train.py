@@ -261,6 +261,8 @@ class Trainer:
 
     @property
     def max_epochs(self) -> int:
+        if self.batches_per_epoch == 0:
+            return 0
         return math.ceil(self.max_steps / self.batches_per_epoch)
 
     @property
