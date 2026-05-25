@@ -2182,7 +2182,7 @@ class OLMo(nn.Module):
                 logprob = [beam[logprob_key] for beam in beams]
                 logprob = torch.tensor(logprob, device=self.device)
                 if tree_eval_type == "terminal":
-                    surprisal = -torch.max(logprob, dim=0).item()
+                    surprisal = -logprob.max().item()
                 else:
                     surprisal = -torch.logsumexp(logprob, dim=0).item()
                 if i==tag_start:
