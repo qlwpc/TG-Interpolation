@@ -294,13 +294,18 @@ class DecomposedICLMetric(ICLMetric):
     Used to quantify non-terminal noise in MC evaluation.
     ``compute()`` returns a dict with ``_`` (full accuracy), ``_term``
     (terminal-only accuracy), and flip statistics.
+
+    When ``save_per_example_path`` is set, ``compute()`` also writes a JSON
+    file with per-example full/term scores for post-hoc analysis
+    (e.g. depth-stratified evaluation).
     """
 
     def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type="default",
-                 doc_group=None, tokenizer=None):
+                 doc_group=None, tokenizer=None, save_per_example_path=None):
         super().__init__(metric_type=metric_type, vocab_path=vocab_path,
                          tree_eval_type=tree_eval_type, doc_group=doc_group,
                          tokenizer=tokenizer)
+        self.save_per_example_path = save_per_example_path
 
     def compute(self):
         # Get standard accuracy from parent
@@ -331,6 +336,11 @@ class DecomposedICLMetric(ICLMetric):
             if d not in label_dict:
                 label_dict[d] = set()
             label_dict[d].add(label_id.item())
+
+        # Save per-example scores for post-hoc analysis
+        if self.save_per_example_path:
+            self._save_per_example(loglikelihood_dict_full, loglikelihood_dict_term,
+                                   label_dict)
 
         # Compare rankings
         correct_term = 0
@@ -376,6 +386,28 @@ class DecomposedICLMetric(ICLMetric):
         result["_flip_to_wrong"] = n_flip_to_wrong / total if total > 0 else 0.0
         result["_total"] = float(total)
         return result
+
+    def _save_per_example(self, loglikelihood_dict_full, loglikelihood_dict_term,
+                          label_dict):
+        """Save per-example full and term scores to JSON for post-hoc analysis."""
+        import json as _json
+        per_example = []
+        for doc_id in loglikelihood_dict_full:
+            if doc_id not in loglikelihood_dict_term or doc_id not in label_dict:
+                continue
+            full_choices = loglikelihood_dict_full[doc_id]
+            term_choices = loglikelihood_dict_term[doc_id]
+            label = next(iter(label_dict[doc_id]))
+            for cont_id in full_choices:
+                per_example.append({
+                    "doc_id": doc_id,
+                    "cont_id": cont_id,
+                    "label": label,
+                    "full_score": float(full_choices.get(cont_id, float("-inf"))),
+                    "term_score": float(term_choices.get(cont_id, float("-inf"))),
+                })
+        with open(self.save_per_example_path, "w") as f:
+            _json.dump(per_example, f)
 
 
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
@@ -1347,12 +1379,14 @@ test_suite_dict = {
 
 class SyntacticGeneralizationMetric(Metric):
     def __init__(
-            self, 
-            metric_type="syntactic_generation", 
+            self,
+            metric_type="syntactic_generation",
+            tree_eval_type="default",
         ) -> None:
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
+        self.tree_eval_type = tree_eval_type
         self.map_task_dict = {}
         for key in test_suite_dict:
             self.add_state(key, default=[], dist_reduce_fx=None)
@@ -1409,24 +1443,42 @@ class SGDataset(metaclass=abc.ABCMeta):
         metric_type="SG",
         vocab_path: str = None,
         transformer_grammar_type: str = "",
+        samples_per_sent: int = 300,
+        tree_eval_type: str = "default",
+        pause_token_id: int = None,
         **kwargs
     ):
         self.task_list = ["center_embed", "center_embed_mod", "cleft", "cleft_modifier", "fgd_subject", "fgd_object", "fgd_pp", "fgd-embed3", \
             "fgd-embed4", "fgd_hierarchy", "mvrr", "mvrr_mod", "npi_orc_any", "npi_orc_ever", "npi_src_any", \
             "npi_src_ever", "npz_ambig", "npz_ambig_mod", "npz_obj", "npz_obj_mod", "number_orc", "number_prep", "number_src", \
             "reflexive_orc_fem", "reflexive_orc_masc", "reflexive_prep_fem", "reflexive_prep_masc", "reflexive_src_fem", "reflexive_src_masc", \
-            "subordination", "subordination_orc-orc", "subordination_pp-pp", "subordination_src-src",   
+            "subordination", "subordination_orc-orc", "subordination_pp-pp", "subordination_src-src",
             # "nn-nv-rpl" don't include this test
         ]
         self.dataset_path = dataset_path
         self.tokenizer = tokenizer
         self.metric_type = metric_type
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.vocab_path = vocab_path
         self.transformer_grammar_type = transformer_grammar_type
+        self.samples_per_sent = samples_per_sent
+        self.tree_eval_type = tree_eval_type
+        self.pause_token_id = pause_token_id
         self.prep_examples()
 
+    @property
+    def ispause(self):
+        if self.transformer_grammar_type[:5] == "pause":
+            numstr = self.transformer_grammar_type[5:]
+            if not numstr or numstr == "1/2" or numstr == "1/2_label":
+                return 1
+            else:
+                return int(numstr)
+        return 0
+
     def prep_examples(self):
-        self.samples : List[List[Dict[str, List]]] = [] 
+        self.samples : List[List[Dict[str, List]]] = []
+        is_gpt2 = "gpt2" in (self.vocab_path or "").lower()
         for task in self.task_list:
             # if task not in test_suite_dict["Agreement"]: continue
             with open(os.path.join(self.dataset_path, task+".json"), 'r', encoding='utf-8') as file:
@@ -1435,26 +1487,27 @@ class SGDataset(metaclass=abc.ABCMeta):
                     cur = []
                     for sent in case:
                         sent["task"] = task
-                        sent["input_ids"] = torch.LongTensor([self.vocab.bos] + self.tokenizer.encode(" " + sent["input"], add_special_tokens=False)).unsqueeze(0)
+                        tokens = self.tokenizer.encode(" " + sent["input"], add_special_tokens=False)
+                        if is_gpt2:
+                            sent["input_ids"] = torch.LongTensor([self.vocab.bos] + tokens).unsqueeze(0)
+                        else:
+                            sent["input_ids"] = torch.LongTensor(tokens).unsqueeze(0)
                         start = end = -1
                         for i,x in enumerate(sent["tag"][0]):
                             if x == 1:
                                 end = i
                                 if start == -1:
                                     start = i - 1
-                        sent["tag_start"] = start + 1  # add bos token position
-                        sent["tag_end"] = end + 1      # add bos token position
+                        bos_offset = 1 if is_gpt2 else 0
+                        sent["tag_start"] = start + bos_offset
+                        sent["tag_end"] = end + bos_offset
                         assert(sum(sent['tag'][0]) == end-start)
-                        if self.transformer_grammar_type[:5] == "pause":
-                            sent["tag"][0] = [0] + sent["tag"][0]
-                            pause_tag = sent["tag"][0] + sent["tag"][0]
-                            pause_tag[0::2] = sent["tag"][0]
-                            pause_tag[1::2] = sent["tag"][0]
-                            sent["tag"][0] = pause_tag[1:]
-                            paused_input = torch.zeros(2 * sent["input_ids"].shape[1], dtype=torch.long)
-                            paused_input[::2] = sent["input_ids"][0]
-                            paused_input[1::2] = sent["input_ids"][0] # 50260  # Special token
-                            sent["input_ids"] = paused_input.unsqueeze(0)
+                        if self.ispause:
+                            if is_gpt2:
+                                sent["tag"][0] = [0] + sent["tag"][0]
+                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.ispause)
+                            sent_paused = pause_input_ids(sent["input_ids"][0], self.pause_token_id, pause_num=self.ispause)
+                            sent["input_ids"] = sent_paused.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:
                             cur.append(sent)
                     self.samples.append(cur)
@@ -1521,14 +1574,15 @@ class BLiMPMetric(Metric):
     full_state_update: bool = False
     
     def __init__(
-            self, 
-            metric_type="BLiMP", 
+            self,
+            metric_type="BLiMP",
             dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
             vocab_path = None,
-            device_eval_batch_size = None, 
+            device_eval_batch_size = None,
             dataset_length = None,
-            samples_per_sent = 300, 
-            pair_per_task = 1000, 
+            samples_per_sent = 300,
+            pair_per_task = 1000,
+            tree_eval_type = "default",
         ) -> None:
         super().__init__(sync_on_compute=True)
 
@@ -1536,9 +1590,10 @@ class BLiMPMetric(Metric):
         self.task_dict = BLiMP_TASK_DICT
         self.task_list = BLiMP_TASK_LIST
         self.pair_per_task = pair_per_task
-        self.device_eval_batch_size = device_eval_batch_size 
+        self.device_eval_batch_size = device_eval_batch_size
         self.dataset_length = dataset_length
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.tree_eval_type = tree_eval_type
 
         if dataset_name[:8] == "terminal" or dataset_name[:5] == "pause":
             self.SENT_SIZE = 1
@@ -1552,6 +1607,11 @@ class BLiMPMetric(Metric):
             self.loglikelihoods = torch.zeros((self.dataset_length), dtype=torch.float32, device=self.device)
         else:
             self.loglikelihoods = torch.zeros((self.dataset_length//self.SENT_SIZE, self.SENT_SIZE), dtype=torch.float32, device=self.device)
+
+    def _get_terminal_mask(self, labels):
+        """Return float mask: 1.0 for terminal tokens, 0.0 for non-terminals."""
+        mask = (self.vocab.opening_non_terminals[0] > labels) | (labels > self.vocab.closing_non_terminals[1])
+        return mask.float()
 
     def update(self, batch: Dict[str, Any], lm_logits:torch.Tensor):
         logits_for_loss = lm_logits[..., :-1, :].to(dtype=torch.float32).contiguous()
@@ -1577,12 +1637,15 @@ class BLiMPMetric(Metric):
         labels = labels.view(-1)
         ce_loss = F.cross_entropy(
             logits_for_loss, labels, ignore_index=self.vocab.pad, reduction="none")
-        
+
+        if self.tree_eval_type == "terminal":
+            ce_loss = ce_loss * self._get_terminal_mask(labels)
+
         # for sent_id, loglikelihood in zip(batch["sent_id"], ce_loss):
         sample_id = batch["sent_id"] % self.SENT_SIZE
         sent_id = batch["sent_id"] // self.SENT_SIZE
-        
-        
+
+
         ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
         if self.SENT_SIZE==1:
             self.loglikelihoods[sent_id : sent_id + self.device_eval_batch_size] = ce_loss
@@ -1648,17 +1711,22 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         samples_per_sent: int = 300,
         pair_per_task: int = 1000,
         pause_token_id: int = None,
+        tree_eval_type: str = "default",
     ):
 
         super().__init__()
         self.tokenizer = tokenizer
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.vocab_path = vocab_path
         self.dataset_path = dataset_path
         self.metric_type = metric_type
         self.task_list = BLiMP_TASK_LIST
         self.batch_size = device_eval_batch_size
         self.transformer_grammar_type = transformer_grammar_type
         self.pause_token_id = pause_token_id
+        self.tree_eval_type = tree_eval_type
+
+        self.is_qwen3 = "qwen3" in (vocab_path or "").lower()
 
         if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.SENT_SIZE = 1
@@ -1674,6 +1742,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             self.dataset_name = "tree_300"
         else:
             self.dataset_name = "tg_300"
+        # Qwen3: all grammar types load from tree_300_qwen (tree format), then convert in _convert_sequence
+        if self.is_qwen3:
+            self.dataset_name = "tree_300_qwen"
         self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
         self.input_len = self.dataset.shape[1]
         self.generate_TG_attention_bias = generate_TG_attention_bias
@@ -1698,7 +1769,13 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     def _convert_sequence(self, input_ids):
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
-        if self.transformer_grammar_type == "tree_noont":
+        if self.is_qwen3 and self.transformer_grammar_type in ("tg", "tgtree"):
+            # Qwen3 data is tree format; convert to TG for tg/tgtree grammar
+            input_ids = self.vocab.convert_treenpy_to_TG(input_ids)
+        elif self.is_qwen3 and (self.transformer_grammar_type[:8] == "terminal" or self.transformer_grammar_type[:5] == "pause"):
+            # Qwen3 data is tree format; convert to terminal for terminal/pause grammar
+            input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+        elif self.transformer_grammar_type == "tree_noont":
             input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
         elif self.transformer_grammar_type == "tree_compress":
             input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
@@ -1707,8 +1784,12 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         return input_ids
 
     def __getitem__(self, index):
-        input_ids = self.dataset[index // self.dataset.shape[1], index % self.dataset.shape[1]].copy()
+        task_idx = index // self.TASK_SIZE
+        sample_idx = index % self.TASK_SIZE
+        input_ids = self.dataset[task_idx, sample_idx].copy()
         if self.ispause:
+            if self.is_qwen3:
+                input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.ispause)
         else:
             input_ids = self._convert_sequence(input_ids)

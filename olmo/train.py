@@ -1014,6 +1014,9 @@ class Trainer:
     def SG_eval_step(self, batch: List[Dict[str, Any]], evaluator: Evaluator) -> None:
         score_dict = {}
         task_name = batch[0]["task"]
+        dataset = evaluator.eval_loader.dataset
+        beam_size = getattr(dataset, "samples_per_sent", 300)
+        tree_eval_type = getattr(dataset, "tree_eval_type", "default")
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
@@ -1028,15 +1031,17 @@ class Trainer:
                             vocab=evaluator.eval_loader.dataset.vocab,
                             eval_input_ids=sent["input_ids"][0],
                             max_length = 5*sent["input_ids"].shape[1],
+                            beam_size=beam_size,
                             generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=5*sent["input_ids"].shape[1] + 10),
                             tag_start=sent["tag_start"],
                             tag_end=sent["tag_end"],
                             strategy = BeamSearchType.word_sync_dfs,
                             transformer_grammar_type = self.cfg.model.transformer_grammar_type,
+                            tree_eval_type=tree_eval_type,
                         )
-                        
+
                         score_dict[sent["condition_name"]] = surprisal
-            
+
         evaluator.update_metrics(
             task_name, score_dict
         )
