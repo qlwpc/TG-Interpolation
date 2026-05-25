@@ -143,7 +143,10 @@ def build_downstream_evaluator(
                             doc_group=ds_eval_dataset.doc_group)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
-        assert(ds_eval_dataset.SENT_SIZE % eval_batch_size == 0)
+        assert(ds_eval_dataset.SENT_SIZE % eval_batch_size == 0 or
+               ds_eval_dataset.TASK_SIZE % eval_batch_size == 0,
+               f"SENT_SIZE={ds_eval_dataset.SENT_SIZE} and TASK_SIZE={ds_eval_dataset.TASK_SIZE} "
+               f"not divisible by eval_batch_size={eval_batch_size}")
 
     evaluator = Evaluator(
         label=eval_cfg.label,
