@@ -1927,20 +1927,21 @@ class OLMo(nn.Module):
 
         return state_dict, og_keys_to_new
 
-    def word_sync_beam_search(self, 
+    def word_sync_beam_search(self,
         vocab : SentencepieceVocab,
-        eval_input_ids : Optional[torch.Tensor] = None, 
+        eval_input_ids : Optional[torch.Tensor] = None,
         max_word_steps : Optional[int] = None,
         max_length : Optional[int] = None,
         beam_size : int = 300,
         nc : Optional[int] = None,
         pc : int = 4,
-        past_input : Optional[torch.Tensor] = None, 
+        past_input : Optional[torch.Tensor] = None,
         generate_TG_bias : Optional[TG_attention_bias] = None,
         tag_start : Optional[int] = None,
         tag_end : Optional[int] = None,
         strategy : BeamSearchType = BeamSearchType.default,
         transformer_grammar_type: str = "",
+        tree_eval_type: str = "default",
     ) -> OLMoOutput | float:
         """
         Word sync beam search for the model.
@@ -2019,8 +2020,9 @@ class OLMo(nn.Module):
         start_beam = {
             "input_ids": past_input,
             "number_of_consecutive_start_NT": 0,
-            "number_of_start_NT": 0, 
+            "number_of_start_NT": 0,
             "logprob": 0,  # = -sum of loss
+            "terminal_logprob": 0,
             "attention_bias": initial_attention_bias
         }
         kv_cache = None
@@ -2101,9 +2103,9 @@ class OLMo(nn.Module):
                     if strategy == BeamSearchType.word_sync_dfs:
                         if topk_threshold and log_prob < next_beams[kn - 1]["logprob"]:
                             return
-                    
+
                     flag_next_set.add((beam_index, token_index))
-                    beam = beams[beam_index] 
+                    beam = beams[beam_index]
                     if not is_TG_input:  # case txltree
                         input = torch.tensor([token_index], dtype=beam["input_ids"].dtype)
                     else: # case TG
@@ -2111,13 +2113,19 @@ class OLMo(nn.Module):
                             input = torch.tensor([token_index, token_index], dtype=beam["input_ids"].dtype)
                         else:
                             input = torch.tensor([token_index], dtype=beam["input_ids"].dtype)
-                    
+
                     next_beam = defaultdict(float)
                     if first_step:
                         next_beam["input_ids"] = input
                     else:
                         next_beam["input_ids"] = torch.cat([beam["input_ids"], input], dim=0)
                     next_beam["logprob"] = log_prob
+                    # Terminal-only logprob: only accumulate logprob for terminal tokens
+                    token_log_prob = log_prob - beam["logprob"]
+                    if tree_eval_type == "terminal" and not vocab.is_non_terminal(token_index):
+                        next_beam["terminal_logprob"] = beam["terminal_logprob"] + token_log_prob
+                    else:
+                        next_beam["terminal_logprob"] = beam["terminal_logprob"]
                     next_beam["number_of_consecutive_start_NT"] = beam["number_of_consecutive_start_NT"]
                     next_beam["number_of_start_NT"] = beam["number_of_start_NT"]
                     if vocab.is_opening_non_terminal(token_index):
@@ -2170,9 +2178,13 @@ class OLMo(nn.Module):
             #     print(f"{tmptokenizer.decode(beams[kkk]['input_ids'].tolist(), skip_special_tokens=False)}")
             topk_threshold = False
             if i==tag_start or i==tag_end:
-                logprob = [beam["logprob"] for beam in beams]
+                logprob_key = "terminal_logprob" if tree_eval_type == "terminal" else "logprob"
+                logprob = [beam[logprob_key] for beam in beams]
                 logprob = torch.tensor(logprob, device=self.device)
-                surprisal = -torch.logsumexp(logprob, dim=0).item()
+                if tree_eval_type == "terminal":
+                    surprisal = -torch.max(logprob, dim=0).item()
+                else:
+                    surprisal = -torch.logsumexp(logprob, dim=0).item()
                 if i==tag_start:
                     start_surprisal = surprisal
                 elif i==tag_end:

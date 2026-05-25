@@ -719,6 +719,8 @@ class EvaluatorConfig(BaseConfig):
     data: DataConfig = field(default_factory=DataConfig)
     device_eval_batch_size: Optional[int] = None
     subset_num_batches: Optional[int] = None
+    samples_per_sent: Optional[int] = None
+    tree_eval_type: Optional[str] = None
 
 
 class TruncationDirection(StrEnum):

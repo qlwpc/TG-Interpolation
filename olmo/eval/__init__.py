@@ -47,6 +47,10 @@ def build_downstream_evaluator(
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
     task_kwargs["transformer_grammar_type"] = train_config.model.transformer_grammar_type
     task_kwargs["pause_token_id"] = train_config.model.pause_token_id
+    if eval_cfg.samples_per_sent is not None:
+        task_kwargs["samples_per_sent"] = eval_cfg.samples_per_sent
+    if eval_cfg.tree_eval_type is not None:
+        task_kwargs["tree_eval_type"] = eval_cfg.tree_eval_type
     if train_config.finetune_task is not None:
         task_kwargs["shots_num"] = 0
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
@@ -99,13 +103,16 @@ def build_downstream_evaluator(
             dataset_length=len(ds_eval_dataset)
         )
     elif eval_cfg.label == "syntactic_generalization":
-        metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type)
+        metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type,
+                                               tree_eval_type=getattr(ds_eval_dataset, "tree_eval_type", "default"))
     elif eval_cfg.label == "BLiMP":
         metric = BLiMPMetric(vocab_path=train_config.tokenizer.vocabulary,
-                             metric_type=ds_eval_dataset.metric_type, 
+                             metric_type=ds_eval_dataset.metric_type,
                              dataset_name=train_config.model.transformer_grammar_type,
                              device_eval_batch_size = eval_batch_size,
-                             dataset_length=len(ds_eval_dataset))
+                             dataset_length=len(ds_eval_dataset),
+                             samples_per_sent=ds_eval_dataset.SENT_SIZE,
+                             tree_eval_type=ds_eval_dataset.tree_eval_type)
     elif eval_cfg.type == EvaluatorType.rouge:
         metric = RougeMetric(tokenizer=tokenizer)
     elif eval_cfg.type == EvaluatorType.beam_search_icl:
@@ -114,12 +121,20 @@ def build_downstream_evaluator(
             doc_group=ds_eval_dataset.doc_group,
         )
     elif eval_cfg.label.endswith("_decomp"):
+        save_path = None
+        if train_config.save_folder:
+            import os as _os
+            save_path = _os.path.join(
+                train_config.save_folder,
+                f"per_example_{eval_cfg.label}.json"
+            )
         metric = DecomposedICLMetric(
             metric_type=ds_eval_dataset.metric_type,
             vocab_path=train_config.tokenizer.vocabulary,
             tree_eval_type=ds_eval_dataset.tree_eval_type,
             doc_group=ds_eval_dataset.doc_group,
             tokenizer=tokenizer,
+            save_per_example_path=save_path,
         )
     else:
         metric = ICLMetric(metric_type=ds_eval_dataset.metric_type, 
@@ -128,7 +143,7 @@ def build_downstream_evaluator(
                             doc_group=ds_eval_dataset.doc_group)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
-        assert(300 % eval_batch_size == 0)
+        assert(ds_eval_dataset.SENT_SIZE % eval_batch_size == 0)
 
     evaluator = Evaluator(
         label=eval_cfg.label,
