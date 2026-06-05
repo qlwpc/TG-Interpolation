@@ -609,7 +609,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         queries are already truncated at max length of model_ctx_len
         this acts as additional check for all types of sequences in the batch
         """
-        model_ctx_len = max_model_len or self.model_ctx_len
+        model_ctx_len = max_model_len or self.model_ctx_len * (1 + self.ispause)
         if len(tokens) > model_ctx_len:
             return tokens[-model_ctx_len :]
         else:
