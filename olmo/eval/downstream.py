@@ -738,10 +738,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def token_encode(self, string: str) -> List[int]:
         ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
-        if self.transformer_grammar_type[:5] != "pause":
-            ids = self.vocab.convert_treenpy_to_TG(ids)
-        else:
-            ids = self.vocab.convert_treenpy_to_terminal(ids)
+        ids = self.convert_grammar_input(ids)
         return ids.tolist()
 
     def token_decode(self, tokens: List[int]) -> str:
