@@ -20,7 +20,10 @@ def verify_bin_data(bin_path, tokenizer_path, sample_num=3, seq_len=100):
 
     # 使用 memmap 或 fromfile
     # tofile 保存的数据没有 header，直接按类型读取即可
-    data = np.fromfile(bin_path, dtype=np.uint16)
+    if bin_path[-4:] == ".bin":
+        data = np.fromfile(bin_path, dtype=np.uint16)
+    else:
+        data = np.load(bin_path, mmap_mode='r')
     total_tokens = len(data)
     print(f"--- 文件信息 ---")
     print(f"路径: {bin_path}")
@@ -61,8 +64,8 @@ def verify_bin_data(bin_path, tokenizer_path, sample_num=3, seq_len=100):
 
 def main():
     # 配置路径
-    BIN_FILE = "../dataset/bbc-news/processed/1/dev.bin"
-    TOKENIZER_MODEL = "../dataset/bbc-news/TG_GPT2_tokenizer.json"
+    BIN_FILE = "/home/wangpch/TG-Interpolation/dataset/bbc_qwentokens/terminal/dev.npy"
+    TOKENIZER_MODEL = "../dataset/TG_QWEN3_tokenizer.json"
     
     # 执行验证
     verify_bin_data(
