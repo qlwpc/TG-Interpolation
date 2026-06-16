@@ -1464,6 +1464,8 @@ class SGDataset(metaclass=abc.ABCMeta):
         self.samples_per_sent = samples_per_sent
         self.tree_eval_type = tree_eval_type
         self.pause_token_id = pause_token_id
+        self.sg_nc_ratio = kwargs.get("sg_nc_ratio", 1.0)
+        self.sg_pc = kwargs.get("sg_pc", 3)
         self.prep_examples()
 
     @property
@@ -1595,7 +1597,7 @@ class BLiMPMetric(Metric):
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.tree_eval_type = tree_eval_type
 
-        if dataset_name[:8] == "terminal" or dataset_name[:5] == "pause":
+        if dataset_name[:8] == "terminal" or dataset_name[:5] == "pause" or samples_per_sent==1:
             self.SENT_SIZE = 1
             self.add_state("loglikelihoods", default=torch.zeros((dataset_length), dtype=torch.float32), dist_reduce_fx="sum")
         else:
@@ -1660,10 +1662,17 @@ class BLiMPMetric(Metric):
         #    self.cur_sent += 1
 
 
-    def compute(self) -> torch.Tensor: 
+    def compute(self) -> torch.Tensor:
         cnt_dict = {}
         if self.SENT_SIZE!=1:
-            loglikelihoods = torch.logsumexp(-self.loglikelihoods, dim=1)
+            if self.tree_eval_type == "terminal":
+                # Average terminal log-probability across K parse trees.
+                # loglikelihoods stores per-tree CE losses (terminal-only when
+                # tree_eval_type=="terminal").  -mean(CE) = mean(log p).
+                loglikelihoods = -self.loglikelihoods.mean(dim=1)
+            else:
+                # Tree-marginalized probability: log(Σ p(x, y_k)).
+                loglikelihoods = torch.logsumexp(-self.loglikelihoods, dim=1)
         else:
             loglikelihoods = -self.loglikelihoods
         
@@ -1729,7 +1738,16 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
 
         self.is_qwen3 = "qwen3" in (vocab_path or "").lower()
 
-        if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
+        if self.is_qwen3:
+            if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
+                # Qwen3 terminal/pause: load tree_300 data, convert to terminal/pause
+                # via _convert_sequence.  Only 1 sample per sentence (all 300 trees
+                # convert to identical terminal sequences).  __getitem__ remaps flat
+                # indices to the first tree of each sentence group.
+                self.SENT_SIZE = 1
+            else:
+                self.SENT_SIZE = samples_per_sent
+        elif transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.SENT_SIZE = 1
         else:
             self.SENT_SIZE = samples_per_sent
@@ -1743,7 +1761,8 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             self.dataset_name = "tree_300"
         else:
             self.dataset_name = "tg_300"
-        # Qwen3: all grammar types load from tree_300_qwen (tree format), then convert in _convert_sequence
+        # Qwen3: all grammar types load from tree_300_qwen (tree format),
+        # then _convert_sequence handles format-specific conversion.
         if self.is_qwen3:
             self.dataset_name = "tree_300_qwen"
         self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
@@ -1787,7 +1806,22 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     def __getitem__(self, index):
         task_idx = index // self.TASK_SIZE
         sample_idx = index % self.TASK_SIZE
-        input_ids = self.dataset[task_idx, sample_idx].copy()
+
+        if self.is_qwen3 and self.SENT_SIZE < 300:
+            # Remap flat indices to K=SENT_SIZE trees per sentence from the
+            # tree_300_qwen data.  Data layout is 300 trees per sentence:
+            #   [Good_0×300, Bad_0×300, Good_1×300, Bad_1×300, …]
+            # We take the first K trees of each sentence group.
+            K = self.SENT_SIZE
+            pair_idx = sample_idx // (2 * K)
+            in_pair = sample_idx % (2 * K)
+            is_bad = 1 if in_pair >= K else 0
+            tree_within = in_pair % K
+            data_idx = pair_idx * 600 + is_bad * 300 + tree_within
+        else:
+            data_idx = sample_idx
+
+        input_ids = self.dataset[task_idx, data_idx].copy()
         if self.ispause:
             if self.is_qwen3:
                 input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)

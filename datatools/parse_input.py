@@ -433,6 +433,12 @@ def prepare_dataset(config:str):
         filename = f"../dataset/finewebedu-100BT/{file_pattern.replace('.','')}.txt"
         for doc in ds:
             prepared_ds.append(doc['text'])
+    elif config[:9] == "fw_edu_dl":
+        dump_name = config[10:]
+        ds = load_dataset("HuggingFaceFW/fineweb-edu", name=dump_name, split="train", streaming=True)
+        os.makedirs("../dataset/fineweb-edu/", exist_ok=True)
+        filename = f"../dataset/fineweb-edu/{dump_name}.txt"
+        return filename, ds
     elif config[:4] == "mmlu":
         ds = load_dataset("cais/mmlu", "all")
         filename = os.path.join("../dataset/mmlu/", config + ".txt")
@@ -621,37 +627,45 @@ def main(args_list=None):
         if split == "MMLUREDUX":
             result_list.extend(['MMLUREDUX' + cate for cate in MMLUCATEGORIES])
             result_list.remove(split)
-    logger.info("Received list:", result_list) # [ "CC-MAIN-2014-41"]
+    logger.info("Received list: %s", result_list)  # e.g. ["CC-MAIN-2014-41"]
     config = result_list
     for split in config:
         filename, ds = prepare_dataset(split)
-        logger.info(f"len dataset is {len(ds)}")
-        totallen = len(ds)
-        print(totallen)
         logger.info(f"start parsing {split}")
-        pbar = tqdm(total=totallen)
+        pbar = tqdm()
 
-        index = count_lines_linux_style(filename)
-        pbar.update(index)
+        start_index = count_lines_linux_style(filename)
+        if start_index > 0:
+            pbar.update(start_index)
         with open(filename, "a+") as output:
             Buffer = batch_buffer(output, pbar)
-            while index < len(ds):
-                document = ds[index]
-                # text = document['text']
-                # doc = sentparser(document)
-                # print(f"doc is {document}")
-                max_len = 450
-                doc = split_text_into_sents(document)
-                split_sents = process_doc_into_maxlen(doc, max_len=max_len)
-                # print(split_sents)
-                Buffer.append_batch(split_sents)
-                # print(f"input is {split_sents}")
-                index += 1
-                if index % 200 == 0:
-                    gc.collect()
+            try:
+                totallen = len(ds)
+                pbar.total = totallen
+                index = start_index
+                while index < totallen:
+                    document = ds[index]
+                    doc = split_text_into_sents(document)
+                    split_sents = process_doc_into_maxlen(doc, max_len=450)
+                    Buffer.append_batch(split_sents)
+                    index += 1
+                    pbar.update(1)
+                    if index % 200 == 0:
+                        gc.collect()
+            except TypeError:
+                # Streaming iterable — no len() or index access
+                import itertools
+                ds_iter = itertools.islice(ds, start_index, None)
+                for i, doc_row in enumerate(ds_iter):
+                    document = doc_row['text']
+                    doc = split_text_into_sents(document)
+                    split_sents = process_doc_into_maxlen(doc, max_len=450)
+                    Buffer.append_batch(split_sents)
+                    pbar.update(1)
+                    if (start_index + i + 1) % 200 == 0:
+                        gc.collect()
             Buffer.parse_batch()
             print("end parse")
-        index = 0
                 
     logger.info("finished")
 

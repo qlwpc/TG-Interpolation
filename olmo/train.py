@@ -1019,6 +1019,8 @@ class Trainer:
         dataset = evaluator.eval_loader.dataset
         beam_size = getattr(dataset, "samples_per_sent", 300)
         tree_eval_type = getattr(dataset, "tree_eval_type", "default")
+        sg_nc_ratio = getattr(dataset, "sg_nc_ratio", 1.0)
+        sg_pc = getattr(dataset, "sg_pc", 3)
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
@@ -1029,12 +1031,17 @@ class Trainer:
                         score_dict[sent["condition_name"]] = torch.sum(ce_loss[0] * torch.LongTensor(sent["tag"][0]).to(self.device)).item()
                         print(ce_loss[0])
                     else:
+                        term_len = sent["input_ids"].shape[1]
+                        nc = max(int(sg_nc_ratio * term_len), 5)
+                        max_len = max(3 * term_len, 10)
                         surprisal = self.dist_model.module.word_sync_beam_search(
                             vocab=evaluator.eval_loader.dataset.vocab,
                             eval_input_ids=sent["input_ids"][0],
-                            max_length = 5*sent["input_ids"].shape[1],
+                            max_length=max_len,
                             beam_size=beam_size,
-                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=5*sent["input_ids"].shape[1] + 10),
+                            nc=nc,
+                            pc=sg_pc,
+                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=max_len + 10),
                             tag_start=sent["tag_start"],
                             tag_end=sent["tag_end"],
                             strategy = BeamSearchType.word_sync_dfs,
