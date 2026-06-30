@@ -210,32 +210,135 @@ def encode_TG_string(tokenizer, input: str, string_with_POS_tags: bool = True,
     ids = np.array(tokenizer.encode(TG_str, add_special_tokens=False))
     return ids
 
-def pause_input_ids(input_ids, pause_token_id:int=None, pause_num:Union[int, str]=1):
-    if isinstance(pause_num, str):
-        number = 1
-        try:
-            number = int(pause_num)
-        except ValueError:
-            number = int(pause_num[5:])
-        pause_num = number
-    pause_ids = None
+def _parse_pause_spec(pause_num: Union[int, str]) -> "tuple[int, int]":
+    """Parse a pause specification into ``(p, q)``.
+
+    ``(p, q)`` means "insert ``p`` pause tokens after every ``q`` real tokens".
+
+    Accepted forms:
+        - int ``N``                  -> ``(N, 1)``
+        - ``"N"`` / ``"pauseN"``     -> ``(N, 1)``
+        - ``"p/q"`` / ``"pausep/q"`` -> ``(p, q)``
+
+    A trailing ``"_label"`` tag (e.g. ``"pause1/2_label"``) is tolerated.
+
+    Args:
+        pause_num: int or string pause specification.
+
+    Returns:
+        ``(p, q)`` with ``p >= 0`` and ``q >= 1``.
+
+    Raises:
+        ValueError: when the value cannot be parsed or ``q < 1``.
+    """
+    if isinstance(pause_num, (int, np.integer)):
+        p, q = int(pause_num), 1
+    else:
+        s = str(pause_num).strip()
+        if s.startswith("pause"):
+            s = s[5:]
+        if s.endswith("_label"):
+            s = s[: -len("_label")]
+        if "/" in s:
+            num_str, den_str = s.split("/", 1)
+            p, q = int(num_str), int(den_str)
+        else:
+            p, q = int(s), 1
+    if q < 1:
+        raise ValueError(f"pause denominator must be >= 1, got {q} from {pause_num!r}")
+    if p < 0:
+        raise ValueError(f"pause numerator must be >= 0, got {p} from {pause_num!r}")
+    return p, q
+
+
+def pause_input_ids(input_ids, pause_token_id: int = None, pause_num: Union[int, str] = 1):
+    """Interleave pause tokens into a 1-D token sequence.
+
+    For a spec ``(p, q)``, every block of ``q`` real tokens is followed by
+    ``p`` pause tokens. A trailing partial block (fewer than ``q`` real tokens)
+    is emitted with no pauses appended, so the expansion factor is uniform only
+    when ``len(input_ids)`` is divisible by ``q``.
+
+    Args:
+        input_ids: 1-D list / ``np.ndarray`` / ``torch.Tensor`` of real token ids.
+        pause_token_id: id placed in pause slots. When ``None``, each real token
+            is broadcast to the pause slots of its own group (used for masks)
+            instead of inserting a dedicated pause id.
+        pause_num: int ``N``, ``"N"``/``"pauseN"`` (``N`` pauses per token), or
+            ``"pausep/q"`` (``p`` pauses per ``q`` tokens).
+
+    Returns:
+        Interleaved sequence with the same type as ``input_ids``.
+
+    Raises:
+        AssertionError: when ``input_ids`` is not 1-D.
+        NotImplementedError: when ``input_ids`` type is unsupported.
+    """
+    p, q = _parse_pause_spec(pause_num)
+    n_real = len(input_ids)
     init_token = pause_token_id if pause_token_id is not None else 0
+    n_full = n_real // q          # complete (q real + p pause) blocks
+    remainder = n_real % q        # trailing real tokens, no pauses after them
+    out_len = n_full * (q + p) + remainder
+
     if isinstance(input_ids, list):
-        pause_ids = [init_token] * (len(input_ids) * (1 + pause_num))
-    elif isinstance(input_ids, np.ndarray):
-        assert len(input_ids.shape)==1
-        pause_ids = np.full((1+pause_num)*len(input_ids), init_token, dtype=input_ids.dtype)
-    elif isinstance(input_ids, torch.Tensor):
-        assert len(input_ids.shape)==1
-        pause_ids = torch.full(((1+pause_num)*len(input_ids), ), init_token, dtype=input_ids.dtype, device=input_ids.device)
-    else:
-        raise NotImplementedError(f"Unknown pause input ids type: {type(input_ids)}")
-    if pause_token_id is None:
-        for i in range(1+pause_num):
-            pause_ids[i::(1+pause_num)] = input_ids
-    else:
-        pause_ids[0::(1+pause_num)] = input_ids
-    return pause_ids
+        if pause_token_id is not None:
+            out = [init_token] * out_len
+            ri = 0
+            for b in range(n_full):
+                pos = b * (q + p)
+                for j in range(q):
+                    out[pos + j] = input_ids[ri]
+                    ri += 1
+            pos = n_full * (q + p)
+            for j in range(remainder):
+                out[pos + j] = input_ids[ri]
+                ri += 1
+            return out
+        # pause_token_id is None: broadcast each group's last real token to its pauses
+        out = []
+        for b in range(n_full):
+            base = b * q
+            out.extend(input_ids[base:base + q - 1])
+            last = input_ids[base + q - 1]
+            out.append(last)
+            out.extend([last] * p)
+        out.extend(input_ids[n_full * q:n_full * q + remainder])
+        return out
+
+    if isinstance(input_ids, np.ndarray):
+        assert len(input_ids.shape) == 1
+        if pause_token_id is not None:
+            out = np.full(out_len, init_token, dtype=input_ids.dtype)
+            if n_full > 0:
+                starts = np.arange(n_full) * (q + p)
+                real_pos = (starts[:, None] + np.arange(q)).reshape(-1)
+                out[real_pos] = input_ids[: n_full * q]
+            if remainder:
+                out[n_full * (q + p):] = input_ids[n_full * q:]
+            return out
+        repeats = np.ones(n_real, dtype=np.int64)
+        repeats[q - 1::q] += p
+        owner = np.repeat(np.arange(n_real), repeats)
+        return input_ids[owner]
+
+    if isinstance(input_ids, torch.Tensor):
+        assert len(input_ids.shape) == 1
+        device = input_ids.device
+        if pause_token_id is not None:
+            out = torch.full((out_len,), init_token, dtype=input_ids.dtype, device=device)
+            if n_full > 0:
+                starts = torch.arange(n_full, device=device) * (q + p)
+                real_pos = (starts[:, None] + torch.arange(q, device=device)).reshape(-1)
+                out[real_pos] = input_ids[: n_full * q]
+            if remainder:
+                out[n_full * (q + p):] = input_ids[n_full * q:]
+            return out
+        repeats = torch.ones(n_real, dtype=torch.long, device=device)
+        repeats[q - 1::q] += p
+        return torch.repeat_interleave(input_ids, repeats)
+
+    raise NotImplementedError(f"Unknown pause input ids type: {type(input_ids)}")
 
 class SequentialDistributedSampler(Sampler):
     def __init__(self, dataset, num_replicas=None, rank=None, 
