@@ -222,6 +222,74 @@ class TestPauseInputIds:
 
 
 # ---------------------------------------------------------------------------
+# pause_input_ids — rational "pausep/q" format (p pauses per q real tokens)
+# ---------------------------------------------------------------------------
+
+class TestPauseInputIdsRational:
+    def test_pause_1_2_numpy(self):
+        """pause1/2: 1 pause token after every 2 real tokens."""
+        arr = np.array([10, 20, 30, 40], dtype=np.int64)
+        result = pause_input_ids(arr, pause_token_id=99, pause_num="pause1/2")
+        expected = np.array([10, 20, 99, 30, 40, 99], dtype=np.int64)
+        assert np.array_equal(result, expected)
+
+    def test_pause_2_3_numpy(self):
+        """pause2/3: 2 pause tokens after every 3 real tokens."""
+        arr = np.array([1, 2, 3, 4, 5, 6], dtype=np.int64)
+        result = pause_input_ids(arr, pause_token_id=99, pause_num="pause2/3")
+        expected = np.array([1, 2, 3, 99, 99, 4, 5, 6, 99, 99], dtype=np.int64)
+        assert np.array_equal(result, expected)
+
+    def test_pause_rational_length(self):
+        """Length is n_full*(q+p) + remainder; divisible -> n*(q+p)/q."""
+        arr = np.array([1, 2, 3, 4], dtype=np.int64)  # 4 tokens, q=2 -> 2 full blocks
+        result = pause_input_ids(arr, pause_token_id=99, pause_num="pause1/2")
+        assert len(result) == 6  # 2 blocks * (2+1)
+
+    def test_pause_rational_remainder(self):
+        """A trailing partial block keeps its tokens but adds no pauses."""
+        arr = np.array([10, 20, 30], dtype=np.int64)  # q=2 -> 1 full + 1 remainder
+        result = pause_input_ids(arr, pause_token_id=99, pause_num="pause1/2")
+        expected = np.array([10, 20, 99, 30], dtype=np.int64)
+        assert np.array_equal(result, expected)
+
+    def test_pause_rational_torch(self):
+        t = torch.tensor([10, 20, 30, 40])
+        result = pause_input_ids(t, pause_token_id=99, pause_num="pause1/2")
+        expected = torch.tensor([10, 20, 99, 30, 40, 99])
+        assert torch.equal(result, expected)
+
+    def test_pause_rational_list(self):
+        result = pause_input_ids([10, 20, 30, 40], pause_token_id=99, pause_num="pause1/2")
+        assert result == [10, 20, 99, 30, 40, 99]
+
+    def test_pause_rational_label_suffix(self):
+        """A trailing '_label' tag is tolerated."""
+        arr = np.array([10, 20, 30, 40], dtype=np.int64)
+        result = pause_input_ids(arr, pause_token_id=99, pause_num="pause1/2_label")
+        expected = np.array([10, 20, 99, 30, 40, 99], dtype=np.int64)
+        assert np.array_equal(result, expected)
+
+    def test_pause_rational_matches_integer_when_q1(self):
+        """pause2 == pause2/1: both insert 2 pauses after every token."""
+        arr = np.array([10, 20], dtype=np.int64)
+        a = pause_input_ids(arr, pause_token_id=99, pause_num="pause2")
+        b = pause_input_ids(arr, pause_token_id=99, pause_num="pause2/1")
+        assert np.array_equal(a, b)
+
+    def test_pause_rational_mask_broadcast(self):
+        """pause_token_id=None broadcasts each group's last real token to pauses."""
+        arr = np.array([10, 20, 30, 40], dtype=np.int64)
+        result = pause_input_ids(arr, pause_token_id=None, pause_num="pause1/2")
+        expected = np.array([10, 20, 20, 30, 40, 40], dtype=np.int64)
+        assert np.array_equal(result, expected)
+
+    def test_pause_rational_zero_denominator_raises(self):
+        with pytest.raises(ValueError):
+            pause_input_ids(np.array([1, 2]), pause_token_id=0, pause_num="pause1/0")
+
+
+# ---------------------------------------------------------------------------
 # SequentialDistributedSampler
 # ---------------------------------------------------------------------------
 
