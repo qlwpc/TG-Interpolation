@@ -16,7 +16,7 @@ from olmo.util import load_hf_dataset, load_oe_eval_requests
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
-from ..data.util import encode_TG_string, convert_TG_format, pause_input_ids
+from ..data.util import encode_TG_string, convert_TG_format, pause_input_ids, _parse_pause_spec
 from ..data.collator import DataCollator
 from ..config import PaddingDirection
 
@@ -25,6 +25,41 @@ log = logging.getLogger(__name__)
 # Map from oe-eval metrics to metrics used here
 METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond": "pmi_dc"}
 LOG_2_OF_E = 1.44269504089
+
+
+def pause_spec_from_grammar_type(grammar_type: str) -> "tuple[int, int]":
+    """Parse a ``transformer_grammar_type`` into a rational pause spec ``(p, q)``.
+
+    ``(p, q)`` means "insert ``p`` pause tokens after every ``q`` real tokens".
+    Returns ``(0, 1)`` (no pauses) for non-``pause`` grammar types.
+
+    A bare ``"pause"`` (no number) is treated as ``(1, 1)``.
+    """
+    if grammar_type[:5] == "pause":
+        spec = grammar_type if grammar_type != "pause" else "pause1"
+        return _parse_pause_spec(spec)
+    return (0, 1)
+
+
+def pause_expanded_len(real_len: int, p: int, q: int) -> int:
+    """Length of ``pause_input_ids`` output for ``real_len`` real tokens, spec ``(p, q)``.
+
+    Equals ``real_len + (real_len // q) * p``: each complete block of ``q`` real
+    tokens is followed by ``p`` pauses; a trailing partial block emits no pauses.
+    This is also the expanded position of real token ``real_len`` (i.e. one past
+    the last real token's block), so it gives the split point after ``real_len``
+    real tokens regardless of divisibility.
+    """
+    return real_len + (real_len // q) * p
+
+
+def pause_trailing_trim(real_len: int, p: int, q: int) -> int:
+    """Number of trailing pause tokens after the last real token, spec ``(p, q)``.
+
+    ``p`` if the last real token completes a block (``real_len % q == 0``), else
+    ``0`` (trailing partial block emits no pauses).
+    """
+    return p if real_len % q == 0 else 0
 
 
 class ICLMetric(Metric):
@@ -440,8 +475,13 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.model_ctx_len = model_ctx_len
         self.transformer_grammar_type = transformer_grammar_type
         if self.ispause:
-            assert self.model_ctx_len % (1+self.ispause) == 0, f"model_ctx_len {self.model_ctx_len} should be divided by pause length {(1+self.ispause)}"
-            self.model_ctx_len //= (1+self.ispause)
+            # Shrink the real-token budget so the expanded (paused) length still
+            # fits model_ctx_len. For spec (p, q), expansion factor is (q+p)/q,
+            # so the real-token budget is model_ctx_len * q // (q+p). The slice-
+            # based continuation alignment (see sample build) is correct even
+            # when model_ctx_len is not divisible by (q+p), so no assert here.
+            p, q = self.pause_spec
+            self.model_ctx_len = self.model_ctx_len * q // (q + p)
         self.prompts = prompts
         self.current_prompt = None
         self.shots_num = shots_num
@@ -485,15 +525,23 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         return len(self.samples)
 
     @property
-    def ispause(self):
-        if self.transformer_grammar_type[:5]=="pause":
-            numstr = self.transformer_grammar_type[5:]
-            if numstr == "1/2" or numstr == "1/2_label":   # due to early config set, 1/2 means 1 pause token 1 normal token in total 2 tokens
-                return 1
-            else:
-                return int(numstr)
-        return 0
-    
+    def pause_spec(self) -> "tuple[int, int]":
+        """Rational pause spec ``(p, q)`` parsed from ``transformer_grammar_type``.
+
+        ``(0, 1)`` means no pauses (non-pause grammar types).
+        """
+        return pause_spec_from_grammar_type(self.transformer_grammar_type)
+
+    @property
+    def ispause(self) -> int:
+        """Number of pause tokens per block (``p``); 0 means no pauses.
+
+        Used as a truthy flag (``if self.ispause:``). For the rational spec
+        ``(p, q)``, pass ``self.transformer_grammar_type`` (not this int) as
+        ``pause_num`` to :func:`pause_input_ids`.
+        """
+        return self.pause_spec[0]
+
     def convert_grammar_input(self, input_ids, grammar_type=None) -> List[int]:
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
@@ -593,12 +641,42 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
 
                     if self.ispause:
-                        query = pause_input_ids(query, self.pause_token_id, pause_num=self.ispause)
-                        dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=self.ispause)
-                        continuation = pause_input_ids(continuation, self.pause_token_id, pause_num=self.ispause)[:-self.ispause]
-                        actual_ctx_len *= 1 + self.ispause
+                        # Rational pause spec (p, q): insert p pauses after every q real
+                        # tokens. Pause the full ctx+cont query as one sequence so the
+                        # layout matches training. The scored continuation must be a
+                        # contiguous slice of the expanded query: logits are gathered at
+                        # [ctx_len-1 : ctx_len+cont_len-1] (see ICLMetric.update), so
+                        # continuation[k] must equal query[ctx_len+k].
+                        #
+                        # split = expanded position of the first continuation real token
+                        #   = pause_expanded_len(ctx_real) = ctx_real + (ctx_real//q)*p,
+                        # which is correct for ANY ctx_real (divisible or not), because
+                        # pause_input_ids places real token i at position i + (i//q)*p.
+                        # Trailing pauses after the last real token exist only when the
+                        # full real length completes a block (n % q == 0); trim them so
+                        # the model is not scored on predicting a trailing pause.
+                        p, q = self.pause_spec
+                        gtype = self.transformer_grammar_type
+                        ctx_real = actual_ctx_len                       # len(ctx) in real tokens
+                        cont_real = len(continuation)
+                        query = pause_input_ids(query, self.pause_token_id, pause_num=gtype)
+                        dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=gtype)
+                        split = pause_expanded_len(ctx_real, p, q)
+                        trim = pause_trailing_trim(ctx_real + cont_real, p, q)
+                        continuation = query[split : len(query) - trim]
+                        actual_ctx_len = split
                         if mask is not None:
-                            mask = pause_input_ids(mask, pause_token_id=None, pause_num=self.ispause)[:-self.ispause]
+                            # mask is aligned to the real continuation (length cont_real).
+                            # To align it with continuation = query[split:end] we must
+                            # expand it on the SAME block grid as the full query: prepend
+                            # ctx_real zeros (ctx tokens are not continuation), pause with
+                            # None (broadcasts each real's mask value to its pause slots),
+                            # then slice [split:end]. This stays correct when ctx_real is
+                            # not divisible by q, because the boundary block is shared with
+                            # the query expansion above.
+                            full_mask = [0] * ctx_real + list(mask)
+                            full_mask = pause_input_ids(full_mask, pause_token_id=None, pause_num=gtype)
+                            mask = full_mask[split : len(query) - trim]
 
                     self.samples.append(
                         {
@@ -641,7 +719,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         queries are already truncated at max length of model_ctx_len
         this acts as additional check for all types of sequences in the batch
         """
-        model_ctx_len = max_model_len or self.model_ctx_len * (1 + self.ispause)
+        # model_ctx_len is the real-token budget; expand it to the paused length.
+        p, q = self.pause_spec
+        model_ctx_len = max_model_len or pause_expanded_len(self.model_ctx_len, p, q)
         if len(tokens) > model_ctx_len:
             return tokens[-model_ctx_len :]
         else:
@@ -699,7 +779,8 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     input_ids = np.array(input_ids)
                 input_ids = self.vocab.random_shuffle_tree(input_ids)
                 input_ids = input_ids.tolist()
-            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=self.model_ctx_len * (1 + self.ispause)))
+            p, q = self.pause_spec
+            input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=pause_expanded_len(self.model_ctx_len, p, q)))
             queries.append(input_ids)
 
             label_mask = None
@@ -835,13 +916,10 @@ class XsumDataset(metaclass=abc.ABCMeta):
         self.pause_token_id = pause_token_id
 
         if transformer_grammar_type[:5] == "pause":
-            numstr = transformer_grammar_type[5:]
-            if numstr == "1/2" or numstr == "1/2_label":
-                pause_num = 1
-            else:
-                pause_num = int(numstr) if numstr else 1
-            self.model_ctx_len //= (1 + pause_num)
-            self.ispause = pause_num
+            # Shrink the real-token budget so the expanded (paused) length still
+            # fits model_ctx_len. For spec (p, q), expansion factor is (q+p)/q.
+            p, q = pause_spec_from_grammar_type(transformer_grammar_type)
+            self.model_ctx_len = self.model_ctx_len * q // (q + p)
             self.prompts_TG_tokens = self.vocab.convert_treenpy_to_terminal(self.prompts_TG_tokens)
         passages = []
         gold_summary = []
@@ -875,6 +953,23 @@ class XsumDataset(metaclass=abc.ABCMeta):
             self.gold_summary = [line["summary"] for line in gold_summary]
             self.train_summary = None
 
+    @property
+    def pause_spec(self) -> "tuple[int, int]":
+        """Rational pause spec ``(p, q)`` parsed from ``transformer_grammar_type``.
+
+        ``(0, 1)`` means no pauses (non-pause grammar types).
+        """
+        return pause_spec_from_grammar_type(self.transformer_grammar_type)
+
+    @property
+    def ispause(self) -> int:
+        """Number of pause tokens per block (``p``); 0 means no pauses.
+
+        Used as a truthy flag (``if self.ispause:``). For the rational spec
+        ``(p, q)``, pass ``self.transformer_grammar_type`` (not this int) as
+        ``pause_num`` to :func:`pause_input_ids`.
+        """
+        return self.pause_spec[0]
 
     def __getitem__(self, index: int) -> Dict[str, Any]:
         '''
@@ -931,7 +1026,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
             if loss_tokens is not None:
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
         elif self.transformer_grammar_type[:5] == "pause":
-            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.ispause)
+            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.transformer_grammar_type)
         elif self.generate_TG_attention_bias is not None:
             input_ids = torch.tensor(input_ids)
             attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
@@ -1466,14 +1561,22 @@ class SGDataset(metaclass=abc.ABCMeta):
         self.prep_examples()
 
     @property
-    def ispause(self):
-        if self.transformer_grammar_type[:5] == "pause":
-            numstr = self.transformer_grammar_type[5:]
-            if not numstr or numstr == "1/2" or numstr == "1/2_label":
-                return 1
-            else:
-                return int(numstr)
-        return 0
+    def pause_spec(self) -> "tuple[int, int]":
+        """Rational pause spec ``(p, q)`` parsed from ``transformer_grammar_type``.
+
+        ``(0, 1)`` means no pauses (non-pause grammar types).
+        """
+        return pause_spec_from_grammar_type(self.transformer_grammar_type)
+
+    @property
+    def ispause(self) -> int:
+        """Number of pause tokens per block (``p``); 0 means no pauses.
+
+        Used as a truthy flag (``if self.ispause:``). For the rational spec
+        ``(p, q)``, pass ``self.transformer_grammar_type`` (not this int) as
+        ``pause_num`` to :func:`pause_input_ids`.
+        """
+        return self.pause_spec[0]
 
     def prep_examples(self):
         self.samples : List[List[Dict[str, List]]] = []
@@ -1504,8 +1607,8 @@ class SGDataset(metaclass=abc.ABCMeta):
                         if self.ispause:
                             if is_gpt2:
                                 sent["tag"][0] = [0] + sent["tag"][0]
-                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.ispause)
-                            sent_paused = pause_input_ids(sent["input_ids"][0], self.pause_token_id, pause_num=self.ispause)
+                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.transformer_grammar_type)
+                            sent_paused = pause_input_ids(sent["input_ids"][0], self.pause_token_id, pause_num=self.transformer_grammar_type)
                             sent["input_ids"] = sent_paused.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:
                             cur.append(sent)
@@ -1771,14 +1874,22 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         log.info(f"Loading Dataset finished")
 
     @property
-    def ispause(self):
-        if self.transformer_grammar_type[:5] == "pause":
-            numstr = self.transformer_grammar_type[5:]
-            if not numstr or numstr == "1/2" or numstr == "1/2_label":
-                return 1
-            else:
-                return int(numstr)
-        return 0
+    def pause_spec(self) -> "tuple[int, int]":
+        """Rational pause spec ``(p, q)`` parsed from ``transformer_grammar_type``.
+
+        ``(0, 1)`` means no pauses (non-pause grammar types).
+        """
+        return pause_spec_from_grammar_type(self.transformer_grammar_type)
+
+    @property
+    def ispause(self) -> int:
+        """Number of pause tokens per block (``p``); 0 means no pauses.
+
+        Used as a truthy flag (``if self.ispause:``). For the rational spec
+        ``(p, q)``, pass ``self.transformer_grammar_type`` (not this int) as
+        ``pause_num`` to :func:`pause_input_ids`.
+        """
+        return self.pause_spec[0]
 
     def prep_examples(self):
         return
@@ -1822,7 +1933,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         if self.ispause:
             if self.is_qwen3:
                 input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
-            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.ispause)
+            input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.transformer_grammar_type)
         else:
             input_ids = self._convert_sequence(input_ids)
         return {
@@ -2799,12 +2910,25 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                 cont_str_len = len(self.token_decode(continuation)) - 1
 
                 if self.ispause:
-                    query = pause_input_ids(query, self.pause_token_id, pause_num=self.ispause)
-                    dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=self.ispause)
-                    continuation = pause_input_ids(continuation, self.pause_token_id, pause_num=self.ispause)[:-self.ispause]
-                    actual_ctx_len *= 1 + self.ispause
+                    # See ICLMultiChoiceTaskDataset for the alignment rationale:
+                    # pause the full ctx+cont query, then derive the scored
+                    # continuation as a contiguous slice query[split:end] so the
+                    # logits gather at [ctx_len-1 : ctx_len+cont_len-1] aligns for
+                    # any divisibility of ctx_real by q.
+                    p, q = self.pause_spec
+                    gtype = self.transformer_grammar_type
+                    ctx_real = actual_ctx_len
+                    cont_real = len(continuation)
+                    query = pause_input_ids(query, self.pause_token_id, pause_num=gtype)
+                    dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=gtype)
+                    split = pause_expanded_len(ctx_real, p, q)
+                    trim = pause_trailing_trim(ctx_real + cont_real, p, q)
+                    continuation = query[split : len(query) - trim]
+                    actual_ctx_len = split
                     if mask is not None:
-                        mask = pause_input_ids(mask, pause_token_id=None, pause_num=self.ispause)[:-self.ispause]
+                        full_mask = [0] * ctx_real + list(mask)
+                        full_mask = pause_input_ids(full_mask, pause_token_id=None, pause_num=gtype)
+                        mask = full_mask[split : len(query) - trim]
 
                 # form a sample
                 self.samples.append(
