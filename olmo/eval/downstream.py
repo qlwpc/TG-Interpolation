@@ -16,7 +16,14 @@ from olmo.util import load_hf_dataset, load_oe_eval_requests
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
-from ..data.util import encode_TG_string, convert_TG_format, pause_input_ids, _parse_pause_spec
+from ..data.util import (
+    encode_TG_string,
+    convert_TG_format,
+    pause_input_ids,
+    pause_spec_from_grammar_type,
+    pause_expanded_len,
+    pause_trailing_trim,
+)
 from ..data.collator import DataCollator
 from ..config import PaddingDirection
 
@@ -25,41 +32,6 @@ log = logging.getLogger(__name__)
 # Map from oe-eval metrics to metrics used here
 METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond": "pmi_dc"}
 LOG_2_OF_E = 1.44269504089
-
-
-def pause_spec_from_grammar_type(grammar_type: str) -> "tuple[int, int]":
-    """Parse a ``transformer_grammar_type`` into a rational pause spec ``(p, q)``.
-
-    ``(p, q)`` means "insert ``p`` pause tokens after every ``q`` real tokens".
-    Returns ``(0, 1)`` (no pauses) for non-``pause`` grammar types.
-
-    A bare ``"pause"`` (no number) is treated as ``(1, 1)``.
-    """
-    if grammar_type[:5] == "pause":
-        spec = grammar_type if grammar_type != "pause" else "pause1"
-        return _parse_pause_spec(spec)
-    return (0, 1)
-
-
-def pause_expanded_len(real_len: int, p: int, q: int) -> int:
-    """Length of ``pause_input_ids`` output for ``real_len`` real tokens, spec ``(p, q)``.
-
-    Equals ``real_len + (real_len // q) * p``: each complete block of ``q`` real
-    tokens is followed by ``p`` pauses; a trailing partial block emits no pauses.
-    This is also the expanded position of real token ``real_len`` (i.e. one past
-    the last real token's block), so it gives the split point after ``real_len``
-    real tokens regardless of divisibility.
-    """
-    return real_len + (real_len // q) * p
-
-
-def pause_trailing_trim(real_len: int, p: int, q: int) -> int:
-    """Number of trailing pause tokens after the last real token, spec ``(p, q)``.
-
-    ``p`` if the last real token completes a block (``real_len % q == 0``), else
-    ``0`` (trailing partial block emits no pauses).
-    """
-    return p if real_len % q == 0 else 0
 
 
 class ICLMetric(Metric):

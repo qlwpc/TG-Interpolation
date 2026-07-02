@@ -534,14 +534,28 @@ class ModelConfig(BaseConfig):
                     "You can't set `multi_query_attention` and `n_kv_heads` at the same time."
                 )
     @property
+    def pause_spec(self) -> "tuple[int, int]":
+        """Rational pause spec ``(p, q)``: ``p`` pauses after every ``q`` real tokens.
+
+        ``(0, 1)`` for non-``pause`` grammar types. See
+        :func:`olmo.data.util.pause_spec_from_grammar_type`.
+        """
+        # Lazy import: olmo.data.__init__ imports from olmo.config, so a module-level
+        # import here would create a cycle. Config construction is not hot path.
+        from olmo.data.util import pause_spec_from_grammar_type
+
+        return pause_spec_from_grammar_type(self.transformer_grammar_type)
+
+    @property
     def ispause(self) -> int:
-        if self.transformer_grammar_type[:5]=="pause":
-            numstr = self.transformer_grammar_type[5:]
-            if numstr == "1/2" or numstr == "1/2_label":   # due to early config set, 1/2 means 1 pause token 1 normal token in total 2 tokens
-                return 1
-            else:
-                return int(numstr)
-        return 0
+        """Number of pause tokens per block ``p``, as a truthy flag.
+
+        ``0`` for non-``pause`` grammar types. For rational specs such as
+        ``"pause1/2"`` this returns ``1`` (the numerator), preserving the
+        truthiness used by callers that only branch on "is this a pause model".
+        Use :attr:`pause_spec` for the full ``(p, q)`` when the denominator matters.
+        """
+        return self.pause_spec[0]
 
 
 class OptimizerType(StrEnum):

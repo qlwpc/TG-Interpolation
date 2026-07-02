@@ -127,9 +127,13 @@ def build_memmap_dataset(
     else:
         raise OLMoConfigurationError("One of DataConfig.paths or DataConfig.datasets is required")
     seq_length = train_config.model.max_sequence_length
-    if train_config.model.transformer_grammar_type[:5]=="pause": 
-        assert seq_length % (1+train_config.model.ispause) == 0,  f"model_ctx_len {seq_length} should be divided by pause length {(1+train_config.model.ispause)}"
-        seq_length //= 1 + train_config.model.ispause 
+    if train_config.model.transformer_grammar_type[:5] == "pause":
+        # chunk_size is a real-token budget; expand to fill max_sequence_length.
+        # Rational spec (p, q) expands by factor (q+p)/q, so the real-token budget
+        # is seq_length * q / (q+p). No divisibility assert: pause_input_ids
+        # handles a trailing partial block correctly, so any remainder is safe.
+        p, q = train_config.model.pause_spec
+        seq_length = seq_length * q // (q + p)
     return MemMapDataset(
         *paths,
         chunk_size=seq_length,

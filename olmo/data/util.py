@@ -340,6 +340,47 @@ def pause_input_ids(input_ids, pause_token_id: int = None, pause_num: Union[int,
 
     raise NotImplementedError(f"Unknown pause input ids type: {type(input_ids)}")
 
+
+def pause_spec_from_grammar_type(grammar_type: str) -> "tuple[int, int]":
+    """Parse a ``transformer_grammar_type`` into a rational pause spec ``(p, q)``.
+
+    ``(p, q)`` means "insert ``p`` pause tokens after every ``q`` real tokens".
+    Returns ``(0, 1)`` (no pauses) for non-``pause`` grammar types.
+
+    A bare ``"pause"`` (no number) is treated as ``(1, 1)``.
+    """
+    if grammar_type[:5] == "pause":
+        spec = grammar_type if grammar_type != "pause" else "pause1"
+        return _parse_pause_spec(spec)
+    return (0, 1)
+
+
+def pause_expanded_len(real_len: int, p: int, q: int) -> int:
+    """Length of ``pause_input_ids`` output for ``real_len`` real tokens, spec ``(p, q)``.
+
+    Equals ``real_len + (real_len // q) * p``: each complete block of ``q`` real
+    tokens is followed by ``p`` pauses; a trailing partial block emits no pauses.
+    This is also the expanded position of real token ``real_len`` (i.e. one past
+    the last real token's block), so it gives the split point after ``real_len``
+    real tokens regardless of divisibility.
+
+    Raises:
+        ValueError: when ``q < 1`` (would otherwise silently divide by zero).
+    """
+    if q < 1:
+        raise ValueError(f"pause denominator must be >= 1, got {q}")
+    return real_len + (real_len // q) * p
+
+
+def pause_trailing_trim(real_len: int, p: int, q: int) -> int:
+    """Number of trailing pause tokens after the last real token, spec ``(p, q)``.
+
+    ``p`` if the last real token completes a block (``real_len % q == 0``), else
+    ``0`` (trailing partial block emits no pauses).
+    """
+    return p if real_len % q == 0 else 0
+
+
 class SequentialDistributedSampler(Sampler):
     def __init__(self, dataset, num_replicas=None, rank=None, 
                  shuffle=False, drop_last=False):
