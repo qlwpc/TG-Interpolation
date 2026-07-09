@@ -341,6 +341,64 @@ def pause_input_ids(input_ids, pause_token_id: int = None, pause_num: Union[int,
     raise NotImplementedError(f"Unknown pause input ids type: {type(input_ids)}")
 
 
+def pause_label_mask(expanded_len: int, p: int, q: int) -> "np.ndarray":
+    """Boolean label mask over a ``pause_input_ids`` output of length ``expanded_len``.
+
+    Returns a 1-D ``np.bool_`` array aligned 1:1 with an expanded sequence, where
+    ``True`` marks a real-token position (contributes to the loss) and ``False``
+    marks a pause-token position (masked out of the loss).
+
+    For spec ``(p, q)`` every complete block of ``q`` real tokens is followed by
+    ``p`` pause tokens, and a trailing partial block (fewer than ``q`` real
+    tokens, so no pauses) is entirely ``True``. This mirrors
+    :func:`pause_input_ids` exactly, so the ``False`` positions line up with the
+    pause slots it inserts -- regardless of whether ``pause_input_ids`` was
+    called with a dedicated ``pause_token_id`` or with ``None`` (repeat mode).
+
+    After ``Trainer.get_labels`` left-shifts ``input_ids`` by one (``[..., 1:]``),
+    masking ``input_ids[j]`` where this mask is ``False`` causes the loss at logit
+    position ``i`` (which targets ``input_ids[i+1]``) to be masked exactly when the
+    *next* token is a pause token -- i.e. the loss is set only where the next token
+    is a real token.
+
+    Args:
+        expanded_len: Length of the expanded sequence. Need not be a whole number
+            of ``(q + p)`` blocks; the trailing partial block is handled.
+        p: Number of pause tokens per block (``p >= 0``; ``0`` yields all-``True``).
+        q: Number of real tokens per block (``q >= 1``).
+
+    Returns:
+        ``np.ndarray`` of shape ``(expanded_len,)`` and dtype ``np.bool_``.
+
+    Raises:
+        ValueError: when ``q < 1`` or ``p < 0``.
+    """
+    if q < 1:
+        raise ValueError(f"pause denominator must be >= 1, got {q}")
+    if p < 0:
+        raise ValueError(f"pause numerator must be >= 0, got {p}")
+    if p == 0:
+        return np.ones(expanded_len, dtype=np.bool_)
+
+    # Build the mask for one complete (q real + p pause) block, then tile it
+    # across the full blocks and handle the trailing partial block.
+    block = np.concatenate([
+        np.ones(q, dtype=np.bool_),       # real-token slots
+        np.zeros(p, dtype=np.bool_),      # pause slots
+    ])
+    period = q + p
+    n_full = expanded_len // period         # complete blocks fully contained
+    remainder = expanded_len - n_full * period
+    mask = np.tile(block, n_full)
+    if remainder:
+        # Trailing partial block: min(remainder, q) real slots then any pause slots.
+        n_real_tail = min(remainder, q)
+        tail = np.zeros(remainder, dtype=np.bool_)
+        tail[:n_real_tail] = True
+        mask = np.concatenate([mask, tail])
+    return mask
+
+
 def pause_spec_from_grammar_type(grammar_type: str) -> "tuple[int, int]":
     """Parse a ``transformer_grammar_type`` into a rational pause spec ``(p, q)``.
 
@@ -353,6 +411,20 @@ def pause_spec_from_grammar_type(grammar_type: str) -> "tuple[int, int]":
         spec = grammar_type if grammar_type != "pause" else "pause1"
         return _parse_pause_spec(spec)
     return (0, 1)
+
+
+def is_pause_label(grammar_type: str) -> bool:
+    """Whether ``grammar_type`` requests the pause label-mask ("next token is real").
+
+    ``True`` only for ``pause`` grammar types carrying the ``"_label"`` suffix
+    (e.g. ``"pause1/2_label"``). For those, :func:`pause_input_ids` still expands
+    the sequence identically to the bare spec (the suffix is stripped by
+    :func:`_parse_pause_spec`), but the loss is additionally masked at positions
+    whose *next* token is a pause token -- i.e. the model only trains a loss where
+    the next token is a real token. Plain pause specs (``"pause1/2"`` etc.) and
+    non-pause grammar types return ``False`` (no label masking, current behavior).
+    """
+    return grammar_type[:5] == "pause" and grammar_type.endswith("_label")
 
 
 def pause_expanded_len(real_len: int, p: int, q: int) -> int:
@@ -379,6 +451,40 @@ def pause_trailing_trim(real_len: int, p: int, q: int) -> int:
     ``0`` (trailing partial block emits no pauses).
     """
     return p if real_len % q == 0 else 0
+
+
+def extract_real_tokens(paused, p: int, q: int, skip_first: bool = False):
+    """Reverse of :func:`pause_input_ids` for ``pause_token_id=None`` expansions.
+
+    ``pause_input_ids`` with ``pause_token_id=None`` places real token ``j`` at
+    expanded position ``j + (j // q) * p`` (the trailing ``p`` slots of each
+    complete ``q``-block repeat the block's last real token). This inverts that
+    mapping: it walks real-token indices ``j = 0, 1, 2, ...`` and emits
+    ``paused[pos_j]`` while ``pos_j < len(paused)``, i.e. it keeps exactly the
+    real-token positions and drops the pause slots.
+
+    Works for any ``(p, q)`` (e.g. pause1/2 ``(1,2)``, pause2 ``(2,1)``,
+    pause3 ``(3,1)``) and any ``len(paused)`` — the sequence need not be a whole
+    number of blocks. ``skip_first`` drops the leading BOS real token (the
+    convention in ``summarization_eval_step``).
+    """
+    if q < 1:
+        raise ValueError(f"pause denominator must be >= 1, got {q}")
+    n = len(paused)
+    start = 1 if skip_first else 0
+    out = []
+    j = start
+    while True:
+        pos = j + (j // q) * p
+        if pos >= n:
+            break
+        out.append(paused[pos])
+        j += 1
+    if isinstance(paused, np.ndarray):
+        return np.array(out, dtype=paused.dtype)
+    if isinstance(paused, torch.Tensor):
+        return torch.tensor(out, dtype=paused.dtype, device=paused.device)
+    return out
 
 
 class SequentialDistributedSampler(Sampler):

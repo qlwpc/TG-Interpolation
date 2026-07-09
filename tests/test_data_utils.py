@@ -13,6 +13,9 @@ from olmo.data.util import (
     get_document_lengths,
     find_periodic_sequences,
     pause_input_ids,
+    pause_label_mask,
+    is_pause_label,
+    pause_spec_from_grammar_type,
     find_end_first_consecutive_true,
     find_start_last_consecutive_true,
     group_consecutive_values,
@@ -287,6 +290,147 @@ class TestPauseInputIdsRational:
     def test_pause_rational_zero_denominator_raises(self):
         with pytest.raises(ValueError):
             pause_input_ids(np.array([1, 2]), pause_token_id=0, pause_num="pause1/0")
+
+
+# ---------------------------------------------------------------------------
+# pause_label_mask
+# ---------------------------------------------------------------------------
+
+class TestPauseLabelMask:
+    def _real_positions(self, expanded_len, p, q):
+        """Ground-truth real-token positions in an expanded (p,q) sequence."""
+        pos = []
+        j = 0  # real-token index
+        while True:
+            ep = j + (j // q) * p  # expanded position of real token j
+            if ep >= expanded_len:
+                break
+            pos.append(ep)
+            j += 1
+        return set(pos)
+
+    def test_pause_1_2(self):
+        # pause1/2: [R R P] [R R P] ... -> False only at pause slots (idx 2,5,...)
+        mask = pause_label_mask(6, p=1, q=2)
+        expected = np.array([True, True, False, True, True, False])
+        assert np.array_equal(mask, expected)
+        assert mask.dtype == np.bool_
+
+    def test_pause_2_3(self):
+        # pause2/3: [R R R P P] repeated
+        mask = pause_label_mask(10, p=2, q=3)
+        expected = np.array([True, True, True, False, False,
+                             True, True, True, False, False])
+        assert np.array_equal(mask, expected)
+
+    def test_p_zero_all_true(self):
+        # p=0 -> no pause slots, all real
+        assert np.array_equal(pause_label_mask(7, p=0, q=2),
+                              np.ones(7, dtype=np.bool_))
+        # empty also fine
+        assert np.array_equal(pause_label_mask(0, p=0, q=2),
+                              np.ones(0, dtype=np.bool_))
+
+    def test_remainder_block_all_true(self):
+        # pause1/2 over 4 tokens -> expanded [R R P R] (1 full + 1 remainder)
+        mask = pause_label_mask(4, p=1, q=2)
+        expected = np.array([True, True, False, True])
+        assert np.array_equal(mask, expected)
+
+    def test_remainder_shorter_than_q(self):
+        # pause2/3, expanded_len=4 -> [R R R P] (1 full block + 1 pause of the
+        # next block would need 5; here only 4 slots: 3 real + 1 pause)
+        mask = pause_label_mask(4, p=2, q=3)
+        expected = np.array([True, True, True, False])
+        assert np.array_equal(mask, expected)
+
+    def test_remainder_only_real(self):
+        # pause2/3, expanded_len=5 -> full block [R R R P P] exactly
+        mask = pause_label_mask(5, p=2, q=3)
+        expected = np.array([True, True, True, False, False])
+        assert np.array_equal(mask, expected)
+
+    def test_aligns_with_pause_input_ids_dedicated_id(self):
+        # Where pause_input_ids inserts the pause id, the mask must be False.
+        for spec, p, q in [("pause1", 1, 1), ("pause2", 2, 1),
+                           ("pause1/2", 1, 2), ("pause2/3", 2, 3),
+                           ("pause1/4", 1, 4)]:
+            for n_real in [1, 2, 3, 4, 5, 6, 7, 8, 10]:
+                arr = np.arange(1, n_real + 1, dtype=np.int64)
+                expanded = pause_input_ids(arr, pause_token_id=999, pause_num=spec)
+                mask = pause_label_mask(len(expanded), p, q)
+                assert len(mask) == len(expanded)
+                # pause slots hold 999 and must be masked False
+                assert not mask[expanded == 999].any()
+                # real slots hold a real id and must be True
+                assert mask[expanded != 999].all()
+
+    def test_aligns_with_pause_input_ids_repeat_mode(self):
+        # In repeat mode there is no dedicated id, so verify against the
+        # structural real-token positions instead.
+        for spec, p, q in [("pause1/2", 1, 2), ("pause2/3", 2, 3), ("pause2", 2, 1)]:
+            for n_real in [1, 2, 3, 5, 6, 7, 9]:
+                arr = np.arange(1, n_real + 1, dtype=np.int64)
+                expanded = pause_input_ids(arr, pause_token_id=None, pause_num=spec)
+                mask = pause_label_mask(len(expanded), p, q)
+                real_pos = self._real_positions(len(expanded), p, q)
+                for i in range(len(expanded)):
+                    assert bool(mask[i]) == (i in real_pos)
+
+    def test_invalid_q_raises(self):
+        with pytest.raises(ValueError):
+            pause_label_mask(10, p=1, q=0)
+
+    def test_negative_p_raises(self):
+        with pytest.raises(ValueError):
+            pause_label_mask(10, p=-1, q=2)
+
+    def test_next_token_loss_alignment(self):
+        # Simulate get_labels left-shift: label_mask marks input_ids[j];
+        # after [.., 1:] the loss at logit i targets input_ids[i+1]. So the loss
+        # is masked exactly when the *next* token is a pause (mask False).
+        expanded = pause_input_ids(np.array([10, 20, 30, 40], dtype=np.int64),
+                                   pause_token_id=99, pause_num="pause1/2")
+        # [10, 20, 99, 30, 40, 99]
+        mask = pause_label_mask(len(expanded), 1, 2)  # [T T F T T F]
+        # targets (input_ids shifted left) = [20, 99, 30, 40, 99]
+        targets = expanded[1:]
+        target_mask = mask[1:]  # [T, F, T, T, F]
+        # loss is kept where the *next* token (target) is real (mask True)
+        kept_targets = targets[target_mask]
+        assert 99 not in kept_targets  # no pause token is ever a trained target
+        assert np.array_equal(kept_targets, np.array([20, 30, 40]))
+
+
+# ---------------------------------------------------------------------------
+# is_pause_label
+# ---------------------------------------------------------------------------
+
+class TestIsPauseLabel:
+    def test_plain_pause_is_false(self):
+        assert not is_pause_label("pause1/2")
+        assert not is_pause_label("pause1")
+        assert not is_pause_label("pause2/3")
+        assert not is_pause_label("pause")
+
+    def test_label_suffix_is_true(self):
+        assert is_pause_label("pause1/2_label")
+        assert is_pause_label("pause2_label")
+        assert is_pause_label("pause2/3_label")
+
+    def test_non_pause_is_false(self):
+        assert not is_pause_label("terminal")
+        assert not is_pause_label("tree")
+        assert not is_pause_label("tg")
+        assert not is_pause_label("")
+        assert not is_pause_label("tree_shuffle_mask")  # '_mask', not '_label'
+
+    def test_label_suffix_preserves_spec(self):
+        # _label variant must parse to the same (p, q) as the bare spec.
+        assert pause_spec_from_grammar_type("pause1/2_label") == (1, 2)
+        assert pause_spec_from_grammar_type("pause2/3_label") == (2, 3)
+        assert (pause_spec_from_grammar_type("pause1/2_label")
+                == pause_spec_from_grammar_type("pause1/2"))
 
 
 # ---------------------------------------------------------------------------

@@ -68,7 +68,7 @@ Device_args = {
 }
 
 INPUTFORMAT = {
-    "terminal": ["terminal", "pause1/2", "pause1/2_label"],
+    "terminal": ["terminal", "pause1", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"],
     "tree_compress" : ["tree_compress"],
@@ -105,13 +105,20 @@ Models = {
     "tree_noont" : {"model.transformer_grammar_type": "tree_noont"},
     "tree_compress" : {"model.transformer_grammar_type": "tree_compress"},
     "tree_triplecnt" : {"model.transformer_grammar_type": "tree_triplecnt"},
+    "pause2": {"model.transformer_grammar_type": "pause2", "model.max_sequence_length": 2049},
+    "pause3": {"model.transformer_grammar_type": "pause3", "model.max_sequence_length": 2048},
+    "pause1in2": {"model.transformer_grammar_type": "pause1/2", "model.max_sequence_length": 2049},
+    "pause1in3": {"model.transformer_grammar_type": "pause1/3", "model.max_sequence_length": 2048},
+    "pause1in4": {"model.transformer_grammar_type": "pause1/4", "model.max_sequence_length": 2050},
+    "pause1": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pretrain_terminal": {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 2048},
 }
 mixing = {
     "tree_mix_tg" : [TGConfig(grammar_type="tgtree", n_heads=6), TGConfig(grammar_type="tg", n_heads=6)],
     "nomask_mix_tg" : [TGConfig(grammar_type="tg", n_heads=6), TGConfig(grammar_type="tgnomask", n_heads=6)]
 }
 
-test_only_params = {"eval_on_load": True, "eval_no_save": True}
+test_only_params = {"eval_on_load": True, "eval_no_save": True, "max_duration": 0}
 finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "eval_interval": 1000000}
 
 train_params = {
@@ -284,7 +291,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     elif task=="docppl":
         Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
     elif task=="blimp":
-        if cfg.model.transformer_grammar_type[:8] in ["terminal", "pause1/2"]:
+        if cfg.model.transformer_grammar_type[:8] == "terminal" or cfg.model.transformer_grammar_type[:5] == "pause":
             Evaltasks["blimp"][0].device_eval_batch_size = 100
         else:
             Evaltasks["blimp"][0].device_eval_batch_size = 150
@@ -331,7 +338,14 @@ model_paths = {
     "tgtree-100M-early": "/saved_models/TGTree_100M_early/step21637-unsharded",
     "tree_noont": "/saved_models/tree_noont/step42440-unsharded",
     "tree_triplecnt": "/saved_models/tree_triplecnt/step60045-unsharded",
-    "tree_compress": "/saved_models/tree_compress/step45965-unsharded"
+    "tree_compress": "/saved_models/tree_compress/step45965-unsharded",
+    "pause2": "/saved_models/pretrain_pause2_100M/step52609-unsharded",
+    "pause3": "/saved_models/pretrain_pause3_100M/step61407-unsharded",
+    "pause1in2": "/saved_models/pretrain_pause1in2_100M/step40028-unsharded",
+    "pause1in3": "/saved_models/pretrain_pause1in3_100M/step38082-unsharded",
+    "pause1in4": "/saved_models/pretrain_pause1in4_100M/step36516-unsharded",
+    "pause1": "/saved_models/pretrain_pause1_100M/step45487-unsharded",
+    "pretrain_terminal": "/saved_models/pretrain_terminal_100M/step34115-unsharded"
 }
 
 
@@ -394,22 +408,20 @@ if __name__ == "__main__":
     #     save_path, args_list = sys.argv[1], sys.argv[2:]
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "RTX3090"
-    modelname = "tree_compress"
-    task = ["xsum_finetune", "boolq", "rte"]
-    task += ["docppl"]
-    task = ["blimp"]
-    # task += ["hellaswag"]
-    # task = ["winogrande"]
+    Device = "A6000"
+    modelnames = ["pause1", "pretrain_terminal"]
+    tasks = ["docppl", "SG", "blimp", "boolq", "xsum_finetune"]
     load_path = True
-    if load_path is not None and load_path!=False:
-        load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
-        robust_directory_check(load_path)
-    
-    save_dir = os.path.join(os.getcwd(), "run_folder", modelname)
-    os.makedirs(save_dir, exist_ok=True)
-    for pertask in task:
-        run_name = f"{pertask}_test"
-        save_path = os.path.join(save_dir, f"config_{run_name}.yaml")
-        generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=pertask)
-        generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=pertask, run_name=run_name, load_path=load_path)
+    for modelname in modelnames:
+        _load_path = load_path
+        if _load_path is not None and _load_path!=False:
+            _load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
+            robust_directory_check(_load_path)
+
+        save_dir = os.path.join(os.getcwd(), "run_folder", modelname)
+        os.makedirs(save_dir, exist_ok=True)
+        for pertask in tasks:
+            run_name = f"{modelname}_{pertask}_test"
+            save_path = os.path.join(save_dir, f"config_{run_name}.yaml")
+            generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=pertask)
+            generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=pertask, run_name=run_name, load_path=_load_path)

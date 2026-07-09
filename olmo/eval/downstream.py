@@ -593,13 +593,18 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     mask = None
                     if hasattr(self, "get_mask"):
                         mask = self.get_mask(continuation, doc)
+                    # For the pause path we pause-expand the FULL ctx+cont query (see
+                    # below), so keep an untrimmed copy before the eval-time ``[:-1]``
+                    # trim drops the continuation's last real token.
+                    full_query = query
+                    full_dc_query = dc_query
                     if self.split!="train":
                         query = query[:-1]
                         dc_query = dc_query[:-1]
                     continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
-                    
+
                     # get domain conditional query
                     # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
 
@@ -620,6 +625,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         # [ctx_len-1 : ctx_len+cont_len-1] (see ICLMetric.update), so
                         # continuation[k] must equal query[ctx_len+k].
                         #
+                        # We expand ``full_query`` (ctx+cont, untrimmed) rather than the
+                        # eval-trimmed ``query``: at eval time ``query = query[:-1]``
+                        # drops the continuation's last real token, so for a single-token
+                        # continuation (e.g. BoolQ " yes"/" no") the trimmed query would
+                        # contain NO continuation tokens and the slice below would be
+                        # empty, collapsing the score to the majority class. Expanding the
+                        # full ctx+cont keeps the continuation in the expanded query.
+                        #
                         # split = expanded position of the first continuation real token
                         #   = pause_expanded_len(ctx_real) = ctx_real + (ctx_real//q)*p,
                         # which is correct for ANY ctx_real (divisible or not), because
@@ -629,10 +642,19 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         # the model is not scored on predicting a trailing pause.
                         p, q = self.pause_spec
                         gtype = self.transformer_grammar_type
-                        ctx_real = actual_ctx_len                       # len(ctx) in real tokens
+                        # ctx_real = number of real ctx tokens in full_query.
+                        # full_query = ctx + continuation (real tokens, untrimmed), so
+                        # ctx_real = len(full_query) - len(continuation). We must NOT use
+                        # ``actual_ctx_len`` here: that value carries a ``+1`` offset meant
+                        # to compensate for the eval-time ``query[:-1]`` trim in the
+                        # non-pause metric path, and for ``split=="train"`` the trim never
+                        # runs, so actual_ctx_len would be len(ctx)+1 and make the slice
+                        # below overshoot past the end of the expanded query (empty
+                        # continuation -> degenerate majority-class score).
+                        ctx_real = len(full_query) - len(continuation)
                         cont_real = len(continuation)
-                        query = pause_input_ids(query, self.pause_token_id, pause_num=gtype)
-                        dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=gtype)
+                        query = pause_input_ids(full_query, self.pause_token_id, pause_num=gtype)
+                        dc_query = pause_input_ids(full_dc_query, self.pause_token_id, pause_num=gtype)
                         split = pause_expanded_len(ctx_real, p, q)
                         trim = pause_trailing_trim(ctx_real + cont_real, p, q)
                         continuation = query[split : len(query) - trim]
@@ -824,7 +846,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
     def token_encode(self, string: str) -> List[int]:
         ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
         ids = self.convert_grammar_input(ids)
-        return ids.tolist()
+        return ids
 
     def token_decode(self, tokens: List[int]) -> str:
         return self.tokenizer.decode(tokens, skip_special_tokens=False)
@@ -1579,7 +1601,7 @@ class SGDataset(metaclass=abc.ABCMeta):
                         if self.ispause:
                             if is_gpt2:
                                 sent["tag"][0] = [0] + sent["tag"][0]
-                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.transformer_grammar_type)
+                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.transformer_grammar_type)[1:]
                             sent_paused = pause_input_ids(sent["input_ids"][0], self.pause_token_id, pause_num=self.transformer_grammar_type)
                             sent["input_ids"] = sent_paused.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:

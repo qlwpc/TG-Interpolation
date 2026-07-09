@@ -61,6 +61,7 @@ from .torch_util import (
 )
 from .util import upload
 from olmo.data import get_TG_generate_bias_func
+from olmo.data.util import extract_real_tokens, is_pause_label
 
 __all__ = ["SpeedMonitor", "LRMonitor", "Trainer"]
 
@@ -780,7 +781,18 @@ class Trainer:
     def train_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Split into micro-batches.
         micro_batches = self.split_batch(batch)
-        if self.cfg.finetune_task is not None:
+        # Whether to normalize the loss by the true per-token count (positions that
+        # actually contribute to the loss) rather than by batch numel. Finetune tasks
+        # always do this. Pretraining with a pause "_label" grammar type also needs it:
+        # the label_mask drops pause slots and padding from the loss, so dividing by
+        # numel (which counts those dropped positions) would under-weight the loss.
+        # In both cases we rescale by a per-device weight so the DDP-averaged gradient
+        # equals sum(loss over all real tokens) / (global #real loss tokens), robust to
+        # ranks carrying unequal token counts.
+        count_loss_tokens = self.cfg.finetune_task is not None or is_pause_label(
+            self.cfg.model.transformer_grammar_type
+        )
+        if count_loss_tokens:
             global_batch_size_in_loss_tokens = (self.get_labels(batch, self.cfg.model.pad_token_id) != self.cfg.model.pad_token_id).sum()
             batch_size_in_loss_tokens = global_batch_size_in_loss_tokens.item()
             dist.all_reduce(global_batch_size_in_loss_tokens)
@@ -824,7 +836,7 @@ class Trainer:
                         z_batch_loss += z_loss.detach()
 
                 # Run backward pass.
-                if self.cfg.finetune_task is not None:
+                if count_loss_tokens:
                     loss *= device_loss_weight
                 loss.backward()
 
@@ -1140,7 +1152,8 @@ class Trainer:
                         )
                     predictions = predictions[0]["input_ids"].numpy()
                     if self.cfg.model.transformer_grammar_type[:5]=="pause":  #TODO: fixed extract pause tokens
-                        predictions = predictions[1::2]
+                        p, q = self.cfg.model.pause_spec
+                        predictions = extract_real_tokens(predictions, p, q, skip_first=True)
                     predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
                     predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
 

@@ -13,7 +13,14 @@ from olmo.exceptions import OLMoEnvironmentError
 from ..aliases import PathOrStr
 from ..config import InstanceFilterConfig
 from ..util import _get_s3_client, file_size, get_bytes_range
-from .util import find_periodic_sequences, get_document_lengths, pause_input_ids
+from .util import (
+    find_periodic_sequences,
+    get_document_lengths,
+    is_pause_label,
+    pause_input_ids,
+    pause_label_mask,
+    pause_spec_from_grammar_type,
+)
 
 __all__ = ["MemMapDataset"]
 log = logging.getLogger(__name__)
@@ -96,6 +103,12 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         self.instance_filter_config = instance_filter_config
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.transformer_grammar_type = transformer_grammar_type
+        # True for "pause*_label" grammar types: mask the loss at positions whose
+        # next token is a pause token (only train a loss where the next token is a
+        # real token). Derived from transformer_grammar_type; no new ctor param.
+        self._pause_label = is_pause_label(self.transformer_grammar_type)
+        if self._pause_label:
+            self._pause_p, self._pause_q = pause_spec_from_grammar_type(self.transformer_grammar_type)
 
     @property
     def chunk_size(self) -> int:
@@ -216,7 +229,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         out: Dict[str, Any] = {"input_ids": input_ids}
         if self.generate_TG_attention_bias is not None:
             out["attention_bias"], out["label_mask"] = self.generate_TG_attention_bias(input_ids)
-        
+
         if self.instance_filter_config is not None:
             out["instance_mask"] = self._validate_instance(input_ids)
 
@@ -225,6 +238,25 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
                 self._label_mask_paths[memmap_index], memmap_local_index, dtype=np.bool_
             )
             out["label_mask"] = label_mask
+
+        if self._pause_label:
+            # Mask the loss at pause positions: True where the token is a real
+            # token, False where it is a pause token. After get_labels left-shifts
+            # input_ids by one, masking input_ids[j] (pause) zeroes the loss at
+            # logit position j-1, whose target is input_ids[j] -- i.e. the loss is
+            # set only where the *next* token is a real token. AND with any prior
+            # label_mask so pause positions are never counted even if another
+            # source marked them True.
+            pause_mask = torch.from_numpy(
+                pause_label_mask(len(input_ids), self._pause_p, self._pause_q)
+            )
+            existing = out.get("label_mask")
+            if existing is None:
+                out["label_mask"] = pause_mask
+            else:
+                out["label_mask"] = torch.bitwise_and(
+                    existing.to(dtype=torch.bool), pause_mask
+                )
 
         if self._include_instance_metadata:
             metadata = self._metadata[memmap_index]
