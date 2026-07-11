@@ -1475,7 +1475,7 @@ class SyntacticGeneralizationMetric(Metric):
         self.tree_eval_type = tree_eval_type
         self.map_task_dict = {}
         for key in test_suite_dict:
-            self.add_state(key, default=[], dist_reduce_fx=None)
+            self.add_state(key, default=[], dist_reduce_fx="cat")
             for task in test_suite_dict[key]:
                 self.map_task_dict[task] = key
 
