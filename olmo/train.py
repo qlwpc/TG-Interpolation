@@ -730,13 +730,15 @@ class Trainer:
         self, batch: Dict[str, Any], loss_reduction: str = "mean", compute_z_loss: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, int]:
         # shape: (batch_size, seq_len, vocab_size)
-        logits = self.dist_model(
+        olmo_out = self.dist_model(
             input_ids=batch["input_ids"],
             attention_mask=batch.get("attention_mask"),
             attention_bias=batch.get("attention_bias"),
             doc_lens=batch.get("doc_lens"),
             max_doc_lens=batch.get("max_doc_lens"),
-        ).logits
+            tree_spans=batch.get("tree_spans"),
+        )
+        logits = olmo_out.logits
         logits_for_loss = logits[..., :-1, :].contiguous()
         # shape: (batch_size * seq_len, vocab_size)
         logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
@@ -753,18 +755,39 @@ class Trainer:
             ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1)
             if z_loss is not None:
                 z_loss = z_loss.view(batch["input_ids"].shape[0], -1)
-        return ce_loss, z_loss, logits
+
+        # TreeReg auxiliary loss (Nandi et al. 2025): applied on the captured
+        # post-block residual at treereg_layer, every k LM steps. Train-only.
+        treereg_loss = None
+        if (self.dist_model.training
+                and self.cfg.model.transformer_grammar_type == "treereg"
+                and olmo_out.treereg_hidden is not None
+                and batch.get("tree_spans") is not None):
+            k = self.cfg.model.treereg_every_k
+            step = int(getattr(self, "global_step", 0))
+            if k <= 0 or step % k == 0:
+                from olmo.treereg import compute_treereg_loss
+                tr_hidden = olmo_out.treereg_hidden
+                spans = batch["tree_spans"]
+                span_mask = batch.get("tree_span_mask")
+                if span_mask is None:
+                    span_mask = (spans[..., 0] >= 0)
+                d_head = self.cfg.model.d_model // self.cfg.model.n_heads
+                treereg_loss = compute_treereg_loss(
+                    tr_hidden, spans, span_mask,
+                    n_heads_subset=self.cfg.model.treereg_n_heads, d_head=d_head,
+                )
+                if loss_reduction == "sum":
+                    treereg_loss = treereg_loss * batch["input_ids"].shape[0]
+        return ce_loss, z_loss, logits, treereg_loss
 
     def train_micro_batch(
         self, micro_batch: Dict[str, Any], batch_size_in_loss_tokens: int
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        ce_loss, z_loss, logits = self.model_forward(
+        ce_loss, z_loss, logits, treereg_loss = self.model_forward(
             micro_batch, compute_z_loss=self.cfg.softmax_auxiliary_loss, loss_reduction="sum"
         )
         ce_loss = ce_loss / batch_size_in_loss_tokens
-
-        # In case this helps with memory utilization.
-        del micro_batch
 
         # Get loss to optimize for.
         if self.cfg.softmax_auxiliary_loss:
@@ -774,8 +797,13 @@ class Trainer:
         else:
             loss = ce_loss
 
-        del logits
+        # Add TreeReg auxiliary loss (already summed over the micro-batch above).
+        if treereg_loss is not None:
+            tr = treereg_loss / batch_size_in_loss_tokens
+            loss = loss + self.cfg.model.treereg_alpha * tr
 
+        # In case this helps with memory utilization.
+        del micro_batch
         return loss, ce_loss, z_loss
 
     def train_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -930,7 +958,7 @@ class Trainer:
 
     def eval_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
         with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
-            ce_loss, _, logits = self.model_forward(batch, loss_reduction="none")
+            ce_loss, _, logits, _ = self.model_forward(batch, loss_reduction="none")
         return ce_loss.mean(dim=-1), logits
 
     def eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
@@ -1039,7 +1067,7 @@ class Trainer:
                     if self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause:
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
-                        ce_loss, _ , logits = self.model_forward(sent, loss_reduction="none")
+                        ce_loss, _ , logits, _ = self.model_forward(sent, loss_reduction="none")
                         score_dict[sent["condition_name"]] = torch.sum(ce_loss[0] * torch.LongTensor(sent["tag"][0]).to(self.device)).item()
                         print(ce_loss[0])
                     else:

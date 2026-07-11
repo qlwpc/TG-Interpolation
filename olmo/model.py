@@ -467,6 +467,18 @@ class OLMoBlock(nn.Module):
         if self.config.rope:
             self.rotary_emb = RotaryEmbedding(config, self.__cache)
 
+        # Pushdown depth-embedding (Murty et al. 2023). Per-layer depth embedding
+        # added to attention keys; the per-(q,kv) bias is applied via FlexAttention
+        # score_mod (see OLMoBlock.attention). Only constructed for pushdown models.
+        self._is_pushdown = config.transformer_grammar_type == "pushdown"
+        if self._is_pushdown:
+            from olmo.pushdown import PushdownDepthBias
+            self.pushdown_depth_bias = PushdownDepthBias(
+                max_depth=config.pushdown_max_depth,
+                d_model=config.d_model,
+                n_heads=config.n_heads,
+            )
+
         self.flash_attn_func = None
         self.flash_attn_varlen_func = None
         if config.flash_attention:
@@ -480,7 +492,7 @@ class OLMoBlock(nn.Module):
                 self.flash_attn_varlen_func = flash_attn_varlen_func
             except ModuleNotFoundError:
                 pass
-        
+
         if config.flex_attention:
             self.flex_attention = torch.compile(flex_attention)
 
@@ -601,6 +613,7 @@ class OLMoBlock(nn.Module):
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
         block_mask: Optional[BlockMask] = None,
+        tree_spans: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         B, T, C = q.size()  # batch size, sequence length, d_model
         dtype = k.dtype
@@ -629,6 +642,18 @@ class OLMoBlock(nn.Module):
         if self.config.rope:
             # Apply rotary embeddings.
             q, k = self.rotary_emb(q, k)
+
+        # Pushdown: per-(q,kv) depth bias added to attention scores. The depth
+        # matrix S (B, n, n) int8 is computed on the GPU from the spans; the bias
+        # q_k . E_l[S[k,j]] is materialized as a full (B, n_h, n, n) additive mask
+        # and merged with the causal+pad attention_bias, then SDPA is used (flash
+        # cannot take an additive bias). When tree_spans is None (no parse), the
+        # depth bias is zero and this falls through to the standard path below.
+        if self._is_pushdown and tree_spans is not None:
+            att = self._pushdown_attention(q, k, v, tree_spans, attention_bias, key_len,
+                                           dropout_p=0.0 if not self.training else self.config.attention_dropout)
+            att = att.transpose(1, 2).contiguous().view(B, T, C)
+            return self.attn_out(att), present
 
         if attention_bias is not None:
             # Resize and cast attention bias.
@@ -665,6 +690,93 @@ class OLMoBlock(nn.Module):
         # Apply output projection.
         return self.attn_out(att), present
 
+    def _pushdown_attention(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+        tree_spans: torch.Tensor, attention_bias: Optional[torch.Tensor],
+        key_len: int, dropout_p: float = 0.0,
+    ) -> torch.Tensor:
+        """Pushdown attention: standard SDPA with an additive depth bias.
+
+        Computes the stale depth tape ``S`` (B, n, n) int8 from ``tree_spans`` on the
+        GPU, builds a per-head depth embedding ``E_l`` (projecting the depth
+        embedding through the key projection), materializes the per-(q,kv) bias
+        ``Q[b,h,q] . E_l[h, S[b,q,kv]]`` as a full ``(B, n_h, n, n)`` additive mask,
+        merges it with the incoming causal+pad ``attention_bias``, and runs SDPA
+        (flash attention cannot take an additive bias).
+
+        This is the robust path (no ``torch.compile``/inductor dependency). A
+        FlexAttention ``score_mod`` variant (fused, lower memory) is the intended
+        GPU-fast path but is gated on CUDA-inductor lowerability of the score_mod;
+        see the project plan. When ``tree_spans`` is None the depth bias is zero and
+        the caller falls through to the standard attention path.
+        """
+        from olmo.pushdown import compute_depth_matrix_gpu
+        B, nh, n, hs = q.shape
+        # Stale depth tape over the (causal) key length. tree_spans: (B, M, 3).
+        S = compute_depth_matrix_gpu(tree_spans.to(q.device), n)  # (B, n, n) int8
+        D = S.clamp(max=self.config.pushdown_max_depth).long()  # (B, n, n)
+        # Per-head depth embedding E_l: (n_heads, max_depth+1, d_head).
+        n_kv = k.shape[1]
+        kv_dim = n_kv * hs
+        key_weight = self.att_proj.weight[self.config.d_model : self.config.d_model + kv_dim]
+        E = self.pushdown_depth_bias(key_weight)  # (n_heads, D, hs)
+        # P[b,h,q,d] = Q[b,h,q] . E[h,d]; bias = P.gather(D) -> (B, n_h, n, n).
+        # Compute in float32 for numerical stability: under amp_bf16, q/E are bf16
+        # and a bf16 attn_mask with -inf makes SDPA's internal fp32 cublas gemm
+        # raise CUBLAS_STATUS_EXECUTION_FAILED. An fp32 attn_mask is accepted by
+        # SDPA alongside bf16 q/k/v.
+        P = torch.einsum("bhni,hdi->bhnd", q.float(), E.float())  # (B, n_h, n, D) fp32
+        # Clamp depth to the embedding range and build a CONTIGUOUS gather index
+        # (a non-contiguous .expand view triggered a device-side assert in
+        # torch.gather on CUDA). idx: (B, n_h, n, n) int64, values in [0, D-1].
+        Dmax = P.shape[3] - 1
+        idx = D.clamp(0, Dmax).unsqueeze(1).expand(B, nh, n, n).contiguous()
+        depth_bias = torch.gather(P, dim=3, index=idx)  # (B, n_h, n, n) fp32
+        depth_bias = depth_bias / (hs ** 0.5)  # match SDPA's 1/sqrt(hs) scaling
+
+        # Merge with the causal+pad attention_bias prepared by OLMo.forward.
+        if attention_bias is not None:
+            ab = attention_bias
+            # Reshape to (B, n_h, n, n): incoming is (B, 1, n, n) or (B, n_h, n, n).
+            if ab.dim() == 3:
+                ab = ab.unsqueeze(1)
+            if ab.shape[1] == 1:
+                ab = ab.expand(B, nh, n, n)
+            ab = ab.to(dtype=torch.float32)
+            # Replace any -inf (masked) kept as -inf; add depth bias elsewhere.
+            mask_neg = ab.isneginf()
+            attn_mask = ab + depth_bias
+            attn_mask = attn_mask.masked_fill(mask_neg, float("-inf"))
+        else:
+            # No prebuilt bias: build a causal mask + depth bias (fp32).
+            causal = torch.full((n, n), float("-inf"), device=q.device, dtype=torch.float32)
+            causal = torch.triu(causal, diagonal=1)
+            attn_mask = depth_bias + causal.unsqueeze(0).unsqueeze(0)
+
+        # SDPA expects (B, n_h, n, hs) and attn_mask (B, n_h, n, n) additive float.
+        # Expand k,v from n_kv to nh heads if GQA.
+        if n_kv != nh:
+            rep = nh // n_kv
+            k = k.repeat_interleave(rep, dim=1, output_size=nh)
+            v = v.repeat_interleave(rep, dim=1, output_size=nh)
+        return F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=False,
+        )
+
+    def _get_causal_block_mask(self, B: int, n: int, device: torch.device) -> BlockMask:
+        cache = self.__cache
+        key = ("pushdown_causal_bm", B, n)
+        bm = cache.get(key) if cache is not None else None
+        if bm is not None and bm.device == device:
+            return bm
+        bm = create_block_mask(
+            mask_mod=lambda b, h, q_idx, kv_idx: q_idx >= kv_idx,
+            B=B, H=None, Q_LEN=n, KV_LEN=n, device=device,
+        )
+        if cache is not None:
+            cache[key] = bm
+        return bm
+
     @abstractmethod
     def forward(
         self,
@@ -674,6 +786,8 @@ class OLMoBlock(nn.Module):
         use_cache: bool = False,
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
+        block_mask: Optional[BlockMask] = None,
+        tree_spans: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         raise NotImplementedError
 
@@ -746,6 +860,7 @@ class OLMoSequentialBlock(OLMoBlock):
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
         block_mask: Optional[BlockMask] = None,
+        tree_spans: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         # Get query, key, value projections.
         # shape:
@@ -784,6 +899,7 @@ class OLMoSequentialBlock(OLMoBlock):
                 max_doc_len=max_doc_len,
                 cu_doc_lens=cu_doc_lens,
                 block_mask=block_mask,
+                tree_spans=tree_spans,
             )
         else:
             att, cache = self.attention(
@@ -796,6 +912,7 @@ class OLMoSequentialBlock(OLMoBlock):
                 max_doc_len=max_doc_len,
                 cu_doc_lens=cu_doc_lens,
                 block_mask=block_mask,
+                tree_spans=tree_spans,
             )
 
         if self.config.norm_after:
@@ -942,6 +1059,7 @@ class OLMoLlamaBlock(OLMoBlock):
         max_doc_len: Optional[int] = None,
         cu_doc_lens: Optional[torch.Tensor] = None,
         block_mask: Optional[BlockMask] = None,
+        tree_spans: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         # Get query, key, value projections.
         # shape:
@@ -969,6 +1087,7 @@ class OLMoLlamaBlock(OLMoBlock):
             max_doc_len=max_doc_len,
             cu_doc_lens=cu_doc_lens,
             block_mask=block_mask,
+            tree_spans=tree_spans,
         )
 
         # Add attention scores.
@@ -1009,6 +1128,12 @@ class OLMoOutput(NamedTuple):
     hidden_states: Optional[Tuple[torch.Tensor, ...]]
     """
     Hidden states from each block.
+    """
+
+    treereg_hidden: Optional[torch.Tensor] = None
+    """
+    Post-block residual hidden state at ``treereg_layer`` (for the TreeReg auxiliary
+    loss, Nandi et al. 2025). ``None`` unless ``transformer_grammar_type == 'treereg'``.
     """
 
 
@@ -1285,6 +1410,7 @@ class OLMo(nn.Module):
         output_hidden_states: Optional[bool] = None,
         doc_lens: Optional[torch.Tensor] = None,
         max_doc_lens: Optional[Sequence[int]] = None,
+        tree_spans: Optional[torch.Tensor] = None,
     ) -> OLMoOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -1426,6 +1552,9 @@ class OLMo(nn.Module):
 
         # decoder layers
         all_hidden_states = []
+        treereg_hidden: Optional[torch.Tensor] = None
+        _is_treereg = self.config.transformer_grammar_type == "treereg"
+        _treereg_layer = self.config.treereg_layer
 
         # Apply blocks one-by-one.
         if self.config.block_group_size == 1:
@@ -1446,6 +1575,7 @@ class OLMo(nn.Module):
                         max_doc_len=max_doc_len,
                         cu_doc_lens=cu_doc_lens,
                         block_mask=block_mask,
+                        tree_spans=tree_spans,
                     )
                 else:
                     # shape: (batch_size, seq_len, d_model)
@@ -1457,7 +1587,12 @@ class OLMo(nn.Module):
                         max_doc_len=max_doc_len,
                         cu_doc_lens=cu_doc_lens,
                         block_mask=block_mask,
+                        tree_spans=tree_spans,
                     )
+
+                if _is_treereg and block_idx == _treereg_layer:
+                    # Capture post-block residual for the TreeReg SCIN loss.
+                    treereg_hidden = x
 
                 if attn_key_values is not None:
                     assert cache is not None
@@ -1512,6 +1647,7 @@ class OLMo(nn.Module):
             logits=logits,
             attn_key_values=attn_key_values,
             hidden_states=tuple(all_hidden_states) if output_hidden_states else None,
+            treereg_hidden=treereg_hidden,
         )
 
     def get_fsdp_wrap_policy(self, wrap_strategy: Optional[FSDPWrapStrategy] = None):

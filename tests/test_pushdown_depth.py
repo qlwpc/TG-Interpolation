@@ -1,0 +1,81 @@
+"""Tests for olmo.pushdown (Pushdown depth matrix + depth bias)."""
+
+import numpy as np
+import torch
+import pytest
+
+from olmo.pushdown import compute_depth_matrix_gpu, PushdownDepthBias
+from olmo.data.parse_align import compute_depth_matrix
+
+
+def test_depth_matrix_matches_numpy_and_paper():
+    # Paper example: [[The dog][is happy]] -> spans (0,1,1),(2,3,3),(0,3,3).
+    spans = torch.tensor([[[0, 1, 1], [2, 3, 3], [0, 3, 3]]], dtype=torch.long)
+    S = compute_depth_matrix_gpu(spans, 4)
+    ref = compute_depth_matrix([(0, 1, 1), (2, 3, 3), (0, 3, 3)], 4)
+    assert np.array_equal(S[0].numpy(), ref)
+    # Row 3 (all four tokens): [2,2,2,2]; row 2 (prefix of 3): [1,1,0,0].
+    assert S[0, 3].tolist() == [2, 2, 2, 2]
+    assert S[0, 2].tolist() == [1, 1, 0, 0]
+    assert S[0, 0].tolist() == [0, 0, 0, 0]
+
+
+def test_depth_matrix_lower_triangular():
+    spans = torch.tensor([[[0, 2, 4], [0, 1, 2], [3, 3, 4], [0, 4, 4]]], dtype=torch.long)
+    S = compute_depth_matrix_gpu(spans, 5)
+    assert torch.equal(S, torch.tril(S))
+    # Depth of a fixed key is non-decreasing in the query.
+    for j in range(5):
+        col = S[0, :, j]
+        assert all(col[k + 1] >= col[k] for k in range(4))
+
+
+def test_depth_matrix_ignores_padded_spans():
+    # Padded spans (-1) must contribute zero depth.
+    spans = torch.tensor([[[0, 1, 1], [-1, -1, -1]]], dtype=torch.long)
+    S = compute_depth_matrix_gpu(spans, 4)
+    # Only span (0,1) contributes: rows k>=1, cols 0,1 get +1.
+    assert S[0, 3].tolist() == [1, 1, 0, 0]
+    # All-padded -> all zero.
+    S0 = compute_depth_matrix_gpu(torch.tensor([[[-1, -1, -1]]], dtype=torch.long), 4)
+    assert int(S0.max()) == 0
+
+
+def test_pushdown_depth_bias_shape():
+    pdb = PushdownDepthBias(max_depth=16, d_model=64, n_heads=4)
+    # key_weight: (n_kv_h * d_head, d_model) = (4*16, 64).
+    kw = torch.randn(64, 64)
+    E = pdb(kw)
+    assert E.shape == (4, 17, 16)  # (n_heads, max_depth+1, d_head)
+
+
+def test_pushdown_model_forward_parity():
+    """Empty spans (no parse) must equal no-spans; real spans must differ."""
+    from olmo.config import (ModelConfig, BlockType, LayerNormType, ActivationType, InitFnType)
+    from olmo.model import OLMo
+    cfg = ModelConfig(
+        d_model=64, n_heads=4, n_layers=2, mlp_ratio=4, mlp_hidden_size=256,
+        vocab_size=50320, embedding_size=50320, max_sequence_length=32,
+        block_type=BlockType.sequential, layer_norm_type=LayerNormType.rms,
+        activation_type=ActivationType.swiglu, rope=True, flash_attention=False,
+        attention_dropout=0.0, init_device="cpu", init_fn=InitFnType.normal, init_std=0.02,
+        transformer_grammar_type="pushdown", pushdown_max_depth=16,
+        weight_tying=True, eos_token_id=50256, pad_token_id=50258,
+    )
+    m = OLMo(cfg).eval()
+    torch.manual_seed(0)
+    B, n = 2, 16
+    input_ids = torch.randint(0, 50000, (B, n))
+    attn = torch.ones(B, n, dtype=torch.bool)
+    with torch.no_grad():
+        o_none = m(input_ids=input_ids, attention_mask=attn, tree_spans=None).logits
+        empty = torch.tensor([[[-1, -1, -1]]], dtype=torch.long).expand(B, 1, 3).contiguous()
+        o_empty = m(input_ids=input_ids, attention_mask=attn, tree_spans=empty).logits
+        spans = torch.tensor([[[2, 4, 7]], [[1, 3, 6]]], dtype=torch.long)
+        o_real = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
+    assert torch.allclose(o_none, o_empty, atol=1e-5), "empty spans should equal no spans"
+    assert not torch.allclose(o_none, o_real, atol=1e-5), "real spans should change the output"
+    # Backward flows (in train mode).
+    m.train()
+    o_real = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
+    o_real.sum().backward()

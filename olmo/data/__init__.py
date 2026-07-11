@@ -75,11 +75,11 @@ class TGCausalBias:
             self.cur_length += - remove_len + update_T
         return mask, None
 
-#TODO: promote parameter forwarding 
+#TODO: promote parameter forwarding
 # Types that use tree-format data with standard causal attention (no TG bias)
 _CAUSAL_TREE_TYPES = {"tree", "tgtree", "tree_shuffle", "tree_shuffle_mask",
                       "tree_noont", "tree_compress", "tree_triplecnt",
-                      "terminal"}
+                      "terminal", "pushdown", "treereg"}
 
 
 def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int] = None, TG_type:Optional[str]=None) -> TG_attention_bias:
@@ -110,6 +110,45 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
 def build_memmap_dataset(
     train_config: TrainConfig, data_config: DataConfig, include_instance_metadata: bool = True
 ) -> MemMapDataset:
+    # Pushdown / TreeReg baselines: serve precomputed whole-tree chunks from a
+    # parse_aligned dir (chunk_index.npy) + the tree.npy it indexes. The terminal
+    # input_ids and spans are parsed on the fly; the depth matrix is computed on
+    # the GPU in the model forward.
+    if train_config.model.transformer_grammar_type in ("pushdown", "treereg"):
+        if not data_config.paths:
+            raise OLMoConfigurationError(
+                "pushdown/treereg require data.paths = [parse_aligned_dir] "
+                "(precomputed, or chunk_index dir + data.parse_tree_paths = [tree.npy])"
+            )
+        parse_dir = Path(str(data_config.paths[0]))
+        # Prefer the precomputed dataset (input_ids.npy + spans.npy) when present —
+        # no tree.npy parsing at load time. Otherwise fall back to on-the-fly
+        # parsing from tree.npy + chunk_index.npy.
+        if (parse_dir / "input_ids.npy").exists():
+            from .parse_align import PrecomputedParseDataset
+            return PrecomputedParseDataset(  # type: ignore[return-value]
+                data_dir=str(parse_dir),
+                pad_token_id=train_config.model.pad_token_id,
+                load_depth=False,  # depth computed on GPU from spans (faster)
+            )
+        from .parse_align import ParseAlignedDataset
+        tree_paths = getattr(data_config, "parse_tree_paths", None)
+        if not tree_paths:
+            raise OLMoConfigurationError(
+                "pushdown/treereg: precomputed input_ids.npy not found in "
+                f"{parse_dir}, and no data.parse_tree_paths=[tree.npy] given for "
+                "on-the-fly parsing."
+            )
+        direction = getattr(train_config.model, "parse_binarize_direction", "left")
+        return ParseAlignedDataset(  # type: ignore[return-value]
+            tree_npy=str(tree_paths[0]),
+            chunk_index_npy=str(parse_dir / "chunk_index.npy"),
+            tokenizer=train_config.tokenizer.vocabulary,
+            direction=direction,
+            max_len=train_config.model.max_sequence_length,
+            pad_token_id=train_config.model.pad_token_id,
+            generate_attention_mask=data_config.generate_attention_mask,
+        )
     paths: List[str]
     metadata: List[Dict[str, Any]] = []
     if data_config.paths:

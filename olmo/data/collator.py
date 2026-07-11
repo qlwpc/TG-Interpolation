@@ -41,7 +41,10 @@ class DataCollator:
         all_doc_lens = []
         all_max_doc_lens = []
         all_gold_summary = []
+        all_tree_spans = []
+        all_tree_span_mask = []
         max_docs = max((len(x["doc_lens"]) if isinstance(x, dict) and "doc_lens" in x else 0 for x in items))
+        max_spans = max((len(x["tree_spans"]) if isinstance(x, dict) and "tree_spans" in x else 0 for x in items))
 
         for x in items:
             input_ids = x["input_ids"] if isinstance(x, dict) else x
@@ -126,6 +129,22 @@ class DataCollator:
             if index is not None:
                 all_indices.append(torch.tensor(index))
 
+            # Parse-aligned spans (Pushdown/TreeReg baselines): pad (M, 3) with -1
+            # and a validity mask, to (max_spans_in_batch, 3).
+            tree_spans = x.get("tree_spans") if isinstance(x, dict) else None
+            if tree_spans is not None:
+                if not isinstance(tree_spans, torch.Tensor):
+                    tree_spans = torch.tensor(tree_spans)
+                tree_spans = tree_spans.to(dtype=torch.long)
+                if tree_spans.dim() == 1:
+                    tree_spans = tree_spans.view(-1, 3)
+                m = tree_spans.shape[0]
+                span_pad = (0, 0, 0, max(0, max_spans - m))
+                all_tree_spans.append(F.pad(tree_spans, span_pad, value=-1))
+                span_mask = torch.ones(m, dtype=torch.bool)
+                span_mask = F.pad(span_mask, (0, max(0, max_spans - m)), value=False)
+                all_tree_span_mask.append(span_mask)
+
             # Instance mask.
             instance_mask = x.get("instance_mask") if isinstance(x, dict) else None
             if instance_mask is not None:
@@ -162,6 +181,9 @@ class DataCollator:
             out["doc_lens"] = torch.stack(all_doc_lens)
         if all_max_doc_lens:
             out["max_doc_lens"] = all_max_doc_lens
+        if all_tree_spans:
+            out["tree_spans"] = torch.stack(all_tree_spans)
+            out["tree_span_mask"] = torch.stack(all_tree_span_mask)
         if all_metadata:
             out["metadata"] = all_metadata
         if all_gold_summary:

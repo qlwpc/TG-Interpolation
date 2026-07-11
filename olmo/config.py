@@ -499,18 +499,36 @@ class ModelConfig(BaseConfig):
 
     transformer_grammar_type : str = "terminal"
     """
-    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}", "tree_triplecnt", 
-                                 "tree_noont", "tree_compress"] 
+    transformer grammar type in ["terminal", "tg", "tree", "tgproximal", "tgnomask", "tgheight", "tree_shuffle", "pause{number}", "tree_triplecnt",
+                                 "tree_noont", "tree_compress", "pushdown", "treereg"]
     """
     mix_head_type: List[TGConfig] = field(default_factory=list)
     """
     Mixed attention head attention bias type
     """
-    
+
     modelname: Optional[str] = None
 
     tg_proximal_k : int = 20
     tg_height_h : int = 5
+
+    # ---- Pushdown Layers (Murty et al. 2023) ----
+    pushdown_max_depth: int = 64
+    """Max constituent depth for the Pushdown stack-tape depth embedding table."""
+    pushdown_attachment_weight: float = 1.0
+    """Weight of the auxiliary attachment-head loss (0.0 = depth-key bias only)."""
+    # ---- TreeReg (Nandi et al. 2025) ----
+    treereg_layer: int = 6
+    """Layer whose post-block residual hidden state feeds the TreeReg SCIN loss."""
+    treereg_n_heads: int = 3
+    """Number of attention heads (circuit) the TreeReg loss acts on (~25% of heads)."""
+    treereg_every_k: int = 10
+    """Apply the TreeReg loss every k LM steps (0 = every step)."""
+    treereg_alpha: float = 1.0
+    """Weight of the TreeReg auxiliary loss (L_LM + alpha * L_TR)."""
+    # ---- shared parse-binarization direction ----
+    parse_binarize_direction: str = "left"
+    """Binarization direction for the parse trees: 'left' or 'right'."""
 
 
     @property
@@ -685,6 +703,14 @@ class DataConfig(BaseConfig):
     memmap_dtype: str = "uint16"
     datasets: Optional[Dict[str, List[str]]] = None
     label_mask_paths: Optional[List[str]] = None
+    parse_tree_paths: Optional[List[str]] = None
+    """
+    For the ``pushdown`` / ``treereg`` baselines: path(s) to the tokenized
+    constituency-parse stream (``tree/*.npy``) indexed by ``parse_aligned`` chunk
+    indices (in ``paths``). The data loader parses each chunk's tree slice on the
+    fly to produce terminal ``input_ids`` (bit-identical to ``terminal/*.npy``) and
+    constituent spans.
+    """
     pad_direction: PaddingDirection = PaddingDirection.right
     generate_attention_mask: bool = False
     generate_doc_lengths: bool = False

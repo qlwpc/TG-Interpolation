@@ -68,7 +68,7 @@ Device_args = {
 }
 
 INPUTFORMAT = {
-    "terminal": ["terminal", "pause1", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
+    "terminal": ["terminal", "pause1", "pause1_label", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"],
     "tree_compress" : ["tree_compress"],
@@ -111,6 +111,7 @@ Models = {
     "pause1in3": {"model.transformer_grammar_type": "pause1/3", "model.max_sequence_length": 2048},
     "pause1in4": {"model.transformer_grammar_type": "pause1/4", "model.max_sequence_length": 2050},
     "pause1": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pause1label": {"model.transformer_grammar_type": "pause1_label", "model.max_sequence_length": 2048},
     "pretrain_terminal": {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 2048},
 }
 mixing = {
@@ -345,6 +346,7 @@ model_paths = {
     "pause1in3": "/saved_models/pretrain_pause1in3_100M/step38082-unsharded",
     "pause1in4": "/saved_models/pretrain_pause1in4_100M/step36516-unsharded",
     "pause1": "/saved_models/pretrain_pause1_100M/step45487-unsharded",
+    "pause1label": "/saved_models/pretrain_pause1label_100M/step45487-unsharded",
     "pretrain_terminal": "/saved_models/pretrain_terminal_100M/step34115-unsharded"
 }
 
@@ -409,7 +411,7 @@ if __name__ == "__main__":
     # except IndexError:
     #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
     Device = "A6000"
-    modelnames = ["pause1", "pretrain_terminal"]
+    modelnames = ["pause1label"]
     tasks = ["docppl", "SG", "blimp", "boolq", "xsum_finetune"]
     load_path = True
     for modelname in modelnames:
