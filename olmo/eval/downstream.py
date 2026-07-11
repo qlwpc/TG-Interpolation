@@ -1552,6 +1552,10 @@ class SGDataset(metaclass=abc.ABCMeta):
         self.pause_token_id = pause_token_id
         self.sg_nc_ratio = kwargs.get("sg_nc_ratio", 1.0)
         self.sg_pc = kwargs.get("sg_pc", 3)
+        # Qwen3 tokenizer uses different tokenization → load Qwen3-aligned tags.
+        self.is_qwen3 = "qwen3" in (vocab_path or "").lower()
+        if self.is_qwen3:
+            self.dataset_path = os.path.join(self.dataset_path, "qwen3")
         self.prep_examples()
 
     @property
