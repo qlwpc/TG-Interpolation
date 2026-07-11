@@ -46,7 +46,7 @@ model:
   treereg_n_heads: 3        # ~25% of 12 heads
   treereg_every_k: 10       # apply L_TR every 10 LM steps
   treereg_alpha: 1.0        # L_LM + alpha * L_TR
-  parse_binarize_direction: left
+  parse_binarize_direction: right
 
 ddp:
   grad_sync_mode: batch
@@ -58,7 +58,7 @@ ddp:
 
 optimizer:
   name: adamw
-  learning_rate: 0.002917
+  learning_rate: 0.005323
   weight_decay: 0.1
   eps: 1e-8
   betas:
@@ -80,13 +80,13 @@ tokenizer:
 save_folder: workspace/${run_name}
 save_overwrite: true
 save_interval_unsharded: 5000
-save_num_unsharded_checkpoints_to_keep: -1
+save_num_unsharded_checkpoints_to_keep: 1
 load_path: null
 
 max_duration: 1ep
 stop_at: 14425
-global_train_batch_size: 48
-device_train_microbatch_size: 4    # pushdown/depth SDPA path materializes (B,12,2048,2048) tensors; 12 OOMs 48GB
+global_train_batch_size: 144
+device_train_microbatch_size: 12    # pushdown/depth SDPA path materializes (B,12,2048,2048) tensors; 12 OOMs 48GB
 
 precision: amp_bf16
 distributed_strategy: ddp
@@ -98,10 +98,21 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 1000
+eval_interval: 2000
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
+  - label: TG-ppl-validation
+    data:
+      num_workers: 1
+      pin_memory: true
+      drop_last: false
+      generate_doc_lengths: true
+      generate_attention_mask: true
+      paths:
+        - ${workspace}/dataset/bbc-news/parse_aligned/dev_right
+      parse_tree_paths:
+        - ${workspace}/dataset/bbc-news/tree/dev.npy
   - label: TG-ppl-validation-test
     data:
       num_workers: 1
@@ -110,7 +121,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/test_left
+        - ${workspace}/dataset/bbc-news/parse_aligned/test_right
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/test.npy
 
@@ -124,6 +135,6 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/train_left
+    - ${workspace}/dataset/bbc-news/parse_aligned/train_right
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/train.npy
