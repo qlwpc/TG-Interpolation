@@ -1084,7 +1084,16 @@ class Trainer:
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits, _ = self.model_forward(sent, loss_reduction="none")
-                        score_dict[sent["condition_name"]] = torch.sum(ce_loss[0] * torch.LongTensor(sent["tag"][0]).to(self.device)).item()
+                        # Align tag mask with ce_loss positions.
+                        # ce_loss has shape (1, L-1) — the model predicts
+                        # tokens 1..L-1 from tokens 0..L-2.
+                        # tag[0] has length L and is aligned with input_ids
+                        # positions 0..L-1.  For non-BOS tokenizers (Qwen3),
+                        # the first tag entry has no corresponding loss.
+                        tag_tensor = torch.LongTensor(sent["tag"][0]).to(self.device)
+                        if tag_tensor.shape[0] != ce_loss[0].shape[0]:
+                            tag_tensor = tag_tensor[1:]
+                        score_dict[sent["condition_name"]] = torch.sum(ce_loss[0] * tag_tensor).item()
                         print(ce_loss[0])
                     else:
                         term_len = sent["input_ids"].shape[1]
