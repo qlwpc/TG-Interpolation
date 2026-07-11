@@ -1053,6 +1053,22 @@ class Trainer:
             batch, ce_loss, logits
         )
 
+    def _summon_params_ctx(self):
+        """Context manager that temporarily unshards FSDP parameters.
+
+        Under FSDP, calling methods on ``self.dist_model.module`` directly
+        accesses sharded parameters (the wrapper only intercepts
+        ``forward()``).  This context manager gathers all parameters so
+        custom methods like ``word_sync_beam_search`` work correctly.
+
+        Under DDP / single-GPU this is a no-op.
+        """
+        if isinstance(self.dist_model, FSDP):
+            return FSDP.summon_full_params(self.dist_model)
+        else:
+            from contextlib import nullcontext
+            return nullcontext()
+
     def SG_eval_step(self, batch: List[Dict[str, Any]], evaluator: Evaluator) -> None:
         score_dict = {}
         task_name = batch[0]["task"]
@@ -1074,20 +1090,21 @@ class Trainer:
                         term_len = sent["input_ids"].shape[1]
                         nc = max(int(sg_nc_ratio * term_len), 5)
                         max_len = max(3 * term_len, 10)
-                        surprisal = self.dist_model.module.word_sync_beam_search(
-                            vocab=evaluator.eval_loader.dataset.vocab,
-                            eval_input_ids=sent["input_ids"][0],
-                            max_length=max_len,
-                            beam_size=beam_size,
-                            nc=nc,
-                            pc=sg_pc,
-                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=max_len + 10),
-                            tag_start=sent["tag_start"],
-                            tag_end=sent["tag_end"],
-                            strategy = BeamSearchType.word_sync_dfs,
-                            transformer_grammar_type = self.cfg.model.transformer_grammar_type,
-                            tree_eval_type=tree_eval_type,
-                        )
+                        with self._summon_params_ctx():
+                            surprisal = self.dist_model.module.word_sync_beam_search(
+                                vocab=evaluator.eval_loader.dataset.vocab,
+                                eval_input_ids=sent["input_ids"][0],
+                                max_length=max_len,
+                                beam_size=beam_size,
+                                nc=nc,
+                                pc=sg_pc,
+                                generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=max_len + 10),
+                                tag_start=sent["tag_start"],
+                                tag_end=sent["tag_end"],
+                                strategy = BeamSearchType.word_sync_dfs,
+                                transformer_grammar_type = self.cfg.model.transformer_grammar_type,
+                                tree_eval_type=tree_eval_type,
+                            )
 
                         score_dict[sent["condition_name"]] = surprisal
 
@@ -1130,16 +1147,17 @@ class Trainer:
 
                     max_length = len(past_input) + 100 * cont_len
 
-                    beams = self.dist_model.module.word_sync_beam_search(
-                        vocab=vocab,
-                        eval_input_ids=eval_input_ids,
-                        past_input=past_input,
-                        beam_size=300,
-                        generate_TG_bias=self.generate_TG_attention_bias,
-                        strategy=BeamSearchType.word_sync_dfs,
-                        transformer_grammar_type=self.cfg.model.transformer_grammar_type,
-                        max_length=max_length,
-                    )
+                    with self._summon_params_ctx():
+                        beams = self.dist_model.module.word_sync_beam_search(
+                            vocab=vocab,
+                            eval_input_ids=eval_input_ids,
+                            past_input=past_input,
+                            beam_size=300,
+                            generate_TG_bias=self.generate_TG_attention_bias,
+                            strategy=BeamSearchType.word_sync_dfs,
+                            transformer_grammar_type=self.cfg.model.transformer_grammar_type,
+                            max_length=max_length,
+                        )
 
                     if beams:
                         logprobs = torch.tensor(
@@ -1157,33 +1175,31 @@ class Trainer:
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
-                if self.cfg.model.transformer_grammar_type == "terminal":
-                    batch = move_to_device(batch, self.device)
-                    predictions = self.dist_model.module.generate(batch["input_ids"], 
-                                                                   max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
-                                                                   beam_size=6).token_ids
-                    # predictions = predictions[0, 0, :].cpu().numpy()
-                    # predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
-                    # predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
-                    predictions = predictions[:, 0, :].to(self.device)
-                else:
-                    # currently only support eval_batch_size==1
-                    predictions = self.dist_model.module.word_sync_beam_search(
-                            vocab = evaluator.eval_loader.dataset.vocab,
-                            past_input = batch["input_ids"][0],
-                            max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH//2,
-                            max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH, 
-                            beam_size=6,
-                            generate_TG_bias=self.generate_TG_attention_bias, #get_TG_generate_bias_func(self.cfg),
-                            strategy=BeamSearchType.default,
-                            transformer_grammar_type = self.cfg.model.transformer_grammar_type,
-                        )
-                    predictions = predictions[0]["input_ids"].numpy()
-                    if self.cfg.model.transformer_grammar_type[:5]=="pause":  #TODO: fixed extract pause tokens
-                        p, q = self.cfg.model.pause_spec
-                        predictions = extract_real_tokens(predictions, p, q, skip_first=True)
-                    predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
-                    predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
+                with self._summon_params_ctx():
+                    if self.cfg.model.transformer_grammar_type == "terminal":
+                        batch = move_to_device(batch, self.device)
+                        predictions = self.dist_model.module.generate(batch["input_ids"],
+                                                                       max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                                                                       beam_size=6).token_ids
+                        predictions = predictions[:, 0, :].to(self.device)
+                    else:
+                        # currently only support eval_batch_size==1
+                        predictions = self.dist_model.module.word_sync_beam_search(
+                                vocab = evaluator.eval_loader.dataset.vocab,
+                                past_input = batch["input_ids"][0],
+                                max_word_steps = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH//2,
+                                max_length = evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                                beam_size=6,
+                                generate_TG_bias=self.generate_TG_attention_bias,
+                                strategy=BeamSearchType.default,
+                                transformer_grammar_type = self.cfg.model.transformer_grammar_type,
+                            )
+                        predictions = predictions[0]["input_ids"].numpy()
+                        if self.cfg.model.transformer_grammar_type[:5]=="pause":
+                            p, q = self.cfg.model.pause_spec
+                            predictions = extract_real_tokens(predictions, p, q, skip_first=True)
+                        predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
+                        predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
 
         
         evaluator.update_metrics(
