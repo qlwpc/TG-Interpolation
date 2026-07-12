@@ -791,9 +791,15 @@ class OLMoBlock(nn.Module):
             # Profiling A/B switches (default off = production path). Set via env:
             #   OLMO_PUSHDOWN_NO_BIAS=1  -> skip the db gather entirely; score_mod is
             #     a no-op (pure causal flash). Isolates whether the slowdown is the
-            #     score_mod gather vs flex_attention itself. Keeps a 0*E.sum() term so
-            #     pushdown_depth_bias still receives grad (else DDP errors on unused
-            #     params — the 12 per-layer depth_emb Embeddings).
+            #     score_mod gather vs flex_attention itself. NOTE: this drops the
+            #     depth bias, so the 12 per-layer pushdown_depth_bias.depth_emb
+            #     Embeddings receive no grad -> DDP errors "unused parameters" unless
+            #     you ALSO set ddp.find_unused_params: true (+ grad_sync_mode:
+            #     micro_batch) in the config for the profiling run. Do NOT use a
+            #     0*E.sum() keepalive inside score_mod: inductor's flex_attention
+            #     backward lowering asserts `buf.name is not None` on a score_mod
+            #     output that is a broadcasted constant (LoweringException at
+            #     flex_attention.py:2353).
             #   OLMO_PUSHDOWN_NOCLAMP=1  -> score_mod indexes without .long().clamp
             #     (faster if the clamp was breaking inductor fusion; correctness
             #     relies on real cells never going OOB, which holds when seq_len is
@@ -801,10 +807,7 @@ class OLMoBlock(nn.Module):
             _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
             _noclamp = bool(os.environ.get("OLMO_PUSHDOWN_NOCLAMP"))
             if _no_bias:
-                # No db materialization (skip the 2.4GB/layer take_along_dim). Keep
-                # grad flowing to pushdown_depth_bias via E (its output) with a 0
-                # multiplier, so DDP doesn't error on the 12 unused depth_emb params.
-                _grad_keepalive = E.sum() * 0.0
+                # Skip the 2.4GB/layer db materialization (the suspected slow op).
                 del P, D, Dc
             else:
                 db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
@@ -817,7 +820,7 @@ class OLMoBlock(nn.Module):
             # score -> inductor asserts "joint_subgraph_buffer is None".
             if _no_bias:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    return score + _grad_keepalive
+                    return score
             elif _noclamp:
                 # A/B: index without .long().clamp — isolates whether the casts/clamps
                 # break inductor fusion of the gather.
