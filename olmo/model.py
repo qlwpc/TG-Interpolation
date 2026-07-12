@@ -774,10 +774,34 @@ class OLMoBlock(nn.Module):
         if (self.config.pushdown_use_flex
                 and getattr(self, "flex_attention", None) is not None
                 and block_mask is not None):
+            # Precompute the full per-(q,kv) depth bias db = P[b,h,q, Dc[b,q,kv]] as a
+            # (B, n_h, n, n) fp32 tensor. This IS the 2.4 GB/layer tensor the SDPA path
+            # materialized — BUT here it is a CAPTURED bias read fused inside the flex
+            # kernel, NOT an SDPA attn_mask. The difference: SDPA with a float attn_mask
+            # forces the math backend (full (B,nh,n,n) attention matrix materialized,
+            # ~100x slow), whereas flex fuses db's gather+add into the flash-class kernel
+            # with no attention-matrix materialization. (Gathering P by Dc *inside* the
+            # score_mod — the memory-optimal 77 MB form — hits an inductor lowering error:
+            # "All the buffers in the score and mask subgraph should be in
+            # input_buffers"; a single captured-tensor index is what flex supports.)
+            db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
+            del P, D, Dc
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
-            _P, _Dc = P, Dc  # capture for the closure
+            _B, _nh, _n = B, nh, n
+            _db = db
             def _depth_score_mod(b, h, q_idx, kv_idx, score):
-                return score + _P[b, h, q_idx, _Dc[b, q_idx, kv_idx]] * inv_sqrt_hs
+                # flex traces/evaluates the score_mod over a padded block grid, so the
+                # index scalars can exceed the real tensor dims at the boundary (those
+                # cells are in masked-out blocks -> their gathered value is unused).
+                # Clamp in-bounds before indexing to avoid OOB. Cast to long: flex
+                # passes the batch index as a float scalar in some paths, and fake-
+                # tensor tracing rejects non-integer indices ("tensors used as indices
+                # must be long, int, byte or bool").
+                b = b.long().clamp(0, _B - 1)
+                h = h.long().clamp(0, _nh - 1)
+                q_idx = q_idx.long().clamp(0, _n - 1)
+                kv_idx = kv_idx.long().clamp(0, _n - 1)
+                return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
             # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
             if n_kv != nh:
                 rep = nh // n_kv
