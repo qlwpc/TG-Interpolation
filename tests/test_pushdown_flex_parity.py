@@ -83,16 +83,14 @@ def test_pushdown_flex_matches_sdpa():
         out_sdpa = m_sdpa(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
         out_flex = m_flex(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
 
-    # The flex path fuses the depth-bias gather+add into the attention kernel
-    # (bf16 inductor), while SDPA uses the fp32 math backend with an explicit
-    # additive mask — so expect fused-kernel precision divergence, not bit-equality.
-    # The bias=0 (no-parse) path matches SDPA to float noise; the bias!=0 path
-    # diverges by inductor-precision. Use a tolerance that catches real bugs (wrong
-    # bias / wrong scale / wrong mask) but accepts fused-kernel drift.
+    # With the correct score_mod signature (score first), the flex forward matches
+    # SDPA exactly on CPU fp32 (0.0 diff). On GPU under bf16 inductor expect small
+    # fused-kernel drift. A wrong signature (score last) gathers the bias at wrong
+    # indices -> diff >> 1.0, so this tolerance catches that regression.
     max_diff = (out_flex - out_sdpa).abs().max().item()
-    assert max_diff < 1.0, (
+    assert max_diff < 0.1, (
         f"flex vs SDPA pushdown outputs diverge too far: max abs diff = {max_diff} "
-        f"(expected <1.0 for bf16 fused-kernel precision; a real bug would be much larger)"
+        f"(expected <0.1; a larger diff signals a score_mod signature/indexing bug)"
     )
 
     # Sanity: real spans must change the output vs no parse (depth bias is nonzero).

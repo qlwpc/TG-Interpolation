@@ -789,7 +789,12 @@ class OLMoBlock(nn.Module):
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
             _db = db
-            def _depth_score_mod(b, h, q_idx, kv_idx, score):
+            # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
+            # flex calls it positionally; putting score last swaps score<->batch,
+            # which (a) gathers the bias at wrong indices and (b) makes the backward
+            # treat the float `score` as an integer batch index -> no grad flows to
+            # score -> inductor asserts "joint_subgraph_buffer is None".
+            def _depth_score_mod(score, b, h, q_idx, kv_idx):
                 # flex traces/evaluates the score_mod over a padded block grid, so the
                 # index scalars can exceed the real tensor dims at the boundary (those
                 # cells are in masked-out blocks -> their gathered value is unused).
