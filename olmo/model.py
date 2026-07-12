@@ -27,6 +27,8 @@ from typing import (
     Union
 )
 
+import os
+
 import torch
 import torch.backends.cuda
 import torch.nn as nn
@@ -789,24 +791,46 @@ class OLMoBlock(nn.Module):
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
             _db = db
+            # Profiling A/B switches (default off = production path). Set via env:
+            #   OLMO_PUSHDOWN_NO_BIAS=1  -> flex + block_mask, but score_mod returns
+            #     raw `score` (pure causal flash, depth bias dropped). If this is
+            #     fast, the slowdown is the score_mod body (db gather / clamp),
+            #     NOT flex_attention itself.
+            #   OLMO_PUSHDOWN_NOCLAMP=1  -> score_mod indexes without .long().clamp
+            #     (faster if the clamp was breaking inductor fusion; correctness
+            #     relies on real cells never going OOB, which holds when seq_len is
+            #     a multiple of the flex block size 128 — verify for your config).
+            _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
+            _noclamp = bool(os.environ.get("OLMO_PUSHDOWN_NOCLAMP"))
             # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
             # flex calls it positionally; putting score last swaps score<->batch,
             # which (a) gathers the bias at wrong indices and (b) makes the backward
             # treat the float `score` as an integer batch index -> no grad flows to
             # score -> inductor asserts "joint_subgraph_buffer is None".
-            def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                # flex traces/evaluates the score_mod over a padded block grid, so the
-                # index scalars can exceed the real tensor dims at the boundary (those
-                # cells are in masked-out blocks -> their gathered value is unused).
-                # Clamp in-bounds before indexing to avoid OOB. Cast to long: flex
-                # passes the batch index as a float scalar in some paths, and fake-
-                # tensor tracing rejects non-integer indices ("tensors used as indices
-                # must be long, int, byte or bool").
-                b = b.long().clamp(0, _B - 1)
-                h = h.long().clamp(0, _nh - 1)
-                q_idx = q_idx.long().clamp(0, _n - 1)
-                kv_idx = kv_idx.long().clamp(0, _n - 1)
-                return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
+            if _no_bias:
+                # A/B: pure causal flash (depth bias dropped) — isolates whether the
+                # slowdown is flex_attention itself or the score_mod body.
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    return score
+            elif _noclamp:
+                # A/B: index without .long().clamp — isolates whether the casts/clamps
+                # break inductor fusion of the gather.
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
+            else:
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    # flex traces/evaluates the score_mod over a padded block grid, so the
+                    # index scalars can exceed the real tensor dims at the boundary (those
+                    # cells are in masked-out blocks -> their gathered value is unused).
+                    # Clamp in-bounds before indexing to avoid OOB. Cast to long: flex
+                    # passes the batch index as a float scalar in some paths, and fake-
+                    # tensor tracing rejects non-integer indices ("tensors used as indices
+                    # must be long, int, byte or bool").
+                    b = b.long().clamp(0, _B - 1)
+                    h = h.long().clamp(0, _nh - 1)
+                    q_idx = q_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
             # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
             if n_kv != nh:
                 rep = nh // n_kv
