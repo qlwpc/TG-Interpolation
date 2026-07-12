@@ -916,7 +916,14 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         self.data_dir = data_dir
         self.pad_token_id = pad_token_id
         self.input_ids = np.load(os.path.join(data_dir, "input_ids.npy"), mmap_mode="r")
-        self.spans = np.load(os.path.join(data_dir, "spans.npy"), mmap_mode="r")
+        # Prefer the int16 spans file if present (spans are terminal indices < 2048,
+        # so int16 is lossless and halves the mmap from 149 GB to 75 GB for the train
+        # split — directly cutting cgroup page-cache pressure under slurm, which was
+        # the cause of the num_workers>0 OOM). Fall back to the int32 spans.npy.
+        # __getitem__ builds tensors with dtype=torch.long, which upcasts int16 -> int64.
+        spans_int16 = os.path.join(data_dir, "spans_int16.npy")
+        spans_path = spans_int16 if os.path.exists(spans_int16) else os.path.join(data_dir, "spans.npy")
+        self.spans = np.load(spans_path, mmap_mode="r")
         self.span_counts = np.load(os.path.join(data_dir, "span_counts.npy"))
         # These mmaps are read by RANDOM chunk index across 4.88M chunks. Hint the
         # kernel MADV_RANDOM so it stops readaheading (the default readahead hoards
