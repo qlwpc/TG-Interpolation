@@ -18,7 +18,7 @@ model:
   alibi: false
   rope: true
   flash_attention: true      # used for the no-parse (eval) path; Pushdown bias path uses SDPA
-  flex_attention: false
+  flex_attention: true       # compiles flex_attention; the Pushdown score_mod fast path needs this
   attention_dropout: 0.0
   attention_layer_norm: false
   clip_qkv: null
@@ -46,12 +46,15 @@ model:
   pushdown_attachment_weight: 0.0   # depth-key bias only (attachment head optional)
   parse_binarize_direction: right
   # FlexAttention score_mod path (fused flash-class kernel for the per-(q,kv) depth
-  # bias). Off by default — the SDPA additive-mask path is the validated default.
-  # To try: set to true AND set flex_attention: true above. Validate output parity
-  # vs the SDPA path on a short run first (the score_mod needs inductor/compile).
-  # Only used when a chunk has NO padding (full-length); padded chunks fall back
-  # to the SDPA path automatically.
-  pushdown_use_flex: false
+  # bias). ON — the recommended training path. OLMo.forward builds a causal+pad
+  # block_mask from the 1-D attention_mask (mirroring the TG path) and the depth
+  # bias goes into the score_mod: no (B, n_h, n, n) fp32 mask, no math-backend SDPA
+  # (the SDPA path is ~100x slower and OOMs at microbatch 12). Requires
+  # flex_attention: true above. flex_attention is compiled independently of
+  # block.compile(), so this works even though compute_depth_matrix_gpu's index_put_
+  # graph-breaks block.compile (it runs eagerly outside the score_mod closure).
+  # Validate output parity vs the SDPA path via tests/test_pushdown_flex_parity.py.
+  pushdown_use_flex: true
 
 ddp:
   grad_sync_mode: batch
@@ -91,7 +94,8 @@ load_path: null
 max_duration: 1ep
 stop_at: 14425
 global_train_batch_size: 144
-device_train_microbatch_size: 12    # pushdown SDPA path materializes (B,12,2048,2048) tensors; 12 OOMs 48GB
+device_train_microbatch_size: 12    # flex path peak is small (int8 S ~50MB + P ~77MB/layer);
+                                    # 12 is conservative — sweep 24/32 on GPU after the parity test passes
 
 precision: amp_bf16
 distributed_strategy: ddp

@@ -651,7 +651,8 @@ class OLMoBlock(nn.Module):
         # depth bias is zero and this falls through to the standard path below.
         if self._is_pushdown and tree_spans is not None:
             att = self._pushdown_attention(q, k, v, tree_spans, attention_bias, key_len,
-                                           dropout_p=0.0 if not self.training else self.config.attention_dropout)
+                                           dropout_p=0.0 if not self.training else self.config.attention_dropout,
+                                           block_mask=block_mask)
             att = att.transpose(1, 2).contiguous().view(B, T, C)
             return self.attn_out(att), present
 
@@ -694,21 +695,35 @@ class OLMoBlock(nn.Module):
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
         tree_spans: torch.Tensor, attention_bias: Optional[torch.Tensor],
         key_len: int, dropout_p: float = 0.0,
+        block_mask: Optional[BlockMask] = None,
     ) -> torch.Tensor:
-        """Pushdown attention: standard SDPA with an additive depth bias.
+        """Pushdown attention with a per-(q,kv) stale-depth bias.
 
         Computes the stale depth tape ``S`` (B, n, n) int8 from ``tree_spans`` on the
-        GPU, builds a per-head depth embedding ``E_l`` (projecting the depth
-        embedding through the key projection), materializes the per-(q,kv) bias
-        ``Q[b,h,q] . E_l[h, S[b,q,kv]]`` as a full ``(B, n_h, n, n)`` additive mask,
-        merges it with the incoming causal+pad ``attention_bias``, and runs SDPA
-        (flash attention cannot take an additive bias).
+        GPU, builds a per-head depth embedding ``E_l`` (projecting the depth embedding
+        through the key projection), and applies the per-(q,kv) bias
+        ``Q[b,h,q] . E_l[h, S[b,q,kv]]``.
 
-        This is the robust path (no ``torch.compile``/inductor dependency). A
-        FlexAttention ``score_mod`` variant (fused, lower memory) is the intended
-        GPU-fast path but is gated on CUDA-inductor lowerability of the score_mod;
-        see the project plan. When ``tree_spans`` is None the depth bias is zero and
-        the caller falls through to the standard attention path.
+        Two paths:
+
+        * **FlexAttention ``score_mod``** (default fast path, ``pushdown_use_flex``):
+          ``OLMo.forward`` builds a causal+pad ``block_mask`` from the 1-D
+          ``attention_mask`` (mirroring the TG path) and passes it as ``block_mask``;
+          the depth bias goes into the ``score_mod``. This is a single fused
+          flash-class kernel — no ``(B, n_h, n, n)`` fp32 mask, no math-backend SDPA.
+          ``flex_attention`` is compiled independently (``model.py`` L497), so this
+          works without ``block.compile()`` (the ``index_put_`` in
+          ``compute_depth_matrix_gpu`` graph-breaks ``block.compile`` but runs eagerly
+          here, outside the compiled score_mod closure).
+
+        * **SDPA additive-mask fallback**: materializes the full ``(B, n_h, n, n)``
+          fp32 bias, merges with the causal+pad ``attention_bias``, and runs
+          ``F.scaled_dot_product_attention(is_causal=False)``. Used when flex is off,
+          when no ``block_mask`` is present, or during generation (KV cache — flex
+          block_masks are fixed-length). Slow (~100x vs flex); not for training.
+
+        When ``tree_spans`` is None (no parse) the depth bias is zero and the caller
+        falls through to the standard attention path.
         """
         from olmo.pushdown import compute_depth_matrix_gpu
         B, nh, n, hs = q.shape
@@ -739,37 +754,38 @@ class OLMoBlock(nn.Module):
         # SDPA alongside bf16 q/k/v.
         P = torch.einsum("bhni,hdi->bhnd", q.float(), E.float())  # (B, n_h, n, D) fp32
         Dmax = P.shape[3] - 1
+        # int64: required by take_along_dim in the SDPA fallback below (it rejects
+        # int32). The flex score_mod closure gathers with this same Dc and accepts
+        # int64 fine. (A (B,n,n) int64 view is ~402 MB at B=12,n=2048, but it is a
+        # non-materialized view of the int8 S clamped — the underlying S is 50 MB.)
         Dc = D.clamp(0, Dmax)  # (B, n, n) int64, values in [0, Dmax]
 
-        # Optional FlexAttention score_mod path (fused flash-class kernel). The
-        # stale depth bias is per-(query,key) (S[b,q,kv]), so plain flash_attn_func
-        # cannot express it; FlexAttention is the only fused path. The score_mod
-        # body is a single gather on the precomputed P (inductor-fusable) — the
-        # graph-breaking index_put_ lives in compute_depth_matrix_gpu, which is
-        # memoized OUTSIDE this closure, so this path does not trigger it.
-        # Gated on pushdown_use_flex (off by default; validate on GPU before use).
-        if self.config.pushdown_use_flex and self.flex_attention is not None:
-            # block_mask encodes causality (and would encode padding if present).
-            block_mask = self._get_causal_block_mask(B, n, q.device)
-            # If the caller built an attention_bias (causal+pad), fold pad into the
-            # block_mask via an additive mask_mod is not trivial; for the parse-aligned
-            # train path attention_bias is the causal+pad bias. Fall back to the full
-            # SDPA path when a non-trivial attention_bias is present (padding), so the
-            # flex path is only used when there is no padding (full-length chunks).
-            use_flex = attention_bias is None
-            if use_flex:
-                inv_sqrt_hs = 1.0 / (hs ** 0.5)
-                _P, _Dc = P, Dc  # capture for the closure
-                def _depth_score_mod(b, h, q_idx, kv_idx, score):
-                    return score + _P[b, h, q_idx, _Dc[b, q_idx, kv_idx]] * inv_sqrt_hs
-                # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
-                if n_kv != nh:
-                    rep = nh // n_kv
-                    k = k.repeat_interleave(rep, dim=1, output_size=nh)
-                    v = v.repeat_interleave(rep, dim=1, output_size=nh)
-                att = self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
-                return att  # already (B, n_h, n, hs)
-            # else: fall through to the SDPA additive-mask path (padding present).
+        # FlexAttention score_mod path (fused flash-class kernel) — the intended
+        # pushdown fast path. The stale depth bias is per-(query,key) (S[b,q,kv]),
+        # so plain flash_attn_func cannot express it; FlexAttention is the only
+        # fused path. OLMo.forward builds a causal+pad block_mask from the 1-D
+        # attention_mask (mirroring the TG path) and passes it here, fusing both
+        # causality and padding into the mask and the depth bias into score_mod.
+        # This replaces the (B, n_h, n, n) fp32 additive mask + math-backend SDPA
+        # (the ~100x slowdown). The score_mod body is a single gather on the
+        # precomputed P (inductor-fusable); the graph-breaking index_put_ lives in
+        # compute_depth_matrix_gpu, which runs eagerly and is memoized OUTSIDE this
+        # closure, so the compiled flex kernel is not affected by it.
+        if (self.config.pushdown_use_flex
+                and getattr(self, "flex_attention", None) is not None
+                and block_mask is not None):
+            inv_sqrt_hs = 1.0 / (hs ** 0.5)
+            _P, _Dc = P, Dc  # capture for the closure
+            def _depth_score_mod(b, h, q_idx, kv_idx, score):
+                return score + _P[b, h, q_idx, _Dc[b, q_idx, kv_idx]] * inv_sqrt_hs
+            # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
+            if n_kv != nh:
+                rep = nh // n_kv
+                k = k.repeat_interleave(rep, dim=1, output_size=nh)
+                v = v.repeat_interleave(rep, dim=1, output_size=nh)
+            return self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
+        # else: fall through to the SDPA additive-mask path (flex disabled, no
+        # block_mask, or generation with a KV cache).
 
         # depth_bias[b,h,q,k] = P[b,h,q, D[b,q,k]] — gather P's last dim by the
         # depth tape D (shared across heads). Use take_along_dim with a (B,1,n,n)
@@ -817,20 +833,6 @@ class OLMoBlock(nn.Module):
         return F.scaled_dot_product_attention(
             q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=False,
         )
-
-    def _get_causal_block_mask(self, B: int, n: int, device: torch.device) -> BlockMask:
-        cache = self.__cache
-        key = ("pushdown_causal_bm", B, n)
-        bm = cache.get(key) if cache is not None else None
-        if bm is not None and bm.device == device:
-            return bm
-        bm = create_block_mask(
-            mask_mod=lambda b, h, q_idx, kv_idx: q_idx >= kv_idx,
-            B=B, H=None, Q_LEN=n, KV_LEN=n, device=device,
-        )
-        if cache is not None:
-            cache[key] = bm
-        return bm
 
     @abstractmethod
     def forward(
@@ -1559,6 +1561,29 @@ class OLMo(nn.Module):
                     return attention_mask[kv_idx] and flex_mask[b, h, q_idx, kv_idx]
                 mask_mod = TG_mask_per_head if attention_mask is None else TG_mask_per_head_with_pad
                 block_mask = create_block_mask(mask_mod=mask_mod, B=batch_size, H=H, Q_LEN=q_len, KV_LEN=kv_len)
+            attention_bias = None
+        elif (self.config.transformer_grammar_type == "pushdown"
+              and self.config.flex_attention and self.config.pushdown_use_flex
+              and attention_mask is not None and past_key_values is None):
+            # Pushdown fast path: fuse causality + padding into a flex block_mask
+            # (built once per forward, reused by all 12 blocks) and put the per-(q,kv)
+            # depth bias into the score_mod in OLMoBlock._pushdown_attention. This replaces
+            # the (B, n_h, n, n) fp32 additive-mask + math-backend SDPA path (the ~100x
+            # slowdown) with a single fused flash-class kernel. The 1-D bool attention_mask
+            # is captured here BEFORE the else-branch reshapes it into a float bias; if it
+            # is 2-D (B, seq) the kv_idx index below works directly, otherwise we squeeze.
+            # `past_key_values is None` guards generation: flex block_masks are fixed-length
+            # and don't extend with a KV cache, so decoding falls back to the SDPA path.
+            _am = attention_mask
+            if _am.dim() > 1:
+                _am = _am.view(batch_size, seq_len)
+            am = _am
+            def _pushdown_mask_mod(b, h, q_idx, kv_idx):
+                return am[b, kv_idx] and q_idx >= kv_idx
+            block_mask = create_block_mask(
+                mask_mod=_pushdown_mask_mod, B=batch_size, H=None,
+                Q_LEN=seq_len, KV_LEN=seq_len, device=x.device,
+            )
             attention_bias = None
         else:
             # Transform the attention mask into what the blocks expect.

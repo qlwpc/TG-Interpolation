@@ -517,14 +517,21 @@ class ModelConfig(BaseConfig):
     """Max constituent depth for the Pushdown stack-tape depth embedding table."""
     pushdown_attachment_weight: float = 1.0
     """Weight of the auxiliary attachment-head loss (0.0 = depth-key bias only)."""
-    pushdown_use_flex: bool = False
+    pushdown_use_flex: bool = True
     """If True, compute the Pushdown depth bias via a FlexAttention ``score_mod``
     (fused flash-class kernel) instead of the full ``(B, n_h, n, n)`` additive
     SDPA mask. The stale depth tape is per-(query,key), so plain ``flash_attn_func``
-    cannot express it; FlexAttention is the only fused path. Off by default: the
-    score_mod needs inductor (``torch.compile`` of ``flex_attention``) and was not
-    GPU-validated in-repo (``create_block_mask`` requires CUDA). Enable on a GPU
-    node after validating output parity vs the SDPA path on a short run."""
+    cannot express it; FlexAttention is the only fused path and is the recommended
+    training path: ``OLMo.forward`` builds a causal+pad ``block_mask`` from the 1-D
+    ``attention_mask`` (mirroring the TG path) and the depth bias goes into the
+    ``score_mod`` — no giant fp32 mask, no math-backend SDPA (the SDPA path is
+    ~100x slower and OOMs at microbatch 12). Requires ``flex_attention: true``.
+    ``flex_attention`` is compiled independently of ``block.compile()``, so this works
+    even though ``compute_depth_matrix_gpu``'s ``index_put_`` graph-breaks
+    ``block.compile`` (it runs eagerly outside the score_mod closure). The SDPA path
+    is kept as a fallback for when flex is off or during KV-cache generation
+    (block_masks are fixed-length). Validate output parity vs the SDPA path
+    (``tests/test_pushdown_flex_parity.py``) before the full run."""
     # ---- TreeReg (Nandi et al. 2025) ----
     treereg_layer: int = 6
     """Layer whose post-block residual hidden state feeds the TreeReg SCIN loss."""
