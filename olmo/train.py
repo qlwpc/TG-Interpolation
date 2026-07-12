@@ -1511,8 +1511,15 @@ class Trainer:
         save_checkpoints: bool = True
 
         with torch_profiler as p:
+            # Optional per-step phase timing (set OLMO_STEP_PROFILE=1 to enable).
+            # Prints one line/step: data_ms h2d_ms fwd_bwd_ms opt_ms gpu_tr_ms step_ms.
+            _step_profile = bool(os.environ.get("OLMO_STEP_PROFILE"))
+            _gpu0 = torch.device("cuda", 0) if torch.cuda.is_available() else None
             for epoch in range(self.epoch or 0, self.max_epochs):
                 for batch in self.train_loader:
+                    if _step_profile:
+                        import time as _t
+                        _sp_data0 = _t.perf_counter()
                     # Bookkeeping.
                     # NOTE: To track the global batch size / number of tokens per batch we make the assumption that all
                     # batches see the same number of tokens, which should be the case for language model pre-training
@@ -1548,7 +1555,29 @@ class Trainer:
                     should_log_this_step = self.should_log_this_step()
 
                     # Run train step on batch.
+                    if _step_profile:
+                        _sp_data_ms = (_t.perf_counter() - _sp_data0) * 1e3
+                        torch.cuda.synchronize() if _gpu0 is not None else None
+                        _sp_h2d0 = _t.perf_counter()
+                        _sp_gs = (torch.cuda.Event(enable_timing=True) if _gpu0 is not None else None)
+                        _sp_ge = (torch.cuda.Event(enable_timing=True) if _gpu0 is not None else None)
+                        if _sp_gs is not None:
+                            _sp_gs.record()
                     metrics = self.train_step(batch, reduce_global_loss=should_log_this_step)
+                    if _step_profile:
+                        if _sp_ge is not None:
+                            _sp_ge.record(); torch.cuda.synchronize()
+                            _sp_gpu_tr = _sp_gs.elapsed_time(_sp_ge)
+                        else:
+                            _sp_gpu_tr = 0.0
+                        _sp_step_ms = (_t.perf_counter() - _sp_data0) * 1e3
+                        if get_global_rank() == 0:
+                            print(f"[step_profile] step={self.global_step} "
+                                  f"data_ms={_sp_data_ms:.1f} "
+                                  f"step_total_ms={_sp_step_ms:.1f} "
+                                  f"gpu_tr_ms={_sp_gpu_tr:.1f} "
+                                  f"(data+overhead={_sp_step_ms - _sp_gpu_tr:.1f})",
+                                  flush=True)
 
                     # Maybe collect other metrics.
                     if should_log_this_step:
