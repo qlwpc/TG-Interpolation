@@ -210,3 +210,36 @@ def test_chunk_to_tensors_alignment():
     assert int(out["depth_matrix"][4, 1]) == 2
     # Spans cover the content leaves (idx 1..4).
     assert out["spans"].shape[1] == 3
+
+
+_TEST_RIGHT = "dataset/bbc-news/parse_aligned/test_right"
+
+
+@pytest.mark.skipif(
+    not __import__("os").path.exists(f"{_TEST_RIGHT}/input_ids.npy"),
+    reason="test_right precomputed split not on disk",
+)
+def test_precomputed_dataset_emits_metadata():
+    """Regression: the `lm` evaluator (EvaluatorType.lm) does
+    ``zip(batch["metadata"], ce_loss)`` on eval batches, so every eval dataset
+    item must emit a ``metadata`` field. PrecomputedParseDataset (the pushdown/
+    treereg eval/train dataset) previously emitted none -> KeyError: 'metadata'
+    at eval time. MemMapDataset emits ``{"path": ...}``; mirror that."""
+    from olmo.data.parse_align import PrecomputedParseDataset
+    from olmo.data.collator import DataCollator
+
+    d = PrecomputedParseDataset(_TEST_RIGHT, pad_token_id=50258, load_depth=False)
+    item = d[0]
+    assert "metadata" in item, "PrecomputedParseDataset must emit 'metadata' for the lm evaluator"
+    assert isinstance(item["metadata"], dict) and "path" in item["metadata"]
+
+    # Collator must batch metadata into a length-B list (what the evaluator zips).
+    collator = DataCollator(
+        pad_direction="right", pad_token_id=50258,
+        generate_attention_mask=False, shuffle_tree="pushdown",
+    )
+    batch = collator([d[0], d[1]])
+    assert "metadata" in batch
+    assert len(batch["metadata"]) == 2
+    assert all(isinstance(m, dict) for m in batch["metadata"])
+

@@ -846,9 +846,12 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         max_len: int = 2048,
         pad_token_id: int = 50258,
         generate_attention_mask: bool = True,
+        include_instance_metadata: bool = True,
     ):
         import os
         self.tree_npy = tree_npy
+        self._include_instance_metadata = include_instance_metadata
+        self._metadata = {"path": str(tree_npy)}
         self._chunk_index = np.load(chunk_index_npy)  # (n_chunks, 2): tree_start, tree_len
         self._tree = np.load(tree_npy, mmap_mode="r")
         # Random chunk-index access into tree.npy -> disable readahead (cgroup OOM
@@ -893,6 +896,10 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
             item["tree_span_mask"] = torch.zeros((0,), dtype=torch.bool)
         if self.generate_attention_mask:
             item["attention_mask"] = torch.ones(len(input_ids), dtype=torch.bool)
+        # Instance metadata for the `lm` evaluator (see PrecomputedParseDataset).
+        if self._include_instance_metadata:
+            from copy import deepcopy
+            item["metadata"] = deepcopy(self._metadata)
         return item
 
 
@@ -911,10 +918,12 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, data_dir: str, pad_token_id: int = 50258,
-                 load_depth: bool = False):
+                 load_depth: bool = False, include_instance_metadata: bool = True):
         import os
         self.data_dir = data_dir
         self.pad_token_id = pad_token_id
+        self._include_instance_metadata = include_instance_metadata
+        self._metadata = {"path": str(data_dir)}
         self.input_ids = np.load(os.path.join(data_dir, "input_ids.npy"), mmap_mode="r")
         # Prefer the int16 spans file if present (spans are terminal indices < 2048,
         # so int16 is lossless and halves the mmap from 149 GB to 75 GB for the train
@@ -970,6 +979,14 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         if self.depth is not None:
             item["tree_depth_matrix"] = torch.tensor(
                 np.asarray(self.depth[index]), dtype=torch.int8)
+        # Instance metadata: the `lm` evaluator (evaluator.py EvaluatorType.lm) zips
+        # `batch["metadata"]` with per-instance CE loss, so every eval item must emit
+        # one. MemMapDataset emits {"path": ...}; mirror that here (single data dir,
+        # so the dict is constant across instances). Built in __init__ + deep-copied
+        # per item (matching MemMapDataset's deepcopy at memmap_dataset.py:263).
+        if self._include_instance_metadata:
+            from copy import deepcopy
+            item["metadata"] = deepcopy(self._metadata)
         return item
 
 
