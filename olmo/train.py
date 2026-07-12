@@ -1080,7 +1080,13 @@ class Trainer:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 for sent in batch:
-                    if self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause:
+                    # Plain causal LMs (terminal, pause, pushdown, treereg) use the
+                    # teacher-forced CE path. pushdown/treereg are plain causal LMs at
+                    # inference (no parse in the SG batch -> tree_spans=None -> pushdown
+                    # depth bias vanishes, treereg loss is train-only), so they belong
+                    # here, not in word_sync_beam_search (which inserts TG NT tokens the
+                    # model never learned).
+                    if self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type in ("pushdown", "treereg"):
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits, _ = self.model_forward(sent, loss_reduction="none")
@@ -1185,7 +1191,10 @@ class Trainer:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 with self._summon_params_ctx():
-                    if self.cfg.model.transformer_grammar_type == "terminal":
+                    # Plain causal LMs (terminal, pushdown, treereg) use plain
+                    # autoregressive generation; only TG-grammar types need
+                    # word_sync_beam_search to insert NT structure during decoding.
+                    if self.cfg.model.transformer_grammar_type in ("terminal", "pushdown", "treereg"):
                         batch = move_to_device(batch, self.device)
                         predictions = self.dist_model.module.generate(batch["input_ids"],
                                                                        max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,

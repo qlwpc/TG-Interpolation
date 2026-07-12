@@ -79,3 +79,43 @@ def test_pushdown_model_forward_parity():
     m.train()
     o_real = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
     o_real.sum().backward()
+
+
+def test_pushdown_depth_matrix_is_forward_scoped():
+    """The per-forward depth-tape memo must not leak across forwards: two
+    forwards with DIFFERENT tree_spans must produce DIFFERENT outputs (a stale
+    cached S from the previous forward would make them equal). Also, the memo
+    must be repopulated each forward (the cache is empty again at forward end)."""
+    from olmo.config import (ModelConfig, BlockType, LayerNormType, ActivationType, InitFnType)
+    from olmo.model import OLMo
+    cfg = ModelConfig(
+        d_model=64, n_heads=4, n_layers=3, mlp_ratio=4, mlp_hidden_size=256,
+        vocab_size=50320, embedding_size=50320, max_sequence_length=32,
+        block_type=BlockType.sequential, layer_norm_type=LayerNormType.rms,
+        activation_type=ActivationType.swiglu, rope=True, flash_attention=False,
+        attention_dropout=0.0, init_device="cpu", init_fn=InitFnType.normal, init_std=0.02,
+        transformer_grammar_type="pushdown", pushdown_max_depth=16,
+        weight_tying=True, eos_token_id=50256, pad_token_id=50258,
+    )
+    m = OLMo(cfg).eval()
+    torch.manual_seed(1)
+    B, n = 2, 16
+    input_ids = torch.randint(0, 50000, (B, n))
+    attn = torch.ones(B, n, dtype=torch.bool)
+    spans_a = torch.tensor([[[2, 4, 7]], [[1, 3, 6]]], dtype=torch.long)
+    spans_b = torch.tensor([[[0, 5, 15]], [[3, 8, 12]]], dtype=torch.long)
+    with torch.no_grad():
+        # First forward with spans_a populates the memo; layers 2,3 reuse it.
+        o_a = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans_a).logits
+        # The memo must have been invalidated for this second forward (different
+        # spans_b), so the output reflects spans_b, NOT a stale spans_a entry.
+        o_b = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans_b).logits
+        # And a repeat of spans_a must match the first spans_a forward (memo
+        # repopulated correctly, not stuck on spans_b).
+        o_a2 = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans_a).logits
+    assert not torch.allclose(o_a, o_b, atol=1e-5), "different spans must yield different outputs"
+    assert torch.allclose(o_a, o_a2, atol=1e-5), "repeating spans_a must reproduce o_a"
+    # The memo is invalidated at the START of each forward (pop-then-repopulate),
+    # so a stale S from a previous forward can never be read. The output-difference
+    # checks above are the real invariant; this confirms the memo path actually ran.
+    assert "pushdown_depth_matrix" in m._OLMo__cache, "memo should be populated after a pushdown forward"

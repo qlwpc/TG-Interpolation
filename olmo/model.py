@@ -713,7 +713,19 @@ class OLMoBlock(nn.Module):
         from olmo.pushdown import compute_depth_matrix_gpu
         B, nh, n, hs = q.shape
         # Stale depth tape over the (causal) key length. tree_spans: (B, M, 3).
-        S = compute_depth_matrix_gpu(tree_spans.to(q.device), n)  # (B, n, n) int8
+        # S depends ONLY on tree_spans (layer-independent), so memoize it across
+        # the 12 blocks within ONE forward pass — otherwise compute_depth_matrix_gpu
+        # runs 12x per forward, each allocating a (B,n,n) float32 difference array
+        # for no reason. Forward-scoped: OLMo.forward pops this key before the block
+        # loop, so a later forward (different tree_spans) never reads a stale entry.
+        # Safe under activation checkpointing: S is int8 with no grad, so reusing the
+        # forward-pass entry during the backward recompute is correct.
+        cache = self.__cache
+        S = cache.get("pushdown_depth_matrix") if cache is not None else None
+        if S is None or S.shape[0] != B or S.shape[1] != n or S.device != q.device:
+            S = compute_depth_matrix_gpu(tree_spans.to(q.device), n)  # (B, n, n) int8
+            if cache is not None:
+                cache["pushdown_depth_matrix"] = S
         D = S.clamp(max=self.config.pushdown_max_depth).long()  # (B, n, n)
         # Per-head depth embedding E_l: (n_heads, max_depth+1, d_head).
         n_kv = k.shape[1]
@@ -733,6 +745,10 @@ class OLMoBlock(nn.Module):
         idx = D.clamp(0, Dmax).unsqueeze(1).expand(B, nh, n, n).contiguous()
         depth_bias = torch.gather(P, dim=3, index=idx)  # (B, n_h, n, n) fp32
         depth_bias = depth_bias / (hs ** 0.5)  # match SDPA's 1/sqrt(hs) scaling
+        # Free the big intermediates before SDPA: idx is (B, nh, n, n) int64 (4.8 GB
+        # at B=12), P is (B, nh, n, D) fp32. Neither is needed once depth_bias is
+        # formed — keeping them alive through SDPA tripled the per-layer peak.
+        del P, idx, D
 
         # Merge with the causal+pad attention_bias prepared by OLMo.forward.
         if attention_bias is not None:
@@ -747,11 +763,13 @@ class OLMoBlock(nn.Module):
             mask_neg = ab.isneginf()
             attn_mask = ab + depth_bias
             attn_mask = attn_mask.masked_fill(mask_neg, float("-inf"))
+            del ab, mask_neg, depth_bias
         else:
             # No prebuilt bias: build a causal mask + depth bias (fp32).
             causal = torch.full((n, n), float("-inf"), device=q.device, dtype=torch.float32)
             causal = torch.triu(causal, diagonal=1)
             attn_mask = depth_bias + causal.unsqueeze(0).unsqueeze(0)
+            del depth_bias, causal
 
         # SDPA expects (B, n_h, n, hs) and attn_mask (B, n_h, n, n) additive float.
         # Expand k,v from n_kv to nh heads if GQA.
@@ -1555,6 +1573,12 @@ class OLMo(nn.Module):
         treereg_hidden: Optional[torch.Tensor] = None
         _is_treereg = self.config.transformer_grammar_type == "treereg"
         _treereg_layer = self.config.treereg_layer
+        # Invalidate the per-forward pushdown depth-tape memo: tree_spans changes
+        # every step, so a cached entry from the previous forward must not survive.
+        # (_pushdown_attention repopulates it on the first block that needs it, then
+        # the remaining 11 blocks reuse the int8 S instead of recomputing it.)
+        if self.config.transformer_grammar_type == "pushdown":
+            self.__cache.pop("pushdown_depth_matrix", None)
 
         # Apply blocks one-by-one.
         if self.config.block_group_size == 1:
