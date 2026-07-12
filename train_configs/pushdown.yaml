@@ -45,6 +45,13 @@ model:
   pushdown_max_depth: 64
   pushdown_attachment_weight: 0.0   # depth-key bias only (attachment head optional)
   parse_binarize_direction: right
+  # FlexAttention score_mod path (fused flash-class kernel for the per-(q,kv) depth
+  # bias). Off by default — the SDPA additive-mask path is the validated default.
+  # To try: set to true AND set flex_attention: true above. Validate output parity
+  # vs the SDPA path on a short run first (the score_mod needs inductor/compile).
+  # Only used when a chunk has NO padding (full-length); padded chunks fall back
+  # to the SDPA path automatically.
+  pushdown_use_flex: false
 
 ddp:
   grad_sync_mode: batch

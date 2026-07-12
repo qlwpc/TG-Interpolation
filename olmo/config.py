@@ -517,6 +517,14 @@ class ModelConfig(BaseConfig):
     """Max constituent depth for the Pushdown stack-tape depth embedding table."""
     pushdown_attachment_weight: float = 1.0
     """Weight of the auxiliary attachment-head loss (0.0 = depth-key bias only)."""
+    pushdown_use_flex: bool = False
+    """If True, compute the Pushdown depth bias via a FlexAttention ``score_mod``
+    (fused flash-class kernel) instead of the full ``(B, n_h, n, n)`` additive
+    SDPA mask. The stale depth tape is per-(query,key), so plain ``flash_attn_func``
+    cannot express it; FlexAttention is the only fused path. Off by default: the
+    score_mod needs inductor (``torch.compile`` of ``flex_attention``) and was not
+    GPU-validated in-repo (``create_block_mask`` requires CUDA). Enable on a GPU
+    node after validating output parity vs the SDPA path on a short run."""
     # ---- TreeReg (Nandi et al. 2025) ----
     treereg_layer: int = 6
     """Layer whose post-block residual hidden state feeds the TreeReg SCIN loss."""

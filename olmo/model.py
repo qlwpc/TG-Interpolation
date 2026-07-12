@@ -738,6 +738,39 @@ class OLMoBlock(nn.Module):
         # raise CUBLAS_STATUS_EXECUTION_FAILED. An fp32 attn_mask is accepted by
         # SDPA alongside bf16 q/k/v.
         P = torch.einsum("bhni,hdi->bhnd", q.float(), E.float())  # (B, n_h, n, D) fp32
+        Dmax = P.shape[3] - 1
+        Dc = D.clamp(0, Dmax)  # (B, n, n) int64, values in [0, Dmax]
+
+        # Optional FlexAttention score_mod path (fused flash-class kernel). The
+        # stale depth bias is per-(query,key) (S[b,q,kv]), so plain flash_attn_func
+        # cannot express it; FlexAttention is the only fused path. The score_mod
+        # body is a single gather on the precomputed P (inductor-fusable) — the
+        # graph-breaking index_put_ lives in compute_depth_matrix_gpu, which is
+        # memoized OUTSIDE this closure, so this path does not trigger it.
+        # Gated on pushdown_use_flex (off by default; validate on GPU before use).
+        if self.config.pushdown_use_flex and self.flex_attention is not None:
+            # block_mask encodes causality (and would encode padding if present).
+            block_mask = self._get_causal_block_mask(B, n, q.device)
+            # If the caller built an attention_bias (causal+pad), fold pad into the
+            # block_mask via an additive mask_mod is not trivial; for the parse-aligned
+            # train path attention_bias is the causal+pad bias. Fall back to the full
+            # SDPA path when a non-trivial attention_bias is present (padding), so the
+            # flex path is only used when there is no padding (full-length chunks).
+            use_flex = attention_bias is None
+            if use_flex:
+                inv_sqrt_hs = 1.0 / (hs ** 0.5)
+                _P, _Dc = P, Dc  # capture for the closure
+                def _depth_score_mod(b, h, q_idx, kv_idx, score):
+                    return score + _P[b, h, q_idx, _Dc[b, q_idx, kv_idx]] * inv_sqrt_hs
+                # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
+                if n_kv != nh:
+                    rep = nh // n_kv
+                    k = k.repeat_interleave(rep, dim=1, output_size=nh)
+                    v = v.repeat_interleave(rep, dim=1, output_size=nh)
+                att = self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
+                return att  # already (B, n_h, n, hs)
+            # else: fall through to the SDPA additive-mask path (padding present).
+
         # depth_bias[b,h,q,k] = P[b,h,q, D[b,q,k]] — gather P's last dim by the
         # depth tape D (shared across heads). Use take_along_dim with a (B,1,n,n)
         # VIEW of D (no materialization): this avoids the old path's
@@ -745,8 +778,6 @@ class OLMoBlock(nn.Module):
         # tensor (~4.8 GB at B=12) purely to feed torch.gather. take_along_dim
         # broadcasts the index over the head dim directly. ~2.6x faster than the
         # contiguous-gather path on the same hardware, and peak alloc drops by 4.8 GB/layer.
-        Dmax = P.shape[3] - 1
-        Dc = D.clamp(0, Dmax)                       # (B, n, n) int64
         depth_bias = torch.take_along_dim(
             P, Dc.unsqueeze(1), dim=3
         )                                            # (B, n_h, n, n) fp32
