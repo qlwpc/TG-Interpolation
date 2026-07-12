@@ -1579,7 +1579,12 @@ class OLMo(nn.Module):
                 _am = _am.view(batch_size, seq_len)
             am = _am
             def _pushdown_mask_mod(b, h, q_idx, kv_idx):
-                return am[b, kv_idx] and q_idx >= kv_idx
+                # Bitwise `&`, NOT Python `and`: `and` short-circuits on the *value*
+                # of `am[b, kv_idx]`, which is data-dependent control flow -> vmap
+                # (used by create_block_mask to infer the block sparsity) rejects it
+                # with "attempting to use a Tensor in some data-dependent control
+                # flow". `&` is a plain elementwise tensor op that vmap can lower.
+                return am[b, kv_idx] & (q_idx >= kv_idx)
             block_mask = create_block_mask(
                 mask_mod=_pushdown_mask_mod, B=batch_size, H=None,
                 Q_LEN=seq_len, KV_LEN=seq_len, device=x.device,
