@@ -851,6 +851,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.tree_npy = tree_npy
         self._chunk_index = np.load(chunk_index_npy)  # (n_chunks, 2): tree_start, tree_len
         self._tree = np.load(tree_npy, mmap_mode="r")
+        # Random chunk-index access into tree.npy -> disable readahead (cgroup OOM
+        # guard; see PrecomputedParseDataset / _madvise_random rationale).
+        _madvise_random(self._tree)
         self.vocab = TreeVocab.from_tokenizer_file(tokenizer)
         self.direction = direction
         self.max_len = max_len
@@ -915,12 +918,19 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         self.input_ids = np.load(os.path.join(data_dir, "input_ids.npy"), mmap_mode="r")
         self.spans = np.load(os.path.join(data_dir, "spans.npy"), mmap_mode="r")
         self.span_counts = np.load(os.path.join(data_dir, "span_counts.npy"))
+        # These mmaps are read by RANDOM chunk index across 4.88M chunks. Hint the
+        # kernel MADV_RANDOM so it stops readaheading (the default readahead hoards
+        # a large fraction of the 189 GB file into page cache -> cgroup OOM under
+        # slurm). See _madvise_random for the full rationale.
+        _madvise_random(self.input_ids)
+        _madvise_random(self.spans)
         self.n_chunks = int(self.input_ids.shape[0])
         self.max_len = int(self.input_ids.shape[1])
         self.load_depth = load_depth
         self.depth = None
         if load_depth and os.path.exists(os.path.join(data_dir, "depth_matrix.npy")):
             self.depth = np.load(os.path.join(data_dir, "depth_matrix.npy"), mmap_mode="r")
+            _madvise_random(self.depth)
         # MemMapDataset-compat.
         self._num_instances = self.n_chunks
         self._mmap_offsets = [(0, self.n_chunks)]
@@ -1129,6 +1139,30 @@ def _madvise_sequential(mmap_arr) -> None:
         size = ctypes.c_size_t(mmap_arr.nbytes)
         # MADV_SEQUENTIAL = 2
         libc.madvise(addr, size, ctypes.c_int(2))
+    except Exception:
+        pass
+
+
+def _madvise_random(mmap_arr) -> None:
+    """Hint the kernel to DISABLE readahead for a randomly-accessed mmap.
+
+    ``PrecomputedParseDataset`` mmaps ``spans.npy`` (149 GB) + ``input_ids.npy``
+    (40 GB) and reads them by random chunk index. With the default hint the kernel
+    readaheads ~128 KB per fault, so 4 dataloader workers faulting across 4.88M
+    chunks hoard a large fraction of the 189 GB file into page cache. Under a slurm
+    cgroup memory limit, page cache counts toward the job -> the cgroup OOM killer
+    SIGKILLs the process (this is NOT a CUDA OOM; it hits pushdown and treereg
+    identically because both load the same spans). MADV_RANDOM (=1) makes each
+    fault bring in only the needed page, capping resident pages at the working set.
+    No-op if ctypes/madvise is unavailable.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        addr = ctypes.c_void_p(mmap_arr.ctypes.data)
+        size = ctypes.c_size_t(mmap_arr.nbytes)
+        # MADV_RANDOM = 1
+        libc.madvise(addr, size, ctypes.c_int(1))
     except Exception:
         pass
 

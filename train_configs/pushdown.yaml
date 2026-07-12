@@ -129,7 +129,8 @@ data:
   num_workers: 4
   drop_last: true
   pin_memory: true
-  prefetch_factor: 8
+  prefetch_factor: 4    # was 8 — halves in-flight page faults across the 189GB
+                       # input_ids+spans mmaps (cgroup page-cache OOM guard)
   persistent_workers: true
   timeout: 0
   paths:
