@@ -786,32 +786,38 @@ class OLMoBlock(nn.Module):
             # score_mod — the memory-optimal 77 MB form — hits an inductor lowering error:
             # "All the buffers in the score and mask subgraph should be in
             # input_buffers"; a single captured-tensor index is what flex supports.)
-            db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
-            del P, D, Dc
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
-            _db = db
             # Profiling A/B switches (default off = production path). Set via env:
-            #   OLMO_PUSHDOWN_NO_BIAS=1  -> flex + block_mask, but score_mod returns
-            #     raw `score` (pure causal flash, depth bias dropped). If this is
-            #     fast, the slowdown is the score_mod body (db gather / clamp),
-            #     NOT flex_attention itself.
+            #   OLMO_PUSHDOWN_NO_BIAS=1  -> skip the db gather entirely; score_mod is
+            #     a no-op (pure causal flash). Isolates whether the slowdown is the
+            #     score_mod gather vs flex_attention itself. Keeps a 0*E.sum() term so
+            #     pushdown_depth_bias still receives grad (else DDP errors on unused
+            #     params — the 12 per-layer depth_emb Embeddings).
             #   OLMO_PUSHDOWN_NOCLAMP=1  -> score_mod indexes without .long().clamp
             #     (faster if the clamp was breaking inductor fusion; correctness
             #     relies on real cells never going OOB, which holds when seq_len is
             #     a multiple of the flex block size 128 — verify for your config).
             _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
             _noclamp = bool(os.environ.get("OLMO_PUSHDOWN_NOCLAMP"))
+            if _no_bias:
+                # No db materialization (skip the 2.4GB/layer take_along_dim). Keep
+                # grad flowing to pushdown_depth_bias via E (its output) with a 0
+                # multiplier, so DDP doesn't error on the 12 unused depth_emb params.
+                _grad_keepalive = E.sum() * 0.0
+                del P, D, Dc
+            else:
+                db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
+                _db = db
+                del P, D, Dc
             # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
             # flex calls it positionally; putting score last swaps score<->batch,
             # which (a) gathers the bias at wrong indices and (b) makes the backward
             # treat the float `score` as an integer batch index -> no grad flows to
             # score -> inductor asserts "joint_subgraph_buffer is None".
             if _no_bias:
-                # A/B: pure causal flash (depth bias dropped) — isolates whether the
-                # slowdown is flex_attention itself or the score_mod body.
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    return score
+                    return score + _grad_keepalive
             elif _noclamp:
                 # A/B: index without .long().clamp — isolates whether the casts/clamps
                 # break inductor fusion of the gather.
