@@ -807,46 +807,41 @@ class OLMoBlock(nn.Module):
             #     aux loss that backprops to depth_emb).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
-            _gather = bool(os.environ.get("OLMO_PUSHDOWN_GATHER_BY_DEPTH"))
-            # OLMO_PUSHDOWN_DETACH=1: profiling probe — gather-by-depth score_mod with
-            # P DETACHED (no grad flows through the flex score_mod -> no zeros_and_scatter
-            # into P -> no grad drop, no 2.4GB scatter). Forward values are IDENTICAL to
-            # gather-by-depth (detach doesn't change values). Isolates whether the
-            # gather-by-depth FORWARD is fast (flash-fused because the captured buffer is
-            # the 77MB P, not 2.4GB db) — the decisive test for whether fix #2 (detach P
-            # + manual backward) is worth building. P detached -> depth_emb gets no grad
-            # -> needs the same find_unused_params profile config as NO_BIAS. PROFILING ONLY.
-            _detach = bool(os.environ.get("OLMO_PUSHDOWN_DETACH"))
-            # OLMO_PUSHDOWN_NO_BIAS=1: profiling probe — drop the depth bias entirely
-            # (score_mod is a no-op, pure causal flash). MEASURED 3.66s/step (vs dense-db
-            # 41.5s) -> the bias ops are an 11.3x slowdown. Drops the depth bias, so the
-            # 12 per-layer depth_emb Embeddings receive NO grad -> DDP errors "unused
-            # parameters" UNLESS the profiling config ALSO sets ddp.find_unused_params:
-            # true (and grad_sync_mode: micro_batch). Verified (clean `return score`)
-            # lowers + runs fwd+bwd through flex_attention on CPU; do NOT use a
-            # 0*E.sum() keepalive (crashes inductor's flex backward lowering). PROFILING ONLY.
+            # Bias representation. DEFAULT = fix #2 (the production path):
+            #   gather-by-depth score_mod with P DETACHED (fast forward — flash-fused,
+            #   77MB P, no 2.4GB materialization, no zeros_and_scatter) + a custom
+            #   autograd Function (_DepthBiasGradP) that manually computes grad_P
+            #   (recompute pT, fp32 scatter_add into 77MB P). grad_q/grad_k/grad_v come
+            #   from flex's own fused backward. Measured: 14.24s/step single-GPU = 2.9x
+            #   over dense-db (41.5s); grad reaches depth_emb (no find_unused_params
+            #   needed); scales down with world_size. See memory pushdown-flex-slowdown.
+            #
+            # OLMO_PUSHDOWN_DENSE_DB=1: fall back to the OLD slow path (pre-materialize
+            #   db=take_along_dim(P,Dc) ~2.4GB/layer, capture in score_mod; backward
+            #   zeros_and_scatters into 2.4GB). Only for debugging/parity.
+            #
+            # Profiling probes (override the default; each needs find_unused_params:true
+            # in the config because they drop the grad to depth_emb):
+            #   OLMO_PUSHDOWN_NO_BIAS=1  -> drop the bias entirely (pure causal flex).
+            #   OLMO_PUSHDOWN_DETACH=1   -> gather-by-depth, P detached, NO manual grad
+            #     (depth_emb gets no grad). Isolates the forward cost.
+            #   OLMO_PUSHDOWN_GATHER_BY_DEPTH=1 -> gather-by-depth, P requires grad
+            #     (CRASHES on GPU — inductor's scatter drops grad; kept for reference).
             _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
-            # OLMO_PUSHDOWN_FIX2=1: the real speedup. Gather-by-depth score_mod with
-            # P DETACHED (fast forward, no 2.4GB scatter, no grad drop) + a custom
-            # autograd Function (_DepthBiasGradP) that manually computes grad_P from
-            # grad_out via the exact attention-bias backward (recompute pT, scatter_add
-            # into the 77MB P). grad_q/grad_k/grad_v come from flex's own fused backward
-            # (P detached -> flex skips P). Validated: fwd bit-identical to gather-by-depth
-            # (= dense-db); grad_P formula matches autograd to 1e-7 on CPU. This is the
-            # path to ship once a cluster run confirms step time (~4-5s expected) and
-            # grad parity vs dense-db. Does NOT need find_unused_params (depth_emb DOES
-            # get grad here, via _DepthBiasGradP — unlike DETACH/NO_BIAS).
-            _fix2 = bool(os.environ.get("OLMO_PUSHDOWN_FIX2"))
+            _detach = bool(os.environ.get("OLMO_PUSHDOWN_DETACH"))
+            _gather = bool(os.environ.get("OLMO_PUSHDOWN_GATHER_BY_DEPTH"))
+            _dense_db = bool(os.environ.get("OLMO_PUSHDOWN_DENSE_DB"))
+            _fix2 = not (_dense_db or _no_bias or _detach or _gather)  # default production path
             if _no_bias:
                 del P, D, Dc  # no bias materialized
-            elif _fix2 or _detach or _gather:
+            elif _dense_db:
+                db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32 ~2.4GB
+                _db = db
+                del D, Dc  # P not needed by score_mod; freed on return
+            else:  # fix2 (default), detach, or gather: gather-by-depth
                 _P = P.detach() if (_fix2 or _detach) else P  # (B, n_h, n, Dmax) fp32 — 77 MB
                 _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
                 del D
-            else:
-                db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
-                _db = db
-                del D, Dc  # P not needed by score_mod; freed on return
             # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
             # flex calls it positionally; putting score last swaps score<->batch,
             # which (a) gathers the bias at wrong indices and (b) makes the backward
@@ -863,7 +858,14 @@ class OLMoBlock(nn.Module):
             if _no_bias:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     return score
-            elif _fix2 or _detach or _gather:
+            elif _dense_db:
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    b = b.long().clamp(0, _B - 1)
+                    h = h.long().clamp(0, _nh - 1)
+                    q_idx = q_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
+            else:  # fix2 (default), detach, or gather
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
@@ -875,13 +877,6 @@ class OLMoBlock(nn.Module):
                     # GATHER: P requires grad -> backward drops grad on GPU.)
                     d = _Dc[b, q_idx, kv_idx]            # scalar depth at (b,q,kv)
                     return score + _P[b, h, q_idx, d] * inv_sqrt_hs
-            else:
-                def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    b = b.long().clamp(0, _B - 1)
-                    h = h.long().clamp(0, _nh - 1)
-                    q_idx = q_idx.long().clamp(0, _n - 1)
-                    kv_idx = kv_idx.long().clamp(0, _n - 1)
-                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
             # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
             if n_kv != nh:
                 rep = nh // n_kv
