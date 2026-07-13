@@ -119,8 +119,17 @@ class _DepthBiasGradP(torch.autograd.Function):
             g_post = pT * (g_attn - Di)                                   # (B,H,N,N) bf16
             if _profile:
                 _t1["g_post"].record(); _t0["scatter"].record()
-            grad_P = torch.zeros(B, H, N, Pb.shape[3], device=Pb.device, dtype=torch.bfloat16)
-            grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
+            # grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
+            # Flatten to 2D + a CONTIGUOUS index. The original 4D scatter_add_ with the
+            # non-contiguous expanded index Dc.unsqueeze(1).expand(B,H,N,N) (stride-0 on H)
+            # hit a slow path (~242 ms/block, 90% of the backward). The 2D form with a
+            # materialized-contiguous index lets scatter_add_ use its optimized path.
+            Dmax = Pb.shape[3]
+            src = (g_post * inv).contiguous().view(B * H * N, N)
+            idx = Dc.unsqueeze(1).expand(B, H, N, N).contiguous().view(B * H * N, N)
+            grad_P = torch.zeros(B * H * N, Dmax, device=Pb.device, dtype=torch.bfloat16)
+            grad_P.scatter_add_(1, idx, src)
+            grad_P = grad_P.view(B, H, N, Dmax)
             if _profile:
                 _t1["scatter"].record(); torch.cuda.synchronize()
                 parts = ", ".join(f"{n}={_t0[n].elapsed_time(_t1[n]):.1f}ms" for n in _t0)
