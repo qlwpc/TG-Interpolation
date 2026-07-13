@@ -26,6 +26,7 @@ Implementation (fast, faithful):
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import torch
@@ -75,36 +76,57 @@ class _DepthBiasGradP(torch.autograd.Function):
         q, k, v, P, Dc, attn_mask = ctx.saved_tensors
         inv = ctx.inv_sqrt_hs  # = scale = 1/sqrt(hs)
         B, H, N, hs = q.shape
-        # Disable autocast: under amp_bf16 the forward autocasts the einsum that
-        # produces P back to bf16 (so P can be bf16, not fp32), and would also
-        # autocast our recompute einsums to bf16 — mixing fp32 (softmax) and bf16
-        # (g_attn) dtypes, which then mismatches grad_P in the scatter_add. Force
-        # everything to fp32 for a stable, dtype-consistent backward.
+        # Run in bf16 (NOT fp32) to match the forward's speed: the fp32 version
+        # materialized a 2.4 GB fp32 attention matrix per layer and ran ~10.6 s/step
+        # over DETACH. bf16 halves the memory traffic and the bmm cost. Safe here
+        # because attention scores are O(1) (post-layernorm q/k, scale 1/sqrt(hs)) so
+        # bf16 softmax does not overflow. autocast disabled so dtypes are explicit.
+        _profile = bool(os.environ.get("OLMO_PUSHDOWN_FIX2_PROFILE"))
         with torch.autocast(device_type=q.device.type, enabled=False):
-            qf, kf, vf = q.float(), k.float(), v.float()
-            Pf = P.float()
-            go = grad_output.float()
-            scores = torch.einsum("bhni,bhmi->bhnm", qf, kf) * inv        # (B,H,N,N)
-            bias = torch.take_along_dim(Pf, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N)
+            if _profile:
+                _ev = lambda n: (torch.cuda.Event(enable_timing=True), n)
+                _t0 = {n: torch.cuda.Event(enable_timing=True) for _, n in
+                       [ _ev("cast"), _ev("scores"), _ev("bias"), _ev("mask"),
+                         _ev("softmax"), _ev("g_attn"), _ev("g_post"), _ev("scatter") ]}
+                _t1 = {n: torch.cuda.Event(enable_timing=True) for n in _t0}
+                _t0["cast"].record()
+            qb = q.to(torch.bfloat16); kb = k.to(torch.bfloat16)
+            vb = v.to(torch.bfloat16); Pb = P.to(torch.bfloat16)
+            go = grad_output.to(torch.bfloat16)
+            if _profile:
+                _t1["cast"].record(); _t0["scores"].record()
+            scores = torch.einsum("bhni,bhmi->bhnm", qb, kb) * inv        # (B,H,N,N) bf16
+            if _profile:
+                _t1["scores"].record(); _t0["bias"].record()
+            bias = torch.take_along_dim(Pb, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N) bf16
+            if _profile:
+                _t1["bias"].record(); _t0["mask"].record()
             post = scores + bias
-            # Causal + pad mask: kv must be a valid key (attn_mask[b,kv]) AND kv <= q.
-            # attn_mask is (B, N) bool; build (B, 1, N, N) and mask -inf.
             if attn_mask is not None:
-                am = attn_mask.to(torch.bool).view(B, 1, 1, N)            # (B,1,1,N)
+                am = attn_mask.to(torch.bool).view(B, 1, 1, N)
                 causal = torch.tril(torch.ones(N, N, device=post.device, dtype=torch.bool))
-                causal = causal.view(1, 1, N, N)
-                valid = am & causal                                       # (B,1,N,N)
+                valid = am & causal.view(1, 1, N, N)
                 post = post.masked_fill(~valid, float("-inf"))
-            pT = torch.softmax(post, dim=-1)                              # (B,H,N,N) fp32
-            # Softmax + additive-bias backward.
-            g_attn = torch.einsum("bhni,bhmi->bhnm", go, vf)              # grad_out @ v^T
-            Di = (g_attn * pT).sum(-1, keepdim=True)                      # sum(pT * g_attn)
-            g_post = pT * (g_attn - Di)                                   # (B,H,N,N) fp32
-            # Gather backward: grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
-            grad_P = torch.zeros(B, H, N, Pf.shape[3], device=Pf.device, dtype=torch.float32)
+            if _profile:
+                _t1["mask"].record(); _t0["softmax"].record()
+            pT = torch.softmax(post, dim=-1)                              # (B,H,N,N) bf16
+            if _profile:
+                _t1["softmax"].record(); _t0["g_attn"].record()
+            g_attn = torch.einsum("bhni,bhmi->bhnm", go, vb)              # grad_out @ v^T
+            if _profile:
+                _t1["g_attn"].record(); _t0["g_post"].record()
+            Di = (g_attn * pT).sum(-1, keepdim=True)
+            g_post = pT * (g_attn - Di)                                   # (B,H,N,N) bf16
+            if _profile:
+                _t1["g_post"].record(); _t0["scatter"].record()
+            grad_P = torch.zeros(B, H, N, Pb.shape[3], device=Pb.device, dtype=torch.bfloat16)
             grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
+            if _profile:
+                _t1["scatter"].record(); torch.cuda.synchronize()
+                parts = ", ".join(f"{n}={_t0[n].elapsed_time(_t1[n]):.1f}ms" for n in _t0)
+                print(f"[fix2_bwd] {parts}", flush=True)
         # grad_q, grad_k, grad_v, Dc, attn_mask, inv: None (flex's backward handles q/k/v).
-        # grad_P is fp32; autograd casts it to P's dtype as needed for the chain to E/depth_emb.
+        # grad_P is bf16; autograd casts it to P's dtype for the chain to E/depth_emb.
         return (None, None, None, grad_P, None, None, None)
 
 
