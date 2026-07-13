@@ -826,10 +826,21 @@ class OLMoBlock(nn.Module):
             # lowers + runs fwd+bwd through flex_attention on CPU; do NOT use a
             # 0*E.sum() keepalive (crashes inductor's flex backward lowering). PROFILING ONLY.
             _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
+            # OLMO_PUSHDOWN_FIX2=1: the real speedup. Gather-by-depth score_mod with
+            # P DETACHED (fast forward, no 2.4GB scatter, no grad drop) + a custom
+            # autograd Function (_DepthBiasGradP) that manually computes grad_P from
+            # grad_out via the exact attention-bias backward (recompute pT, scatter_add
+            # into the 77MB P). grad_q/grad_k/grad_v come from flex's own fused backward
+            # (P detached -> flex skips P). Validated: fwd bit-identical to gather-by-depth
+            # (= dense-db); grad_P formula matches autograd to 1e-7 on CPU. This is the
+            # path to ship once a cluster run confirms step time (~4-5s expected) and
+            # grad parity vs dense-db. Does NOT need find_unused_params (depth_emb DOES
+            # get grad here, via _DepthBiasGradP — unlike DETACH/NO_BIAS).
+            _fix2 = bool(os.environ.get("OLMO_PUSHDOWN_FIX2"))
             if _no_bias:
                 del P, D, Dc  # no bias materialized
-            elif _detach or _gather:
-                _P = P.detach() if _detach else P  # (B, n_h, n, Dmax) fp32 — 77 MB
+            elif _fix2 or _detach or _gather:
+                _P = P.detach() if (_fix2 or _detach) else P  # (B, n_h, n, Dmax) fp32 — 77 MB
                 _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
                 del D
             else:
@@ -852,7 +863,7 @@ class OLMoBlock(nn.Module):
             if _no_bias:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     return score
-            elif _detach or _gather:
+            elif _fix2 or _detach or _gather:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
@@ -860,8 +871,8 @@ class OLMoBlock(nn.Module):
                     kv_idx = kv_idx.long().clamp(0, _n - 1)
                     # Gather P by the depth tape at (b,q,kv). P is (B,n_h,n,Dmax);
                     # the gather is one indexed load per cell, fused into the flex
-                    # kernel. (DETACH: P detached -> no backward scatter. GATHER:
-                    # P requires grad -> backward drops grad on GPU — EXPERIMENTAL.)
+                    # kernel. (FIX2/DETACH: P detached -> no backward scatter.
+                    # GATHER: P requires grad -> backward drops grad on GPU.)
                     d = _Dc[b, q_idx, kv_idx]            # scalar depth at (b,q,kv)
                     return score + _P[b, h, q_idx, d] * inv_sqrt_hs
             else:
@@ -876,7 +887,17 @@ class OLMoBlock(nn.Module):
                 rep = nh // n_kv
                 k = k.repeat_interleave(rep, dim=1, output_size=nh)
                 v = v.repeat_interleave(rep, dim=1, output_size=nh)
-            return self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
+            out = self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
+            if _fix2:
+                # Add the manual grad-P path. Forward: out + 0 == out (unchanged).
+                # Backward: _DepthBiasGradP computes grad_P from grad_out (manual
+                # recompute of pT + scatter_add into 77MB P); flex's own backward
+                # (P was detached) supplies grad_q/grad_k/grad_v. The 1-D valid-key
+                # mask is stashed on the shared cache by OLMo.forward.
+                from olmo.pushdown import _DepthBiasGradP
+                _am = cache.get("pushdown_attn_mask") if cache is not None else None
+                out = out + _DepthBiasGradP.apply(q, k, v, P, Dc, _am, inv_sqrt_hs)
+            return out
         # else: fall through to the SDPA additive-mask path (flex disabled, no
         # block_mask, or generation with a KV cache).
 
@@ -1682,6 +1703,12 @@ class OLMo(nn.Module):
                 mask_mod=_pushdown_mask_mod, B=batch_size, H=None,
                 Q_LEN=seq_len, KV_LEN=seq_len, device=x.device,
             )
+            # Stash the 1-D valid-key mask on the shared BufferCache for fix #2
+            # (OLMO_PUSHDOWN_FIX2): _pushdown_attention's manual backward needs the
+            # causal+pad mask to zero pT at padded kv positions. Same forward-scoped
+            # pattern as the depth-matrix memoization (set here, read per-block).
+            # Overwritten each forward, so no stale-entry risk across batches.
+            self.__cache["pushdown_attn_mask"] = am
             attention_bias = None
         else:
             # Transform the attention mask into what the blocks expect.

@@ -32,6 +32,75 @@ import torch
 import torch.nn as nn
 
 
+class _DepthBiasGradP(torch.autograd.Function):
+    """Custom autograd Function that supplies the depth-bias gradient to ``P``.
+
+    Fix #2 for the pushdown flex slowdown. The forward flex path uses
+    ``P.detach()`` in the score_mod (gather-by-depth, 77 MB captured buffer, fast —
+    flash-fused, see OLMO_PUSHDOWN_DETACH). Because P is detached, flex's own
+    backward does NOT attempt a ``zeros_and_scatter`` into P (the 2.4 GB dense-db
+    scatter that costs ~38 s/step) AND does not deliver grad to ``depth_emb``.
+
+    This Function closes that gap. Its forward returns ZEROS (so ``out + 0 = out`` —
+    the flex output is unchanged), and its backward receives ``grad_out`` (the real
+    downstream grad w.r.t. the attention output) and manually computes ``grad_P``
+    via the exact attention-bias backward formula:
+
+        pT      = softmax_causal_pad(q@k^T * scale + P.gather(Dc) * scale)
+        g_attn  = grad_out @ v^T
+        g_post  = pT * (g_attn - (g_attn * pT).sum(-1, keepdim=True))   # softmax bwd
+        grad_P  = scatter_add(zeros_like(P), Dc, g_post * scale, dim=3)  # gather bwd
+
+    (scale = 1/sqrt(hs) = inv_sqrt_hs; the bias is ``P.gather(Dc) * scale``, so the
+    gather-backward multiplies by scale.) Validated vs autograd on CPU: grad_P, grad_q,
+    grad_k, grad_v all match to 1e-7. The manual backward recomputes q@k^T (one bmm,
+    ~0.1 ms) + softmax + a scatter_add into the 77 MB P — a few ms/layer in fp32,
+    NOT the inductor ``zeros_and_scatter`` into 2.4 GB. grad_q/grad_k/grad_v are left
+    to flex's own fused backward (this Function returns None for them).
+
+    The causal+pad mask is required so padded kv positions get pT=0 (else spurious
+    grad_P). ``attn_mask`` is the 1-D bool (B, N) valid-key mask (stashed on the
+    shared BufferCache in OLMo.forward, key "pushdown_attn_mask").
+    """
+
+    @staticmethod
+    def forward(ctx, q, k, v, P, Dc, attn_mask, inv_sqrt_hs):
+        # forward returns zeros (out + 0 == out). Save tensors for the backward.
+        ctx.save_for_backward(q, k, v, P, Dc, attn_mask)
+        ctx.inv_sqrt_hs = float(inv_sqrt_hs)
+        return torch.zeros_like(q)  # (B, H, N, hs)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        q, k, v, P, Dc, attn_mask = ctx.saved_tensors
+        inv = ctx.inv_sqrt_hs  # = scale = 1/sqrt(hs)
+        B, H, N, hs = q.shape
+        # Recompute in fp32 for stability (q/k/v are bf16 under amp; P is already fp32).
+        qf, kf, vf = q.float(), k.float(), v.float()
+        go = grad_output.float()
+        scores = torch.einsum("bhni,bhmi->bhnm", qf, kf) * inv        # (B,H,N,N)
+        bias = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N)
+        post = scores + bias
+        # Causal + pad mask: kv must be a valid key (attn_mask[b,kv]) AND kv <= q.
+        # attn_mask is (B, N) bool; build (B, 1, N, N) and mask -inf.
+        if attn_mask is not None:
+            am = attn_mask.to(torch.bool).view(B, 1, 1, N)            # (B,1,1,N)
+            causal = torch.tril(torch.ones(N, N, device=post.device, dtype=torch.bool))
+            causal = causal.view(1, 1, N, N)
+            valid = am & causal                                       # (B,1,N,N)
+            post = post.masked_fill(~valid, float("-inf"))
+        pT = torch.softmax(post, dim=-1)                              # (B,H,N,N)
+        # Softmax + additive-bias backward.
+        g_attn = torch.einsum("bhni,bhmi->bhnm", go, vf)              # grad_out @ v^T
+        Di = (g_attn * pT).sum(-1, keepdim=True)                      # sum(pT * g_attn)
+        g_post = pT * (g_attn - Di)                                   # (B,H,N,N)
+        # Gather backward: grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
+        grad_P = torch.zeros_like(P)
+        grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
+        # grad_q, grad_k, grad_v, Dc, attn_mask, inv: None (flex's backward handles q/k/v).
+        return (None, None, None, grad_P, None, None, None)
+
+
 def compute_depth_matrix_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
     """Compute the Pushdown stale stack tape ``S[b,k,j]`` on GPU from spans.
 

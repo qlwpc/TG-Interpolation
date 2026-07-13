@@ -174,3 +174,70 @@ def test_pushdown_flex_gather_by_depth_matches_dense_db(monkeypatch):
         f"(they must be numerically equal — a diff signals an indexing bug in the "
         f"in-score_mod gather P[b,h,q, Dc[b,q,kv]])"
     )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="flex_attention needs CUDA")
+def test_pushdown_flex_fix2_forward_and_grad(monkeypatch):
+    """Fix #2 (OLMO_PUSHDOWN_FIX2): forward parity vs dense-db AND grad to depth_emb.
+
+    Fix #2 = gather-by-depth score_mod with P.detach() (fast forward, no 2.4GB
+    scatter) + _DepthBiasGradP custom autograd Function (manual grad_P from grad_out
+    via recompute pT + scatter_add into 77MB P). This is the ~10x speedup path.
+
+    Asserts:
+      (1) FORWARD output matches dense-db (the bias values are identical — fix #2
+          only changes the backward, not the forward).
+      (2) depth_emb receives a gradient (the whole point — DETACH/gather-by-depth
+          drop it; fix #2 restores it via the custom Function).
+      (3) depth_emb grad is nonzero and finite.
+    The _DepthBiasGradP math is validated vs autograd to 1e-7 on CPU; this test
+    guards the flex integration on GPU (block_mask, bf16, GQA).
+    """
+    from olmo.model import OLMo
+
+    B, n = 2, 16
+
+    def _build():
+        torch.manual_seed(3)
+        return OLMo(_make_cfg(flex=True)).cuda().train()
+
+    def _run(env_fix2, want_grad=False):
+        if env_fix2:
+            monkeypatch.setenv("OLMO_PUSHDOWN_FIX2", "1")
+        else:
+            monkeypatch.delenv("OLMO_PUSHDOWN_FIX2", raising=False)
+        m = _build()
+        input_ids = torch.randint(0, 50000, (B, n), device="cuda")
+        input_ids[1, n - 4 :] = 50258
+        attn = input_ids != 50258
+        spans = torch.tensor([[[0, 2, 5], [6, 8, 11]], [[0, 3, 7], [3, 5, 9]]],
+                             dtype=torch.long, device="cuda")
+        if want_grad:
+            out = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
+            out.sum().backward()
+            grads = [b.pushdown_depth_bias.depth_emb.weight.grad.clone()
+                     for b in m.transformer.blocks]
+            return grads
+        else:
+            with torch.no_grad():
+                return m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
+
+    # (1) Forward parity vs dense-db.
+    out_dense = _run(env_fix2=False, want_grad=False)
+    out_fix2 = _run(env_fix2=True, want_grad=False)
+    monkeypatch.delenv("OLMO_PUSHDOWN_FIX2", raising=False)
+    max_diff = (out_fix2 - out_dense).abs().max().item()
+    assert max_diff < 1e-3, (
+        f"fix #2 vs dense-db forward outputs diverge: max abs diff = {max_diff} "
+        f"(fix #2 forward must equal dense-db — it only changes the backward)"
+    )
+
+    # (2)+(3) depth_emb receives a nonzero, finite gradient under fix #2.
+    grads = _run(env_fix2=True, want_grad=True)
+    monkeypatch.delenv("OLMO_PUSHDOWN_FIX2", raising=False)
+    assert all(g is not None for g in grads), (
+        "fix #2: depth_emb should receive grad via _DepthBiasGradP (unlike DETACH)"
+    )
+    for i, g in enumerate(grads):
+        assert torch.isfinite(g).all(), f"fix #2: depth_emb grad not finite at layer {i}"
+        assert g.abs().sum().item() > 0, f"fix #2: depth_emb grad zero at layer {i}"
