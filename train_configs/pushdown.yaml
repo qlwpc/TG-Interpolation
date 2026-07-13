@@ -100,11 +100,11 @@ tokenizer:
 save_folder: workspace/${run_name}
 save_overwrite: true
 save_interval_unsharded: 5000
-save_num_unsharded_checkpoints_to_keep: -1
+save_num_unsharded_checkpoints_to_keep: 1
 load_path: null
 
 max_duration: 1ep
-stop_at: 14425
+stop_at: 1442500
 global_train_batch_size: 144
 device_train_microbatch_size: 12    # flex path peak is small (int8 S ~50MB + P ~77MB/layer);
                                     # 12 is conservative — sweep 24/32 on GPU after the parity test passes
@@ -125,7 +125,7 @@ device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
   - label: TG-ppl-validation
     data:
-      num_workers: 1
+      num_workers: 0
       pin_memory: true
       drop_last: false
       generate_doc_lengths: true
@@ -136,7 +136,7 @@ evaluators:
         - ${workspace}/dataset/bbc-news/tree/dev.npy
   - label: TG-ppl-validation-test
     data:
-      num_workers: 1
+      num_workers: 0
       pin_memory: true
       drop_last: false
       generate_doc_lengths: true
@@ -149,10 +149,10 @@ evaluators:
 data:
   pad_direction: right
   generate_attention_mask: true
-  num_workers: 4
+  num_workers: 0
   drop_last: true
   pin_memory: true
-  prefetch_factor: 4    # was 8 — halves in-flight page faults across the 189GB
+  prefetch_factor: 2    # was 8 — halves in-flight page faults across the 189GB
                        # input_ids+spans mmaps (cgroup page-cache OOM guard)
   persistent_workers: true
   timeout: 0
