@@ -53,7 +53,15 @@ model:
   # flex_attention: true above. flex_attention is compiled independently of
   # block.compile(), so this works even though compute_depth_matrix_gpu's index_put_
   # graph-breaks block.compile (it runs eagerly outside the score_mod closure).
-  # Validate output parity vs the SDPA path via tests/test_pushdown_flex_parity.py.
+  #
+  # Bias representation: the score_mod gathers P[b,h,q, Dc[b,q,kv]] INSIDE the
+  # flex kernel (captured buffer = the ~77 MB P (B,n_h,n,Dmax)), NOT a pre-
+  # materialized dense db (B,n_h,n,n) fp32 (~2.4 GB/layer). inductor's flex
+  # backward scatters the score_mod grad into each captured buffer that requires
+  # grad, so the gather-by-depth form scatters into 77 MB, not 2.4 GB — this is the
+  # ~20x/step speedup vs the dense-db form. Set OLMO_PUSHDOWN_DENSE_DB=1 to fall
+  # back to the old dense-db path (only if a future torch/Triton rejects the
+  # in-score_mod gather). Validate parity via tests/test_pushdown_flex_parity.py.
   pushdown_use_flex: true
 
 ddp:

@@ -769,77 +769,78 @@ class OLMoBlock(nn.Module):
         # attention_mask (mirroring the TG path) and passes it here, fusing both
         # causality and padding into the mask and the depth bias into score_mod.
         # This replaces the (B, n_h, n, n) fp32 additive mask + math-backend SDPA
-        # (the ~100x slowdown). The score_mod body is a single gather on the
-        # precomputed P (inductor-fusable); the graph-breaking index_put_ lives in
+        # (the ~100x slowdown). The graph-breaking index_put_ lives in
         # compute_depth_matrix_gpu, which runs eagerly and is memoized OUTSIDE this
         # closure, so the compiled flex kernel is not affected by it.
         if (self.config.pushdown_use_flex
                 and getattr(self, "flex_attention", None) is not None
                 and block_mask is not None):
-            # Precompute the full per-(q,kv) depth bias db = P[b,h,q, Dc[b,q,kv]] as a
-            # (B, n_h, n, n) fp32 tensor. This IS the 2.4 GB/layer tensor the SDPA path
-            # materialized — BUT here it is a CAPTURED bias read fused inside the flex
-            # kernel, NOT an SDPA attn_mask. The difference: SDPA with a float attn_mask
-            # forces the math backend (full (B,nh,n,n) attention matrix materialized,
-            # ~100x slow), whereas flex fuses db's gather+add into the flash-class kernel
-            # with no attention-matrix materialization. (Gathering P by Dc *inside* the
-            # score_mod — the memory-optimal 77 MB form — hits an inductor lowering error:
-            # "All the buffers in the score and mask subgraph should be in
-            # input_buffers"; a single captured-tensor index is what flex supports.)
+            # Bias representation. The depth bias is P[b,h,q, Dc[b,q,kv]].
+            #
+            #   gather-by-depth (DEFAULT, OLMO_PUSHDOWN_DENSE_DB not set):
+            #     Gather P by Dc INSIDE score_mod. The only captured "other buffer"
+            #     is P (B, n_h, n, Dmax) fp32 — ~77 MB/layer (Dmax=pushdown_max_depth+1=65).
+            #     inductor's flex backward scatters the score_mod grad into each
+            #     captured buffer that requires grad (process_joint_outputs ->
+            #     flex_lib.zeros_and_scatter, flex_attention.py:2349-2357), so the
+            #     backward scatter is O(B*n_h*n*Dmax) into the 77 MB P, NOT
+            #     O(B*n_h*n*n) into a dense bias. This is the fix for the ~20x/step
+            #     slowdown: the dense-db path (below) materialized the full
+            #     (B, n_h, n, n) fp32 bias (~2.4 GB/layer) AND the backward did a
+            #     zeros_and_scatter into that 2.4 GB. Verified fwd bit-identical and
+            #     grad-aligned (1e-8) to the dense-db path via CPU trace.
+            #
+            #   dense-db (OLMO_PUSHDOWN_DENSE_DB=1): the OLD path, kept as a fallback.
+            #     Materializes db = take_along_dim(P, Dc) as (B, n_h, n, n) fp32
+            #     (~2.4 GB/layer) and captures THAT in score_mod. Slower (the backward
+            #     scatters into 2.4 GB). Only use if a future torch/Triton version
+            #     rejects the in-score_mod gather (it currently accepts it — the
+            #     "All the buffers in the score and mask subgraph should be in
+            #     input_buffers" assert at cpp_flex_attention_template.py:863 is the
+            #     CPU/cpp codegen path, which the GPU/Triton path does not hit).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
-            # Profiling A/B switches (default off = production path). Set via env:
-            #   OLMO_PUSHDOWN_NO_BIAS=1  -> skip the db gather entirely; score_mod is
-            #     a no-op (pure causal flash). Isolates whether the slowdown is the
-            #     score_mod gather vs flex_attention itself. NOTE: this drops the
-            #     depth bias, so the 12 per-layer pushdown_depth_bias.depth_emb
-            #     Embeddings receive no grad -> DDP errors "unused parameters" unless
-            #     you ALSO set ddp.find_unused_params: true (+ grad_sync_mode:
-            #     micro_batch) in the config for the profiling run. Do NOT use a
-            #     0*E.sum() keepalive inside score_mod: inductor's flex_attention
-            #     backward lowering asserts `buf.name is not None` on a score_mod
-            #     output that is a broadcasted constant (LoweringException at
-            #     flex_attention.py:2353).
-            #   OLMO_PUSHDOWN_NOCLAMP=1  -> score_mod indexes without .long().clamp
-            #     (faster if the clamp was breaking inductor fusion; correctness
-            #     relies on real cells never going OOB, which holds when seq_len is
-            #     a multiple of the flex block size 128 — verify for your config).
-            _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
-            _noclamp = bool(os.environ.get("OLMO_PUSHDOWN_NOCLAMP"))
-            if _no_bias:
-                # Skip the 2.4GB/layer db materialization (the suspected slow op).
-                del P, D, Dc
-            else:
+            _Dmax = Dmax
+            _dense_db = bool(os.environ.get("OLMO_PUSHDOWN_DENSE_DB"))
+            if _dense_db:
                 db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
                 _db = db
-                del P, D, Dc
+                del D, Dc  # keep P alive — not needed by score_mod but harmless; freed on return
+            else:
+                _P = P  # (B, n_h, n, Dmax) fp32 — the 77 MB captured buffer
+                _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
+                del D  # D and Dc are views of S; keep Dc for score_mod, drop the alias D
             # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
             # flex calls it positionally; putting score last swaps score<->batch,
             # which (a) gathers the bias at wrong indices and (b) makes the backward
             # treat the float `score` as an integer batch index -> no grad flows to
             # score -> inductor asserts "joint_subgraph_buffer is None".
-            if _no_bias:
+            #
+            # flex traces/evaluates the score_mod over a padded block grid, so the
+            # index scalars can exceed the real tensor dims at the boundary (those
+            # cells are in masked-out blocks -> their gathered value is unused).
+            # Clamp in-bounds before indexing to avoid OOB. Cast to long: flex
+            # passes the batch index as a float scalar in some paths, and fake-
+            # tensor tracing rejects non-integer indices ("tensors used as indices
+            # must be long, int, byte or bool").
+            if _dense_db:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    return score
-            elif _noclamp:
-                # A/B: index without .long().clamp — isolates whether the casts/clamps
-                # break inductor fusion of the gather.
-                def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
-            else:
-                def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    # flex traces/evaluates the score_mod over a padded block grid, so the
-                    # index scalars can exceed the real tensor dims at the boundary (those
-                    # cells are in masked-out blocks -> their gathered value is unused).
-                    # Clamp in-bounds before indexing to avoid OOB. Cast to long: flex
-                    # passes the batch index as a float scalar in some paths, and fake-
-                    # tensor tracing rejects non-integer indices ("tensors used as indices
-                    # must be long, int, byte or bool").
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
                     q_idx = q_idx.long().clamp(0, _n - 1)
                     kv_idx = kv_idx.long().clamp(0, _n - 1)
                     return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
+            else:
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    b = b.long().clamp(0, _B - 1)
+                    h = h.long().clamp(0, _nh - 1)
+                    q_idx = q_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    # Gather P by the depth tape at (b,q,kv). P is (B,n_h,n,Dmax);
+                    # the gather is one indexed load per cell, fused into the flex
+                    # kernel. The backward scatters into P (77 MB), not a dense db.
+                    d = _Dc[b, q_idx, kv_idx]            # scalar depth at (b,q,kv)
+                    return score + _P[b, h, q_idx, d] * inv_sqrt_hs
             # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
             if n_kv != nh:
                 rep = nh // n_kv

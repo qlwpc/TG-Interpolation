@@ -117,10 +117,62 @@ def test_pushdown_flex_backward():
                          dtype=torch.long, device="cuda")
     out = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
     out.sum().backward()
-    # The per-layer depth embedding must receive a gradient.
+    # The per-layer depth embedding must receive a gradient. (pushdown_depth_bias is a
+    # direct child of OLMoBlock — block.attention is a METHOD, not a submodule.)
     depth_emb_grads = [
-        b.attention.pushdown_depth_bias.depth_emb.weight.grad
+        b.pushdown_depth_bias.depth_emb.weight.grad
         for b in m.transformer.blocks
     ]
     assert all(g is not None for g in depth_emb_grads), "depth_emb should get gradients"
     assert all(g.abs().sum().item() > 0 for g in depth_emb_grads), "depth_emb grad nonzero"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="flex_attention needs CUDA")
+def test_pushdown_flex_gather_by_depth_matches_dense_db(monkeypatch):
+    """The gather-by-depth score_mod (default) must match the dense-db form.
+
+    The default flex path gathers ``P`` by the depth tape ``Dc`` INSIDE score_mod
+    (captured buffer = the ~77 MB ``P`` (B,n_h,n,Dmax)), instead of pre-materializing
+    the dense ``db = take_along_dim(P, Dc)`` (B,n_h,n,n) fp32 (~2.4 GB/layer) and
+    capturing THAT. Both lower cleanly and must produce numerically equal outputs
+    AND equal depth_emb gradients — the gather-by-depth form is the ~20x/step speedup
+    fix (the dense-db backward scatters into 2.4 GB; the gather-by-depth backward
+    scatters into 77 MB). This test guards against a regression that silently swaps
+    the representations or breaks the in-score_mod gather's indexing.
+    """
+    from olmo.model import OLMo
+
+    def _run():
+        torch.manual_seed(2)
+        m = OLMo(_make_cfg(flex=True)).cuda().train()
+        B, n = 2, 16
+        input_ids = torch.randint(0, 50000, (B, n), device="cuda")
+        input_ids[1, n - 4 :] = 50258
+        attn = input_ids != 50258
+        spans = torch.tensor([[[0, 2, 5], [6, 8, 11]], [[0, 3, 7], [3, 5, 9]]],
+                             dtype=torch.long, device="cuda")
+        out = m(input_ids=input_ids, attention_mask=attn, tree_spans=spans).logits
+        out.sum().backward()
+        grads = [b.pushdown_depth_bias.depth_emb.weight.grad.clone()
+                 for b in m.transformer.blocks]
+        return out.detach(), grads
+
+    # Default path: gather-by-depth (captured P, 77 MB).
+    out_gather, grads_gather = _run()
+    # Fallback path: dense-db (captured db, 2.4 GB) via the env switch.
+    monkeypatch.setenv("OLMO_PUSHDOWN_DENSE_DB", "1")
+    out_dense, grads_dense = _run()
+    monkeypatch.delenv("OLMO_PUSHDOWN_DENSE_DB", raising=False)
+
+    max_diff = (out_gather - out_dense).abs().max().item()
+    assert max_diff < 1e-4, (
+        f"gather-by-depth vs dense-db outputs diverge: max abs diff = {max_diff} "
+        f"(they must be numerically equal — a diff signals an indexing bug in the "
+        f"in-score_mod gather P[b,h,q, Dc[b,q,kv]])"
+    )
+    for i, (g_g, g_d) in enumerate(zip(grads_gather, grads_dense)):
+        gdiff = (g_g - g_d).abs().max().item()
+        assert gdiff < 1e-4, (
+            f"gather-by-depth vs dense-db depth_emb grad diverge at layer {i}: "
+            f"max abs diff = {gdiff} (backward scatter into P must match scatter into db)"
+        )
