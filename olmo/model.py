@@ -777,39 +777,45 @@ class OLMoBlock(nn.Module):
                 and block_mask is not None):
             # Bias representation. The depth bias is P[b,h,q, Dc[b,q,kv]].
             #
-            #   gather-by-depth (DEFAULT, OLMO_PUSHDOWN_DENSE_DB not set):
-            #     Gather P by Dc INSIDE score_mod. The only captured "other buffer"
-            #     is P (B, n_h, n, Dmax) fp32 — ~77 MB/layer (Dmax=pushdown_max_depth+1=65).
-            #     inductor's flex backward scatters the score_mod grad into each
-            #     captured buffer that requires grad (process_joint_outputs ->
-            #     flex_lib.zeros_and_scatter, flex_attention.py:2349-2357), so the
-            #     backward scatter is O(B*n_h*n*Dmax) into the 77 MB P, NOT
-            #     O(B*n_h*n*n) into a dense bias. This is the fix for the ~20x/step
-            #     slowdown: the dense-db path (below) materialized the full
-            #     (B, n_h, n, n) fp32 bias (~2.4 GB/layer) AND the backward did a
-            #     zeros_and_scatter into that 2.4 GB. Verified fwd bit-identical and
-            #     grad-aligned (1e-8) to the dense-db path via CPU trace.
+            #   dense-db (DEFAULT, OLMO_PUSHDOWN_GATHER_BY_DEPTH not set):
+            #     Pre-materialize db = take_along_dim(P, Dc) as (B, n_h, n, n) fp32
+            #     (~2.4 GB/layer) and capture THAT in score_mod. inductor's flex
+            #     backward scatters the score_mod grad into each captured buffer that
+            #     requires grad (process_joint_outputs -> flex_lib.zeros_and_scatter,
+            #     flex_attention.py:2349-2357); for db the scatter index is a SIMPLE
+            #     per-cell (b,h,q,kv) gather, which the lowering handles, so grad
+            #     reaches depth_emb correctly. This is the KNOWN-WORKING path
+            #     (trains on GPU under amp_bf16+DDP). It is ~20x slower than baseline
+            #     — see memory pushdown-flex-slowdown-analysis — but correct.
             #
-            #   dense-db (OLMO_PUSHDOWN_DENSE_DB=1): the OLD path, kept as a fallback.
-            #     Materializes db = take_along_dim(P, Dc) as (B, n_h, n, n) fp32
-            #     (~2.4 GB/layer) and captures THAT in score_mod. Slower (the backward
-            #     scatters into 2.4 GB). Only use if a future torch/Triton version
-            #     rejects the in-score_mod gather (it currently accepts it — the
-            #     "All the buffers in the score and mask subgraph should be in
-            #     input_buffers" assert at cpp_flex_attention_template.py:863 is the
-            #     CPU/cpp codegen path, which the GPU/Triton path does not hit).
+            #   gather-by-depth (OLMO_PUSHDOWN_GATHER_BY_DEPTH=1): EXPERIMENTAL.
+            #     Gather P by Dc INSIDE score_mod (captured buffer = the ~77 MB P
+            #     (B,n_h,n,Dmax), not 2.4 GB db). Forward output is bit-identical to
+            #     dense-db (verified on CPU, max diff 0.0) and the forward eliminates
+            #     the 2.4 GB/layer materialization. BUT on GPU under amp_bf16+DDP the
+            #     backward does NOT deliver grad to depth_emb -> DDP errors "unused
+            #     parameters" (param indices 7,20,...,150, the 12 per-layer depth_emb
+            #     Embeddings). Root cause (inferred): the score_mod does a TWO-LEVEL
+            #     data-dependent index _P[b,h,q, _Dc[b,q,kv]] (index _Dc to get a
+            #     depth, then index _P with it); inductor's zeros_and_scatter grad for
+            #     a captured grad-requiring buffer needs a simple per-cell index, and
+            #     the data-dependent second index defeats the scatter -> no grad to P
+            #     -> no grad to E -> no grad to depth_emb. CPU fp32 trace does populate
+            #     P.grad (the CPU dense backward fallback handles it), so this only
+            #     manifests on the GPU Triton path. DO NOT enable for training until
+            #     the grad path is fixed (planned: detach P in score_mod + an explicit
+            #     aux loss that backprops to depth_emb).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
-            _Dmax = Dmax
-            _dense_db = bool(os.environ.get("OLMO_PUSHDOWN_DENSE_DB"))
-            if _dense_db:
-                db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
-                _db = db
-                del D, Dc  # keep P alive — not needed by score_mod but harmless; freed on return
-            else:
+            _gather = bool(os.environ.get("OLMO_PUSHDOWN_GATHER_BY_DEPTH"))
+            if _gather:
                 _P = P  # (B, n_h, n, Dmax) fp32 — the 77 MB captured buffer
                 _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
-                del D  # D and Dc are views of S; keep Dc for score_mod, drop the alias D
+                del D
+            else:
+                db = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3)  # (B, n_h, n, n) fp32
+                _db = db
+                del D, Dc  # P not needed by score_mod; freed on return
             # score_mod signature is (score, batch, head, q_idx, k_idx) — score FIRST.
             # flex calls it positionally; putting score last swaps score<->batch,
             # which (a) gathers the bias at wrong indices and (b) makes the backward
@@ -823,14 +829,7 @@ class OLMoBlock(nn.Module):
             # passes the batch index as a float scalar in some paths, and fake-
             # tensor tracing rejects non-integer indices ("tensors used as indices
             # must be long, int, byte or bool").
-            if _dense_db:
-                def _depth_score_mod(score, b, h, q_idx, kv_idx):
-                    b = b.long().clamp(0, _B - 1)
-                    h = h.long().clamp(0, _nh - 1)
-                    q_idx = q_idx.long().clamp(0, _n - 1)
-                    kv_idx = kv_idx.long().clamp(0, _n - 1)
-                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
-            else:
+            if _gather:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
@@ -838,9 +837,16 @@ class OLMoBlock(nn.Module):
                     kv_idx = kv_idx.long().clamp(0, _n - 1)
                     # Gather P by the depth tape at (b,q,kv). P is (B,n_h,n,Dmax);
                     # the gather is one indexed load per cell, fused into the flex
-                    # kernel. The backward scatters into P (77 MB), not a dense db.
+                    # kernel. (EXPERIMENTAL — see grad-drop note above.)
                     d = _Dc[b, q_idx, kv_idx]            # scalar depth at (b,q,kv)
                     return score + _P[b, h, q_idx, d] * inv_sqrt_hs
+            else:
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    b = b.long().clamp(0, _B - 1)
+                    h = h.long().clamp(0, _nh - 1)
+                    q_idx = q_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
             # flex_attention expects (B, n_h, n, hs); expand k,v for GQA.
             if n_kv != nh:
                 rep = nh // n_kv
