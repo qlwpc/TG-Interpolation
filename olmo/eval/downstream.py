@@ -1,5 +1,6 @@
 import abc
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional, Sequence, Union, Callable, Set
 
@@ -1492,13 +1493,26 @@ class SyntacticGeneralizationMetric(Metric):
         keys = re.findall(r"%([\w|-]+)%", formula)
         keys = set(keys)
         for key in keys:
-            formula = formula.replace(
-                "(%{}%)".format(key),
-                str(score_dict[key]),
-                )
+            # Coerce to float and emit a literal eval() can always parse.
+            # str(float('inf')) is the bare token `inf`, which is NOT a valid
+            # Python name → NameError. That crashed the whole eval run when
+            # bf16 underflow gave a tagged token probability 0 (CE = inf).
+            # float('inf') / float('nan') are valid expressions, and the
+            # comparisons behave correctly (inf is "very large surprise" →
+            # fails a `<` test, which is the intended "model got it wrong").
+            val = float(score_dict[key])
+            if math.isfinite(val):
+                literal = repr(val)
+            elif math.isnan(val):
+                literal = "float('nan')"
+            elif val > 0:
+                literal = "float('inf')"
+            else:
+                literal = "float('-inf')"
+            formula = formula.replace("(%{}%)".format(key), "({})".format(literal))
         formula = formula.replace("[", "(")
         formula = formula.replace("]", ")")
-        
+
         result = eval(formula)
         print(f"result is {result}")
         getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
@@ -1579,11 +1593,33 @@ class SGDataset(metaclass=abc.ABCMeta):
     def prep_examples(self):
         self.samples : List[List[Dict[str, List]]] = []
         is_gpt2 = "gpt2" in (self.vocab_path or "").lower()
+        # Resume support: SG_RESUME_FROM_TASK=<task>:<case_offset> makes
+        # prep_examples drop every case before <task>, and the first
+        # <case_offset> cases *within* <task>. Used to continue a crashed
+        # SG eval from where it stopped instead of re-running the whole set.
+        # Example: SG_RESUME_FROM_TASK=subordination_pp-pp:7 keeps pp-pp
+        # cases 7..end and every task after it (subordination_src-src).
+        _resume = os.environ.get("SG_RESUME_FROM_TASK", "").strip()
+        _resume_task = None
+        _resume_offset = 0
+        if _resume:
+            if ":" in _resume:
+                _resume_task, _off = _resume.split(":", 1)
+                _resume_offset = int(_off)
+            else:
+                _resume_task, _resume_offset = _resume, 0
+            log.info(f"[SG resume] dropping cases before task '{_resume_task}' (offset {_resume_offset})")
         for task in self.task_list:
+            if _resume_task is not None and task != _resume_task and _resume_task in self.task_list:
+                # still before the resume task -> skip entirely
+                if self.task_list.index(task) < self.task_list.index(_resume_task):
+                    continue
             # if task not in test_suite_dict["Agreement"]: continue
             with open(os.path.join(self.dataset_path, task+".json"), 'r', encoding='utf-8') as file:
                 dataset = json.load(file)
-                for case in dataset["data"]:
+                for case_idx, case in enumerate(dataset["data"]):
+                    if _resume_task is not None and task == _resume_task and case_idx < _resume_offset:
+                        continue
                     cur = []
                     for sent in case:
                         sent["task"] = task

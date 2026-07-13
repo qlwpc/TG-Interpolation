@@ -1099,7 +1099,13 @@ class Trainer:
                         tag_tensor = torch.LongTensor(sent["tag"][0]).to(self.device)
                         if tag_tensor.shape[0] != ce_loss[0].shape[0]:
                             tag_tensor = tag_tensor[1:]
-                        score_dict[sent["condition_name"]] = torch.sum(ce_loss[0] * tag_tensor).item()
+                        # Clamp per-token CE: bf16 underflow can give a tagged
+                        # token probability 0 → CE = inf, which then poisons
+                        # score_dict and the formula eval. Cap at a large
+                        # finite value (max bf16 finite ~3.4e38; this is well
+                        # below and still means "near-zero probability").
+                        per_tok_ce = torch.clamp(ce_loss[0], max=1.0e4)
+                        score_dict[sent["condition_name"]] = torch.sum(per_tok_ce * tag_tensor).item()
                         print(ce_loss[0])
                     else:
                         term_len = sent["input_ids"].shape[1]
