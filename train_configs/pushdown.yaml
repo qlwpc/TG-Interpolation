@@ -54,18 +54,17 @@ model:
   # block.compile(), so this works even though compute_depth_matrix_gpu's index_put_
   # graph-breaks block.compile (it runs eagerly outside the score_mod closure).
   #
-  # Bias representation. DEFAULT: the score_mod captures a pre-materialized dense
-  # db = take_along_dim(P, Dc) (B,n_h,n,n) fp32 (~2.4 GB/layer). This is the
-  # KNOWN-WORKING path — trains under amp_bf16+DDP, grad reaches depth_emb — but is
-  # ~20x slower than baseline (the backward scatters into 2.4 GB; see memory
-  # pushdown-flex-slowdown-analysis).
+  # Bias representation. DEFAULT = fix #2: the score_mod gathers P[b,h,q, Dc[b,q,kv]]
+  # INSIDE the flex kernel with P DETACHED (captured buffer = ~77 MB P, not a 2.4 GB
+  # dense db), and a custom autograd Function (_DepthBiasGradP) computes grad_P
+  # manually (recompute pT + fp32 scatter_add into 77 MB P). This is 2.9x faster than
+  # the old dense-db path (14.24s vs 41.5s/step single-GPU), grad reaches depth_emb
+  # (no find_unused_params needed), and scales down with world_size. See memory
+  # pushdown-flex-slowdown-analysis.
   #
-  # EXPERIMENTAL: OLMO_PUSHDOWN_GATHER_BY_DEPTH=1 gathers P by Dc INSIDE score_mod
-  # (captured buffer = ~77 MB P, not 2.4 GB db) — eliminates the 2.4 GB forward
-  # materialization, fwd bit-identical to dense-db. BUT on GPU under amp_bf16+DDP
-  # the backward drops grad to depth_emb -> DDP "unused parameters" crash (param
-  # indices 7,20,...,150). DO NOT enable for training until the grad path is fixed.
-  # Validate forward parity via tests/test_pushdown_flex_parity.py.
+  # OLMO_PUSHDOWN_DENSE_DB=1: fall back to the old slow path (pre-materialize
+  # db=take_along_dim(P,Dc) ~2.4 GB/layer; backward zeros_and_scatters into it).
+  # Debugging/parity only.
   pushdown_use_flex: true
 
 ddp:
