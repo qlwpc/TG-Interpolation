@@ -1612,7 +1612,11 @@ class SGDataset(metaclass=abc.ABCMeta):
             else:
                 _resume_task, _resume_offset = _resume, 0
         if _resume_tasks:
-            log.info(f"[SG resume] task whitelist: {_resume_tasks}")
+            # Whitelist takes full precedence: ignore SG_RESUME_FROM_TASK entirely
+            # (it may be leaked in the environment from a previous resume run).
+            log.info(f"[SG resume] task whitelist: {_resume_tasks} (ignoring SG_RESUME_FROM_TASK={_resume!r})")
+            _resume_task = None
+            _resume_offset = 0
         elif _resume_task is not None:
             log.info(f"[SG resume] dropping cases before task '{_resume_task}' (offset {_resume_offset})")
         for task in self.task_list:
