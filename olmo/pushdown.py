@@ -75,29 +75,36 @@ class _DepthBiasGradP(torch.autograd.Function):
         q, k, v, P, Dc, attn_mask = ctx.saved_tensors
         inv = ctx.inv_sqrt_hs  # = scale = 1/sqrt(hs)
         B, H, N, hs = q.shape
-        # Recompute in fp32 for stability (q/k/v are bf16 under amp; P is already fp32).
-        qf, kf, vf = q.float(), k.float(), v.float()
-        go = grad_output.float()
-        scores = torch.einsum("bhni,bhmi->bhnm", qf, kf) * inv        # (B,H,N,N)
-        bias = torch.take_along_dim(P, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N)
-        post = scores + bias
-        # Causal + pad mask: kv must be a valid key (attn_mask[b,kv]) AND kv <= q.
-        # attn_mask is (B, N) bool; build (B, 1, N, N) and mask -inf.
-        if attn_mask is not None:
-            am = attn_mask.to(torch.bool).view(B, 1, 1, N)            # (B,1,1,N)
-            causal = torch.tril(torch.ones(N, N, device=post.device, dtype=torch.bool))
-            causal = causal.view(1, 1, N, N)
-            valid = am & causal                                       # (B,1,N,N)
-            post = post.masked_fill(~valid, float("-inf"))
-        pT = torch.softmax(post, dim=-1)                              # (B,H,N,N)
-        # Softmax + additive-bias backward.
-        g_attn = torch.einsum("bhni,bhmi->bhnm", go, vf)              # grad_out @ v^T
-        Di = (g_attn * pT).sum(-1, keepdim=True)                      # sum(pT * g_attn)
-        g_post = pT * (g_attn - Di)                                   # (B,H,N,N)
-        # Gather backward: grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
-        grad_P = torch.zeros_like(P)
-        grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
+        # Disable autocast: under amp_bf16 the forward autocasts the einsum that
+        # produces P back to bf16 (so P can be bf16, not fp32), and would also
+        # autocast our recompute einsums to bf16 — mixing fp32 (softmax) and bf16
+        # (g_attn) dtypes, which then mismatches grad_P in the scatter_add. Force
+        # everything to fp32 for a stable, dtype-consistent backward.
+        with torch.autocast(device_type=q.device.type, enabled=False):
+            qf, kf, vf = q.float(), k.float(), v.float()
+            Pf = P.float()
+            go = grad_output.float()
+            scores = torch.einsum("bhni,bhmi->bhnm", qf, kf) * inv        # (B,H,N,N)
+            bias = torch.take_along_dim(Pf, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N)
+            post = scores + bias
+            # Causal + pad mask: kv must be a valid key (attn_mask[b,kv]) AND kv <= q.
+            # attn_mask is (B, N) bool; build (B, 1, N, N) and mask -inf.
+            if attn_mask is not None:
+                am = attn_mask.to(torch.bool).view(B, 1, 1, N)            # (B,1,1,N)
+                causal = torch.tril(torch.ones(N, N, device=post.device, dtype=torch.bool))
+                causal = causal.view(1, 1, N, N)
+                valid = am & causal                                       # (B,1,N,N)
+                post = post.masked_fill(~valid, float("-inf"))
+            pT = torch.softmax(post, dim=-1)                              # (B,H,N,N) fp32
+            # Softmax + additive-bias backward.
+            g_attn = torch.einsum("bhni,bhmi->bhnm", go, vf)              # grad_out @ v^T
+            Di = (g_attn * pT).sum(-1, keepdim=True)                      # sum(pT * g_attn)
+            g_post = pT * (g_attn - Di)                                   # (B,H,N,N) fp32
+            # Gather backward: grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
+            grad_P = torch.zeros(B, H, N, Pf.shape[3], device=Pf.device, dtype=torch.float32)
+            grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
         # grad_q, grad_k, grad_v, Dc, attn_mask, inv: None (flex's backward handles q/k/v).
+        # grad_P is fp32; autograd casts it to P's dtype as needed for the chain to E/depth_emb.
         return (None, None, None, grad_P, None, None, None)
 
 
