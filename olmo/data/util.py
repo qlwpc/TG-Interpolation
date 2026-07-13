@@ -522,6 +522,80 @@ class SequentialDistributedSampler(Sampler):
     
     def __len__(self):
         return self.num_samples
-    
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+
+class DistributedEvalSampler(Sampler):
+    """Distributed sampler for evaluation that neither pads nor drops.
+
+    Unlike ``torch.utils.data.distributed.DistributedSampler`` (which pads the
+    dataset to a multiple of ``num_replicas`` by duplicating the first samples,
+    corrupting ``sum/len``-style metrics with duplicate results) and unlike
+    ``SequentialDistributedSampler`` (which truncates the tail, silently
+    skipping unevaluated cases), this sampler partitions the dataset so that
+    every sample is evaluated exactly once across all ranks. Counts differ by
+    at most one across ranks; no padding, no truncation.
+
+    Two partitioning modes:
+      - ``contiguous=False`` (default): strided — rank ``r`` gets indices
+        ``r, r+W, r+2W, ...``. Use for metrics with no order dependence
+        (SG, Rouge, ICL, beam_search_icl).
+      - ``contiguous=True``: contiguous blocks — rank ``r`` gets a single
+        contiguous range ``[start_r, start_r + size_r)``. Use for metrics that
+        rely on local order (tg_doc KV cache accumulates within a doc; tg_sent
+        assumes sequential sent_id arrival). Unlike
+        ``SequentialDistributedSampler``, the tail is NOT truncated: the first
+        ``N % W`` ranks get one extra sample so every sample is covered.
+    """
+
+    def __init__(self, dataset, num_replicas=None, rank=None, shuffle=False,
+                 drop_last=False, contiguous=False):
+        if num_replicas is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            num_replicas = dist.get_world_size()
+        if rank is None:
+            if not dist.is_available():
+                raise RuntimeError("Requires distributed package to be available")
+            rank = dist.get_rank()
+        if rank >= num_replicas or rank < 0:
+            raise ValueError(
+                f"Invalid rank {rank}, rank should be in the interval [0, {num_replicas - 1}]"
+            )
+
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.shuffle = shuffle
+        self.contiguous = contiguous
+        self.epoch = 0
+        n = len(self.dataset)
+        # Each rank gets ceil or floor of n/W; first (n % W) ranks get one extra.
+        base = n // num_replicas
+        rem = n % num_replicas
+        if rank < rem:
+            self.num_samples = base + 1
+        else:
+            self.num_samples = base
+        self.total_size = n  # exact, no padding
+
+    def __iter__(self):
+        n = len(self.dataset)
+        if self.contiguous:
+            base = n // self.num_replicas
+            rem = n % self.num_replicas
+            # first `rem` ranks get base+1
+            start = self.rank * base + min(self.rank, rem)
+            end = start + self.num_samples
+            indices = list(range(start, end))
+        else:
+            indices = list(range(self.rank, n, self.num_replicas))
+        return iter(indices)
+
+    def __len__(self):
+        return self.num_samples
+
     def set_epoch(self, epoch):
         self.epoch = epoch

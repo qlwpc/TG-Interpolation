@@ -1,14 +1,14 @@
 from typing import Dict, List, Union
 
 import torch
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 from torchmetrics import MeanMetric, Metric
 
 from ..config import EvaluatorConfig, EvaluatorType, TrainConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
-from ..data.util import SequentialDistributedSampler
+from ..data.util import DistributedEvalSampler
 from .downstream import ICLMetric, BeamSearchICLMetric, DecomposedICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
@@ -57,20 +57,25 @@ def build_downstream_evaluator(
     data_config = eval_cfg.data
     if is_unit_test:
         ds_eval_sampler = None
-    elif eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent] or eval_cfg.label == "BLiMP":
-        ds_eval_sampler = SequentialDistributedSampler(
-            ds_eval_dataset,
-            num_replicas=get_world_size(),
-            rank=get_global_rank(),
-        )
     else:
-        ds_eval_sampler = DistributedSampler(
+        # Use a partitioning sampler that evaluates every sample exactly once
+        # across ranks (no padding duplicates, no tail truncation). The previous
+        # setup used DistributedSampler (drop_last=False → padded duplicates
+        # that corrupted sum/len metrics) for some evaluators and
+        # SequentialDistributedSampler (tail truncation → skipped cases) for
+        # others. DistributedEvalSampler fixes both.
+        #
+        # tg_doc / tg_sent / BLiMP need contiguous blocks: tg_doc accumulates a
+        # KV cache within a document (samples of one doc must arrive on one
+        # rank, in order); tg_sent/BLiMP assume sequential sent_id arrival and
+        # index by position. The other evaluators (SG, Rouge, ICL,
+        # beam_search_icl) have no order dependence and use strided partitioning.
+        contiguous = eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent] or eval_cfg.label == "BLiMP"
+        ds_eval_sampler = DistributedEvalSampler(
             ds_eval_dataset,
-            drop_last=data_config.drop_last,
-            shuffle=False,
             num_replicas=get_world_size(),
             rank=get_global_rank(),
-            seed=train_config.seed,
+            contiguous=contiguous,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
     if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl:
