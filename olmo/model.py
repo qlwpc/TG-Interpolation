@@ -808,7 +808,20 @@ class OLMoBlock(nn.Module):
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
             _gather = bool(os.environ.get("OLMO_PUSHDOWN_GATHER_BY_DEPTH"))
-            if _gather:
+            # OLMO_PUSHDOWN_NO_BIAS=1: profiling probe — drop the depth bias entirely
+            # (score_mod is a no-op, pure causal flash). Isolates whether the ~41s/step
+            # is the bias ops (forward take_along_dim materializing 2.4GB/layer fp32 +
+            # backward zeros_and_scatter into it) vs flex_attention itself. Drops the
+            # depth bias, so the 12 per-layer depth_emb Embeddings receive NO grad ->
+            # DDP errors "unused parameters" UNLESS the profiling config ALSO sets
+            # ddp.find_unused_params: true (and grad_sync_mode: micro_batch). Verified
+            # (clean `return score`) lowers + runs fwd+bwd through flex_attention on
+            # CPU; do NOT use a 0*E.sum() keepalive (crashes inductor's flex backward
+            # lowering — see memory pushdown-flex-slowdown-analysis). PROFILING ONLY.
+            _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
+            if _no_bias:
+                del P, D, Dc  # no bias materialized
+            elif _gather:
                 _P = P  # (B, n_h, n, Dmax) fp32 — the 77 MB captured buffer
                 _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
                 del D
@@ -829,7 +842,10 @@ class OLMoBlock(nn.Module):
             # passes the batch index as a float scalar in some paths, and fake-
             # tensor tracing rejects non-integer indices ("tensors used as indices
             # must be long, int, byte or bool").
-            if _gather:
+            if _no_bias:
+                def _depth_score_mod(score, b, h, q_idx, kv_idx):
+                    return score
+            elif _gather:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
