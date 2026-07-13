@@ -808,21 +808,28 @@ class OLMoBlock(nn.Module):
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
             _B, _nh, _n = B, nh, n
             _gather = bool(os.environ.get("OLMO_PUSHDOWN_GATHER_BY_DEPTH"))
+            # OLMO_PUSHDOWN_DETACH=1: profiling probe — gather-by-depth score_mod with
+            # P DETACHED (no grad flows through the flex score_mod -> no zeros_and_scatter
+            # into P -> no grad drop, no 2.4GB scatter). Forward values are IDENTICAL to
+            # gather-by-depth (detach doesn't change values). Isolates whether the
+            # gather-by-depth FORWARD is fast (flash-fused because the captured buffer is
+            # the 77MB P, not 2.4GB db) — the decisive test for whether fix #2 (detach P
+            # + manual backward) is worth building. P detached -> depth_emb gets no grad
+            # -> needs the same find_unused_params profile config as NO_BIAS. PROFILING ONLY.
+            _detach = bool(os.environ.get("OLMO_PUSHDOWN_DETACH"))
             # OLMO_PUSHDOWN_NO_BIAS=1: profiling probe — drop the depth bias entirely
-            # (score_mod is a no-op, pure causal flash). Isolates whether the ~41s/step
-            # is the bias ops (forward take_along_dim materializing 2.4GB/layer fp32 +
-            # backward zeros_and_scatter into it) vs flex_attention itself. Drops the
-            # depth bias, so the 12 per-layer depth_emb Embeddings receive NO grad ->
-            # DDP errors "unused parameters" UNLESS the profiling config ALSO sets
-            # ddp.find_unused_params: true (and grad_sync_mode: micro_batch). Verified
-            # (clean `return score`) lowers + runs fwd+bwd through flex_attention on
-            # CPU; do NOT use a 0*E.sum() keepalive (crashes inductor's flex backward
-            # lowering — see memory pushdown-flex-slowdown-analysis). PROFILING ONLY.
+            # (score_mod is a no-op, pure causal flash). MEASURED 3.66s/step (vs dense-db
+            # 41.5s) -> the bias ops are an 11.3x slowdown. Drops the depth bias, so the
+            # 12 per-layer depth_emb Embeddings receive NO grad -> DDP errors "unused
+            # parameters" UNLESS the profiling config ALSO sets ddp.find_unused_params:
+            # true (and grad_sync_mode: micro_batch). Verified (clean `return score`)
+            # lowers + runs fwd+bwd through flex_attention on CPU; do NOT use a
+            # 0*E.sum() keepalive (crashes inductor's flex backward lowering). PROFILING ONLY.
             _no_bias = bool(os.environ.get("OLMO_PUSHDOWN_NO_BIAS"))
             if _no_bias:
                 del P, D, Dc  # no bias materialized
-            elif _gather:
-                _P = P  # (B, n_h, n, Dmax) fp32 — the 77 MB captured buffer
+            elif _detach or _gather:
+                _P = P.detach() if _detach else P  # (B, n_h, n, Dmax) fp32 — 77 MB
                 _Dc = Dc  # (B, n, n) int64 depth tape (no grad)
                 del D
             else:
@@ -845,7 +852,7 @@ class OLMoBlock(nn.Module):
             if _no_bias:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     return score
-            elif _gather:
+            elif _detach or _gather:
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
@@ -853,7 +860,8 @@ class OLMoBlock(nn.Module):
                     kv_idx = kv_idx.long().clamp(0, _n - 1)
                     # Gather P by the depth tape at (b,q,kv). P is (B,n_h,n,Dmax);
                     # the gather is one indexed load per cell, fused into the flex
-                    # kernel. (EXPERIMENTAL — see grad-drop note above.)
+                    # kernel. (DETACH: P detached -> no backward scatter. GATHER:
+                    # P requires grad -> backward drops grad on GPU — EXPERIMENTAL.)
                     d = _Dc[b, q_idx, kv_idx]            # scalar depth at (b,q,kv)
                     return score + _P[b, h, q_idx, d] * inv_sqrt_hs
             else:
