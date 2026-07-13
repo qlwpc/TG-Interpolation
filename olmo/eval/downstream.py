@@ -1593,12 +1593,15 @@ class SGDataset(metaclass=abc.ABCMeta):
     def prep_examples(self):
         self.samples : List[List[Dict[str, List]]] = []
         is_gpt2 = "gpt2" in (self.vocab_path or "").lower()
-        # Resume support: SG_RESUME_FROM_TASK=<task>:<case_offset> makes
-        # prep_examples drop every case before <task>, and the first
-        # <case_offset> cases *within* <task>. Used to continue a crashed
-        # SG eval from where it stopped instead of re-running the whole set.
-        # Example: SG_RESUME_FROM_TASK=subordination_pp-pp:7 keeps pp-pp
-        # cases 7..end and every task after it (subordination_src-src).
+        # Resume support: two env vars (SG_RESUME_TASKS takes precedence).
+        #   SG_RESUME_TASKS=task_a,task_b  -> keep ONLY those tasks (all cases).
+        #     Used to re-run specific tasks whose cases were split across ranks
+        #     and partially missed by a from-offset resume.
+        #   SG_RESUME_FROM_TASK=<task>:<case_offset> -> drop every case before
+        #     <task>, and the first <case_offset> cases within <task>.
+        #     Example: subordination_pp-pp:7 keeps pp-pp cases 7..end + every
+        #     task after it (subordination_src-src).
+        _resume_tasks = [t.strip() for t in os.environ.get("SG_RESUME_TASKS", "").split(",") if t.strip()]
         _resume = os.environ.get("SG_RESUME_FROM_TASK", "").strip()
         _resume_task = None
         _resume_offset = 0
@@ -1608,9 +1611,15 @@ class SGDataset(metaclass=abc.ABCMeta):
                 _resume_offset = int(_off)
             else:
                 _resume_task, _resume_offset = _resume, 0
+        if _resume_tasks:
+            log.info(f"[SG resume] task whitelist: {_resume_tasks}")
+        elif _resume_task is not None:
             log.info(f"[SG resume] dropping cases before task '{_resume_task}' (offset {_resume_offset})")
         for task in self.task_list:
-            if _resume_task is not None and task != _resume_task and _resume_task in self.task_list:
+            if _resume_tasks:
+                if task not in _resume_tasks:
+                    continue
+            elif _resume_task is not None and task != _resume_task and _resume_task in self.task_list:
                 # still before the resume task -> skip entirely
                 if self.task_list.index(task) < self.task_list.index(_resume_task):
                     continue
