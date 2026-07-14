@@ -13,7 +13,7 @@ import numpy as np
 import json, os
 import evaluate
 
-from olmo.util import load_hf_dataset, load_oe_eval_requests
+from olmo.util import load_hf_dataset, load_oe_eval_requests, get_global_rank
 
 from ..data.tg_mask import TG_attention_bias, SentencepieceVocab
 from ..tokenizer import Tokenizer
@@ -40,8 +40,15 @@ class ICLMetric(Metric):
     full_state_update: bool = False
 
     def __init__(self, metric_type="acc", vocab_path=None, tree_eval_type=None,
-                 doc_group: List[str]=None, tokenizer=None) -> None:
-        """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
+                 doc_group: List[str]=None, tokenizer=None,
+                 save_per_example_path: Optional[str] = None) -> None:
+        """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb
+
+        If ``save_per_example_path`` is set, ``compute()`` also writes a JSON file
+        with per-instance ``(doc_id, pred, label, correct, scores)`` for post-hoc
+        bootstrap significance testing. Only rank 0 writes (``compute()`` runs
+        after a full cross-rank state gather due to ``sync_on_compute=True``).
+        """
         super().__init__(sync_on_compute=True)
 
         self.metric_type = metric_type
@@ -49,6 +56,7 @@ class ICLMetric(Metric):
         self.doc_group = doc_group
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.tokenizer = tokenizer
+        self.save_per_example_path = save_per_example_path
         self.add_state("loglikelihoods", default=[], dist_reduce_fx=None)
         self.add_state("labels", default=[], dist_reduce_fx=None)
         self.add_state("loglikelihoods_term", default=[], dist_reduce_fx=None)
@@ -196,6 +204,10 @@ class ICLMetric(Metric):
             preds = {}
             labels = {}
 
+        # Per-instance records for post-hoc bootstrap significance testing.
+        # Populated only for ranking metrics (acc/f1); dumped from rank 0 below.
+        per_example: List[Dict[str, Any]] = []
+
         for doc_id in loglikelihood_dict:
             # each doc_id might have a different number of continuation
             group = "_" if self.doc_group is None else self.doc_group[doc_id]
@@ -219,7 +231,21 @@ class ICLMetric(Metric):
                 correct[group].append(loglikelihoods[0])  # Only one answer is scored
             else:
                 # print(f"{doc_id} is {'correct' if torch.argmax(loglikelihoods).item() == label_dict[doc_id] else 'wrong'}")
-                correct[group].append(1.0 if torch.argmax(loglikelihoods).item() in label_dict[doc_id] else 0.0)
+                pred_id = torch.argmax(loglikelihoods).item()
+                is_correct = 1.0 if pred_id in label_dict[doc_id] else 0.0
+                correct[group].append(is_correct)
+                # Capture per-instance (doc_id, pred, label, correct, scores) for bootstrap.
+                label_id = next(iter(label_dict[doc_id]))
+                per_example.append({
+                    "doc_id": int(doc_id),
+                    "pred": int(pred_id),
+                    "label": int(label_id),
+                    "correct": int(is_correct),
+                    "n_choices": int(num_continuations),
+                    "score_pred": float(loglikelihoods[pred_id].item()),
+                    "score_label": float(loglikelihoods[label_id].item())
+                                   if 0 <= label_id < num_continuations else float("-inf"),
+                })
 
             if self.metric_type == "f1":
                 assert preds is not None
@@ -230,6 +256,17 @@ class ICLMetric(Metric):
                 pred = torch.argmax(loglikelihoods).item()
                 preds[group].append(pred)
                 labels[group].append(label_dict[doc_id][0] if pred not in label_dict[doc_id] else pred)
+
+        # Dump per-instance predictions for bootstrap significance testing.
+        # sync_on_compute=True gathers state across ranks before compute(), so
+        # rank 0 sees the full (deduplicated) dataset; only rank 0 writes.
+        if self.save_per_example_path is not None and get_global_rank() == 0:
+            save_dir = os.path.dirname(self.save_per_example_path)
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+            with open(self.save_per_example_path, "w") as f:
+                json.dump(per_example, f)
+            log.info(f"Saved {len(per_example)} per-instance predictions to {self.save_per_example_path}")
 
         score_dict = {}
         if self.metric_type == "f1":
@@ -522,6 +559,12 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             grammar_type = self.transformer_grammar_type
         if grammar_type[:8] == "terminal" or grammar_type[:5] == "pause":
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+        elif grammar_type == "tgtree":
+            # TGTree data is already converted to LIN2 (TG) format in token_encode
+            # (convert_treenpy_to_TG duplicates each CNT). No-op here to avoid
+            # double-converting — converting again would re-duplicate CNTs and
+            # inflate continuation length past the logits slice (see token_encode).
+            pass
         elif grammar_type == "tree_noont":
             # Convert TG → tree, then strip opening non-terminals
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
@@ -846,7 +889,17 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
 
     def token_encode(self, string: str) -> List[int]:
         ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
-        ids = self.convert_grammar_input(ids)
+        if self.transformer_grammar_type == "tgtree":
+            # TGTree: trained on LIN2 (TG) data — convert_treenpy_to_TG duplicates
+            # each closing NT (1 ONT + 2 CNT). Must happen here, BEFORE ctx+cont
+            # assembly and model_ctx_len truncation, so the duplicated CNTs are
+            # counted in the length budget (converting later in
+            # convert_grammar_input would inflate the continuation past the
+            # logits slice). convert_grammar_input is a no-op for tgtree.
+            # Return a list to match the contract of the other branch (.tolist()).
+            ids = self.vocab.convert_treenpy_to_TG(ids).tolist()
+        else:
+            ids = self.convert_grammar_input(ids)
         return ids
 
     def token_decode(self, tokens: List[int]) -> str:
@@ -1637,8 +1690,13 @@ class SGDataset(metaclass=abc.ABCMeta):
                     for sent in case:
                         sent["task"] = task
                         tokens = self.tokenizer.encode(" " + sent["input"], add_special_tokens=False)
+                        # GPT-2 was trained with a leading BOS; Qwen3 was not. Prepend BOS to the
+                        # input iff the tokenizer matches the training convention, and pad the tag
+                        # with a leading 0 in lockstep so tag and input_ids always share one length
+                        # and one coordinate system (SG_eval_step then unconditionally does tag[1:]).
                         if is_gpt2:
                             sent["input_ids"] = torch.LongTensor([self.vocab.bos] + tokens).unsqueeze(0)
+                            sent["tag"][0] = [0] + sent["tag"][0]
                         else:
                             sent["input_ids"] = torch.LongTensor(tokens).unsqueeze(0)
                         start = end = -1
@@ -1647,14 +1705,15 @@ class SGDataset(metaclass=abc.ABCMeta):
                                 end = i
                                 if start == -1:
                                     start = i - 1
-                        bos_offset = 1 if is_gpt2 else 0
-                        sent["tag_start"] = start + bos_offset
-                        sent["tag_end"] = end + bos_offset
+                        # tag_start/tag_end index into the same (BOS-aware) coordinate system as
+                        # input_ids, so no bos_offset shift is needed.
+                        sent["tag_start"] = start
+                        sent["tag_end"] = end
                         assert(sum(sent['tag'][0]) == end-start)
                         if self.ispause:
-                            if is_gpt2:
-                                sent["tag"][0] = [0] + sent["tag"][0]
-                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.transformer_grammar_type)[1:]
+                            # pause_input_ids expands input and tag by the same (p, q) factor, so
+                            # they stay equal in length; SG_eval_step's tag[1:] still aligns.
+                            sent["tag"][0] = pause_input_ids(sent["tag"][0], pause_token_id=None, pause_num=self.transformer_grammar_type)
                             sent_paused = pause_input_ids(sent["input_ids"][0], self.pause_token_id, pause_num=self.transformer_grammar_type)
                             sent["input_ids"] = sent_paused.unsqueeze(0)
                         if sent["condition_name"] in formula_dict[task][0]:

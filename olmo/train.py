@@ -1091,14 +1091,11 @@ class Trainer:
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits, _ = self.model_forward(sent, loss_reduction="none")
                         # Align tag mask with ce_loss positions.
-                        # ce_loss has shape (1, L-1) — the model predicts
-                        # tokens 1..L-1 from tokens 0..L-2.
-                        # tag[0] has length L and is aligned with input_ids
-                        # positions 0..L-1.  For non-BOS tokenizers (Qwen3),
-                        # the first tag entry has no corresponding loss.
-                        tag_tensor = torch.LongTensor(sent["tag"][0]).to(self.device)
-                        if tag_tensor.shape[0] != ce_loss[0].shape[0]:
-                            tag_tensor = tag_tensor[1:]
+                        # tag and input_ids are built equal-length in prep_examples; ce_loss is one
+                        # shorter (predicts tokens 1..L-1). Drop the tag's first position — the BOS
+                        # slot for GPT-2, the first real token for Qwen3 — to align with ce_loss.
+                        # Unconditional: no runtime length check needed.
+                        tag_tensor = torch.LongTensor(sent["tag"][0])[1:].to(self.device)
                         # Clamp per-token CE: bf16 underflow can give a tagged
                         # token probability 0 → CE = inf, which then poisons
                         # score_dict and the formula eval. Cap at a large

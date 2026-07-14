@@ -142,10 +142,20 @@ def build_downstream_evaluator(
             save_per_example_path=save_path,
         )
     else:
-        metric = ICLMetric(metric_type=ds_eval_dataset.metric_type, 
+        # Opt-in per-instance prediction dump for post-hoc bootstrap significance
+        # testing. Set OLMO_BOOTSTRAP_DUMP=1 to write per_example_<label>.json
+        # into save_folder. Off by default so normal eval runs are unaffected.
+        import os as _bos
+        save_path = None
+        if _bos.environ.get("OLMO_BOOTSTRAP_DUMP") == "1" and train_config.save_folder:
+            save_path = _bos.path.join(
+                train_config.save_folder, f"per_example_{eval_cfg.label}.json"
+            )
+        metric = ICLMetric(metric_type=ds_eval_dataset.metric_type,
                            vocab_path=train_config.tokenizer.vocabulary,
                             tree_eval_type=ds_eval_dataset.tree_eval_type,
-                            doc_group=ds_eval_dataset.doc_group)
+                            doc_group=ds_eval_dataset.doc_group,
+                            save_per_example_path=save_path)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
         assert(ds_eval_dataset.SENT_SIZE % eval_batch_size == 0 or
