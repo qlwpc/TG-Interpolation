@@ -47,6 +47,7 @@ __all__ = [
     "TrainConfig",
     "TGConfig",
     "PaddingDirection",
+    "MemMapFileFormat",
     "TruncationDirection",
     "SpeedMonitorConfig",
     "WandbConfig",
@@ -705,6 +706,12 @@ class PaddingDirection(StrEnum):
     left = "left"
 
 
+class MemMapFileFormat(StrEnum):
+    auto = "auto"
+    npy = "npy"
+    raw = "raw"
+
+
 @dataclass
 class InstanceFilterConfig(BaseConfig):
     repetition_max_period: int = 13
@@ -716,6 +723,11 @@ class InstanceFilterConfig(BaseConfig):
 class DataConfig(BaseConfig):
     paths: Optional[List[str]] = None
     memmap_dtype: str = "uint16"
+    memmap_format: MemMapFileFormat = MemMapFileFormat.auto
+    """
+    Physical format for token and label-mask files. ``auto`` detects standard
+    NumPy ``.npy`` headers and otherwise falls back to headerless raw binary.
+    """
     datasets: Optional[Dict[str, List[str]]] = None
     label_mask_paths: Optional[List[str]] = None
     parse_tree_paths: Optional[List[str]] = None

@@ -17,6 +17,7 @@ from olmo.config import (
     SchedulerConfig,
     SchedulerType,
     DataConfig,
+    MemMapFileFormat,
     TGConfig,
     PaddingDirection,
     InitFnType,
@@ -244,7 +245,12 @@ class TestDataConfig:
         cfg = DataConfig()
         assert cfg.num_workers == 0
         assert cfg.pad_direction == PaddingDirection.right
+        assert cfg.memmap_format == MemMapFileFormat.auto
         assert cfg.generate_attention_mask is False
+
+    def test_memmap_format_accepts_enum_value(self):
+        cfg = DataConfig(memmap_format=MemMapFileFormat.raw)
+        assert str(cfg.memmap_format) == "raw"
 
 
 # ---------------------------------------------------------------------------

@@ -431,7 +431,6 @@ class TestMemMapDatasetPause:
         """When grammar_type starts with 'pause', pause_input_ids is called."""
         import olmo.data.memmap_dataset as mmd
         # chunk_size=10 means 10 uint16 elements. Return 20 bytes (10 * sizeof(uint16)).
-        monkeypatch.setattr(mmd, "file_size", lambda p: 100)
         monkeypatch.setattr(mmd, "get_bytes_range", lambda p, s, n: b"\x0a\x00" * 10)
 
         ds = MemMapDataset(
@@ -440,6 +439,7 @@ class TestMemMapDatasetPause:
             transformer_grammar_type="pause1",
             pause_token_id=99,
             memmap_dtype=np.uint16,
+            memmap_format="raw",
             include_instance_metadata=False,
         )
         ds._mmap_offsets = [(0, 100)]
@@ -452,7 +452,6 @@ class TestMemMapDatasetPause:
     def test_pause2_doubles_pause_count(self, monkeypatch):
         import olmo.data.memmap_dataset as mmd
         # chunk_size=10 uint16 elements → 20 bytes
-        monkeypatch.setattr(mmd, "file_size", lambda p: 100)
         monkeypatch.setattr(mmd, "get_bytes_range", lambda p, s, n: b"\x0b\x00" * 10)
 
         ds = MemMapDataset(
@@ -461,6 +460,7 @@ class TestMemMapDatasetPause:
             transformer_grammar_type="pause2",
             pause_token_id=99,
             memmap_dtype=np.uint16,
+            memmap_format="raw",
             include_instance_metadata=False,
         )
         ds._mmap_offsets = [(0, 100)]

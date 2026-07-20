@@ -26,6 +26,8 @@ from collections import defaultdict
 
 import numpy as np
 
+from olmo.memmap_utils import inspect_memmap_file
+
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
@@ -37,16 +39,16 @@ def parse_args():
     p.add_argument("--world_size", type=int, default=8)
     p.add_argument("--chunk_size", type=int, default=2048, help="Tokens per example")
     p.add_argument("--memmap_dtype", default="uint32")
+    p.add_argument("--memmap_format", choices=("auto", "npy", "raw"), default="auto")
     p.add_argument("--drop_last", action="store_true", default=True)
     p.add_argument("--epoch", type=int, default=0, help="Epoch for shuffle seed (0 for decay)")
     return p.parse_args()
 
 
-def get_file_example_count(path, chunk_size, dtype):
+def get_file_example_count(path, chunk_size, dtype, file_format="auto"):
     """Number of chunk_size examples in a memmap file."""
-    item_size = np.dtype(dtype).itemsize
-    file_bytes = os.path.getsize(path)
-    return file_bytes // (item_size * chunk_size)
+    info = inspect_memmap_file(path, dtype, file_format)
+    return info.element_count // chunk_size
 
 
 def main():
@@ -61,7 +63,7 @@ def main():
     file_examples = {}
     total_examples = 0
     for fpath in all_files:
-        n = get_file_example_count(fpath, args.chunk_size, dtype)
+        n = get_file_example_count(fpath, args.chunk_size, dtype, args.memmap_format)
         file_examples[fpath] = n
         total_examples += n
 

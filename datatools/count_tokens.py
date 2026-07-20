@@ -1,21 +1,20 @@
 import os
 import numpy as np
 import argparse
+from functools import partial
 from multiprocessing import Pool, cpu_count
 
-def process_single_file(filepath):
+from olmo.memmap_utils import inspect_memmap_file
+
+def process_single_file(filepath, dtype="uint32", file_format="auto"):
     """处理单个文件的核心逻辑"""
     try:
-        # 注意：np.fromfile 用于读取原始二进制，如果是标准的 .npy 文件，
-        # 通常建议使用 np.load(filepath, mmap_mode='r') 来加速并节省内存
-        data = np.fromfile(filepath, dtype=np.uint32)
-        if data.ndim == 1:
-            return data.size
-    except Exception:
-        pass
-    return 0
+        info = inspect_memmap_file(filepath, np.dtype(dtype), file_format)
+        return info.element_count, None
+    except Exception as exc:
+        return 0, f"{filepath}: {exc}"
 
-def count_npy_data_parallel(directory, num_processes=None):
+def count_npy_data_parallel(directory, num_processes=None, dtype="uint32", file_format="auto"):
     if num_processes is None:
         num_processes = cpu_count()
 
@@ -28,8 +27,17 @@ def count_npy_data_parallel(directory, num_processes=None):
     print(f"正在使用 {num_processes} 个进程处理 {len(file_paths)} 个文件...")
     
     with Pool(processes=num_processes) as pool:
-        results = pool.imap_unordered(process_single_file, file_paths)
-        total = sum(results)
+        worker = partial(process_single_file, dtype=dtype, file_format=file_format)
+        results = pool.imap_unordered(worker, file_paths)
+        total = 0
+        errors = []
+        for count, error in results:
+            total += count
+            if error is not None:
+                errors.append(error)
+
+    if errors:
+        raise ValueError("Failed to inspect data files:\n" + "\n".join(errors))
     
     return total
 
@@ -37,7 +45,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, default="/storage/")
     parser.add_argument('--jobs', type=int, default=None, help="进程数量，默认使用全部CPU")
+    parser.add_argument('--memmap_dtype', default="uint32")
+    parser.add_argument('--memmap_format', choices=("auto", "npy", "raw"), default="auto")
     args = parser.parse_args()
 
-    total_count = count_npy_data_parallel(args.input_dir, args.jobs)
+    total_count = count_npy_data_parallel(
+        args.input_dir, args.jobs, args.memmap_dtype, args.memmap_format
+    )
     print(f"所有 npy 文件数据总量: {total_count}")

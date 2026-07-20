@@ -177,6 +177,7 @@ def build_memmap_dataset(
         *paths,
         chunk_size=seq_length,
         memmap_dtype=data_config.effective_memmap_dtype,
+        memmap_format=str(data_config.memmap_format),
         metadata=metadata,
         include_instance_metadata=include_instance_metadata,
         pad_token_id=train_config.model.pad_token_id,

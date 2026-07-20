@@ -86,7 +86,9 @@ def parallel_process_file(file_path, output_dir, vocab, mode, fixed_token, n_wor
     # 拼接并保存
     final_data = np.concatenate(final_list).astype(np.uint16)
     save_path = os.path.join(output_dir, os.path.basename(file_path))
-    final_data.tofile(Path(save_path).with_suffix('.npy'))
+    # ``.npy`` denotes the standard NumPy format. The training loader also
+    # supports legacy raw files, but those should use a ``.bin`` suffix.
+    np.save(Path(save_path).with_suffix('.npy'), final_data)
     print(f"保存完毕: {save_path}, 最终长度: {len(final_data)}")
 
 def main():

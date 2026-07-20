@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 import torch
@@ -12,7 +12,8 @@ from olmo.exceptions import OLMoEnvironmentError
 
 from ..aliases import PathOrStr
 from ..config import InstanceFilterConfig
-from ..util import _get_s3_client, file_size, get_bytes_range
+from ..memmap_utils import MemMapFileInfo, inspect_memmap_file
+from ..util import _get_s3_client, get_bytes_range
 from .util import (
     find_periodic_sequences,
     get_document_lengths,
@@ -42,6 +43,8 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
     :param chunk_size: The number of tokens to chunk together into a single instance.
         Generally this should correspond to your model's maximum input length.
     :param memmap_dtype: The numpy datatype of the memory-mapped array.
+    :param memmap_format: Physical file format: ``auto`` detects standard NumPy
+        headers and falls back to raw binary, while ``npy`` and ``raw`` force a format.
     :param metadata: Metadata to add to each item. This should be a dictionary or a list of dictionaries
         with the same number of items as there are paths.
     :param include_instance_metadata: If ``True`` (the default), each instance returned from `__getitem__` will
@@ -57,6 +60,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         *paths: PathOrStr,
         chunk_size: int = 1024,
         memmap_dtype: Union[Type[np.uint8], Type[np.uint16], Type[np.uint32], Type[np.uint64]] = np.uint16,
+        memmap_format: str = "auto",
         metadata: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
         include_instance_metadata: bool = True,
         generate_attention_mask: bool = False,
@@ -93,7 +97,11 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
         self._chunk_size = chunk_size
         self._mmap_offsets: Optional[List[Tuple[int, int]]] = None
         self._num_instances: Optional[int] = None
-        self.dtype = memmap_dtype
+        self.dtype = np.dtype(memmap_dtype)
+        self.memmap_format = memmap_format
+        # Keyed by (path, expected dtype) so an input and a bool label mask can
+        # safely refer to independently inspected physical layouts.
+        self._file_info: Dict[Tuple[PathOrStr, str], MemMapFileInfo] = {}
         self._include_instance_metadata = include_instance_metadata
         self._generate_attention_mask = generate_attention_mask
         self._generate_doc_lengths = generate_doc_lengths
@@ -150,56 +158,83 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
 
             self._mmap_offsets = []
 
-            path_to_length: Dict[PathOrStr, int] = {}
+            path_to_info: Dict[PathOrStr, MemMapFileInfo] = {}
             path_to_mask_path: Dict[PathOrStr, PathOrStr] = {}
-            mask_path_to_length: Dict[PathOrStr, int] = {}
+            mask_path_to_info: Dict[PathOrStr, MemMapFileInfo] = {}
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 path_futures = []
                 mask_path_futures = []
                 for i, path in enumerate(self._memmap_paths):
-                    path_futures.append(executor.submit(self._get_file_length, path))
+                    path_futures.append(executor.submit(self._inspect_file, path, self.dtype))
                     if self._label_mask_paths is not None:
                         mask_path = self._label_mask_paths[i]
                         path_to_mask_path[path] = mask_path
-                        mask_path_futures.append(executor.submit(self._get_file_length, mask_path, np.bool_))
+                        mask_path_futures.append(
+                            executor.submit(self._inspect_file, mask_path, np.dtype(np.bool_))
+                        )
 
                 for future in concurrent.futures.as_completed(path_futures):
-                    path, length = future.result()
-                    path_to_length[path] = length
+                    path, info = future.result()
+                    path_to_info[path] = info
+                    self._file_info[self._file_info_key(path, info.dtype)] = info
 
                 for future in concurrent.futures.as_completed(mask_path_futures):
-                    path, length = future.result()
-                    mask_path_to_length[path] = length
+                    path, info = future.result()
+                    mask_path_to_info[path] = info
+                    self._file_info[self._file_info_key(path, info.dtype)] = info
 
             start_offset = 0
             for path in self._memmap_paths:
-                length = path_to_length[path]
-                if mask_path_to_length:
+                info = path_to_info[path]
+                length = info.element_count // self._chunk_size
+                if mask_path_to_info:
                     mask_path = path_to_mask_path[path]
-                    if length != mask_path_to_length[mask_path]:
-                        raise ValueError(f"masking file '{mask_path}' should be the same size as '{path}'")
+                    mask_info = mask_path_to_info[mask_path]
+                    if info.element_count != mask_info.element_count:
+                        raise ValueError(
+                            f"masking file '{mask_path}' should contain the same number of "
+                            f"elements as '{path}' ({mask_info.element_count} != {info.element_count})"
+                        )
                 end_offset = start_offset + length
                 self._mmap_offsets.append((start_offset, end_offset))
                 start_offset += length
         return self._mmap_offsets
 
     def _read_chunk_from_memmap(self, path: PathOrStr, index: int, dtype=None) -> torch.Tensor:
-        dtype = dtype or self.dtype
-        item_size = dtype(0).itemsize
-        bytes_start = index * item_size * self._chunk_size
+        dtype = np.dtype(dtype or self.dtype)
+        key = self._file_info_key(path, dtype)
+        info = self._file_info.get(key)
+        if info is None:
+            # This normally only happens in tests that pre-populate ``offsets``.
+            # Forced raw mode is unambiguous and needs no header inspection.
+            if self.memmap_format == "raw":
+                info = MemMapFileInfo("raw", dtype, 0, 0)
+            else:
+                _, info = self._inspect_file(path, dtype)
+                self._file_info[key] = info
+        item_size = info.dtype.itemsize
+        bytes_start = info.data_offset + index * item_size * self._chunk_size
         num_bytes = item_size * self._chunk_size
         buffer = get_bytes_range(path, bytes_start, num_bytes)
-        array = np.frombuffer(buffer, dtype=dtype)
-        if dtype == np.bool_:
+        if len(buffer) != num_bytes:
+            raise IOError(
+                f"Expected {num_bytes} bytes from '{path}' at offset {bytes_start}, "
+                f"received {len(buffer)}"
+            )
+        array = np.frombuffer(buffer, dtype=info.dtype)
+        if info.dtype == np.dtype(np.bool_):
             return torch.tensor(array)
         else:
             return torch.tensor(array.astype(np.int_), dtype=torch.long)
 
-    def _get_file_length(self, path, dtype=None) -> Tuple[PathOrStr, int]:
-        dtype = dtype or self.dtype
-        item_size = dtype(0).itemsize
-        return path, file_size(path) // (item_size * self._chunk_size)
+    @staticmethod
+    def _file_info_key(path: PathOrStr, dtype: np.dtype) -> Tuple[PathOrStr, str]:
+        return path, dtype.str
+
+    def _inspect_file(self, path: PathOrStr, dtype: np.dtype) -> Tuple[PathOrStr, MemMapFileInfo]:
+        info = inspect_memmap_file(path, dtype, self.memmap_format)
+        return path, info
 
     def __len__(self) -> int:
         if self._num_instances is None:
@@ -285,6 +320,7 @@ class MemMapDataset(Dataset[Dict[str, Any]]):
             *(self._memmap_paths + other._memmap_paths),
             chunk_size=self._chunk_size,
             memmap_dtype=self.dtype,
+            memmap_format=self.memmap_format,
             metadata=self._metadata + other._metadata,
         )
 
