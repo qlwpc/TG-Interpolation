@@ -6,37 +6,48 @@ constituency-parse bracketing decisions into differentiable **orthogonality
 constraints** on hidden states: a constituent's representation should be maximally
 orthogonal to its surrounding context.
 
-This module implements the **B1 variant** (per the project plan): the loss acts on
-the post-block residual hidden state at a chosen layer (``treereg_layer``), using a
-slice of ``|A| * d_head`` dims as the "circuit" vector. No architectural change at
-inference (the loss is train-only).
+This module is a faithful port of the reference implementation
+(https://github.com/ananjan-nandi-9/tree_regularization, ``src/regularizer/``).
+The loss acts on the post-block residual hidden state at a chosen layer
+(``treereg_layer``), using a slice of ``|A| * d_head`` dims as the "circuit" vector.
+No architectural change at inference (the loss is train-only).
 
-Core quantity — **Span Contextual Independence Score (SCIN)** for span ``S_{i;j}``::
+Core quantity — **Span Contextual Independence Score (SCIN)** for span ``S_{a;b}``::
 
-    SCIN(i, j) = -cos(h_{i-1}, h_j) - cos(h_j, h_{j+1})
+    SCIN(a, b) = ||orth(h_{a-1}, h_b)|| + ||orth(h_b, h_{b+1})||
 
-(left-context orthogonality + right-context orthogonality; ``h_{-1}``/``h_{n}`` are
-treated as zero, i.e. the term is dropped at boundaries). For a gold constituent
-spanning ``[i, j]`` that bifurcates at ``p`` (left child ``[i, p]``, right child
-``[p+1, j]``), the split score is ``s(q) = SCIN(i, q) + SCIN(q+1, j)`` for
-``i <= q < j``, and the span-level loss is a cross-entropy favoring the gold split
-``q = p``. ``L_TR`` is the sum over all gold constituents.
+where ``||orth(x, y)|| = ||x - proj_y(x)|| = ||x|| * sin(angle(x, y))`` is the norm of
+the component of ``x`` orthogonal to ``y`` (matches ``scin_computer.get_all_orthogonal_scores``).
+``h_{-1}`` / ``h_{n}`` are treated as zero (the term is dropped at boundaries).
+The hidden states are **not** L2-normalized, so the score carries a ``||h||`` magnitude
+weight, exactly as in the reference.
 
-The SCIN chart is built with one ``(B, n, n)`` matmul (``G = H_norm @ H_norm^T``);
-the per-span CE is a small gather + softmax. Applied every ``k`` LM steps on ~25%
-of heads at the middle layer, overhead is ~2-3% (train-only; zero inference cost).
+For a gold constituent spanning ``[st, en]`` that bifurcates at ``p`` (left child
+``[st, p]``, right child ``[p+1, en]``), the split score is
+``s(q) = SCIN(st, q) + SCIN(q+1, en)`` for ``st <= q < en``, which expands to the four
+orthogonality terms of ``regularizer_main.get_span_score``:
+
+    s(q) = ||orth(h_{st-1}, h_q)|| + ||orth(h_q,  h_{q+1})||
+         + ||orth(h_q,    h_en)|| + ||orth(h_en, h_{en+1})||
+
+Candidate splits ``q`` range over **all** token positions in ``[st, en-1]`` (the
+reference restricts to word-boundary positions; that restriction is dropped here
+because local BPE data has ~7% of gold splits landing on non-word-start subwords —
+see plan). Spans with fewer than 2 candidate splits (``en - st < 2``) are skipped.
+
+The span-level loss is a cross-entropy favoring the gold split ``q = p``. ``L_TR`` is a
+**macro** average: per-sentence mean over that sentence's spans, then mean over
+sentences in the batch (matches ``regularizer_main.get_score`` /
+``trainer_main.sci_loss`` up to the reference's double-negation, which collapses to
+minimizing ``mean(CE)``).
 """
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
-
-
-def _l2_normalize(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    return x / (x.norm(dim=-1, keepdim=True) + eps)
 
 
 def compute_treereg_loss(
@@ -61,65 +72,90 @@ def compute_treereg_loss(
         d_head: head dim (``d_model // n_heads``); required when ``n_heads_subset > 0``.
 
     Returns:
-        Scalar loss (mean over valid spans across the batch). Zero if no spans.
+        Scalar loss (macro mean: per-sentence span-CE mean, then mean over
+        sentences). Zero (graph-connected) if no valid spans.
     """
-    B, n, d_model = hidden.shape
+    B, n, _ = hidden.shape
     if n_heads_subset and n_heads_subset > 0 and d_head is not None:
         circuit = hidden[..., : n_heads_subset * d_head]
     else:
         circuit = hidden
-    Hn = _l2_normalize(circuit, eps=eps)  # (B, n, d)
-    # Cosine-similarity chart G[b,i,j] = cos(h_i, h_j).
-    G = torch.bmm(Hn, Hn.transpose(1, 2))  # (B, n, n)
+    # Orthogonality norms are small differences of near-aligned projections; run in
+    # fp32 for numerical fidelity (the reference computes them in fp32 implicitly).
+    circuit = circuit.float()
 
-    # Pad G with a zero row/col so that G[:, -1, j] and G[:, j, n] are 0 (boundaries).
-    # We use index -1 for "no left context" (i=0) and index n for "no right context"
-    # (j=n-1): implement via clamped indices with a zero gather.
-    zero = torch.zeros(B, n, device=hidden.device, dtype=G.dtype)
-    # G_left[b, i, j] = G[b, i-1, j] if i>0 else 0.
-    G_left = torch.cat([zero.unsqueeze(1), G[:, :-1, :]], dim=1)  # (B, n, n), row i = G[i-1]
-    # G_right[b, i, j] = G[b, i, j+1] if j<n-1 else 0.
-    G_right = torch.cat([G[:, :, 1:], zero.unsqueeze(2)], dim=2)  # (B, n, n), col j = G[j+1]
+    # Orthogonality chart matching scin_computer.get_all_orthogonal_scores:
+    #   O[b, i, j] = ||H[j] - proj_{Hn[i]}(H[j])||  (component of H[j] orthogonal to H[i])
+    # Note the direction: the OUTER index i is the projection direction, the INNER
+    # index j is the vector being projected (the reference uses
+    # `orthogonal_magnitudes[st-1][en]`, so chart[(a,b)] = O[a-1, b]). H is NOT
+    # normalized (keeps the ||H[j]|| magnitude weight, as in the reference).
+    Hn = F.normalize(circuit, dim=-1, eps=eps)                  # (B, n, d)
+    # proj[b, i, j] = H[j] · Hn[i]  = bmm(Hn, H^T)[b, i, j]
+    proj = torch.bmm(Hn, circuit.transpose(1, 2))               # (B, n, n)
+    # orth[b, i, j] = H[j] - proj[b,i,j] * Hn[i]; broadcast H[j] over axis 1, Hn[i] over axis 2.
+    orth = circuit.unsqueeze(1) - proj.unsqueeze(-1) * Hn.unsqueeze(2)  # (B, n, n, d)
+    O = orth.norm(dim=-1)                                       # (B, n, n)
 
-    # SCIN(i, j) = -G[i-1, j] - G[i, j+1].
-    SCIN = -(G_left + G_right)  # (B, n, n); SCIN[b, i, j]
+    # Pad with a zero row above (index 0 = "no left context") and a zero column to
+    # the right (index n = "no right context"), so O_pad[a, b] = O[a-1, b] with
+    # O_pad[0, *] = 0 and O_pad[*, n] = 0. This lets SCIN(a, b) = O[a-1, b] + O[b, b+1]
+    # be written as O_pad[a, b] + O_pad[b+1, b+1] with clamped indices.
+    O_pad = F.pad(O, (0, 1, 1, 0))                              # (B, n+1, n+1)
 
-    # Flatten spans across the batch for a vectorized CE.
-    # Valid spans: (b, left, split, right) with left < right (a binary split exists;
-    # unary spans left==right have an empty split range and are skipped).
-    valid = span_mask.bool() & (spans[..., 0] < spans[..., 2])
+    # Valid spans: binary split with >= 2 candidates (en - st >= 2). Unary spans
+    # (en == st) and length-2 spans (only 1 candidate) are skipped, matching the
+    # reference's `if en - st <= 1: return 0,0,0` and `if len(scores) < 2: return`.
+    left_all = spans[..., 0]
+    right_all = spans[..., 2]
+    valid = span_mask.bool() & (left_all < right_all) & ((right_all - left_all) >= 2)
     if not valid.any():
         # Graph-connected zero so backward never errors on empty batches.
         return hidden.sum() * 0.0
-    b_idx = torch.arange(B, device=hidden.device).unsqueeze(1).expand(B, spans.shape[1])[valid]  # (V,)
-    left = spans[..., 0][valid].long()   # (V,)
-    split = spans[..., 1][valid].long()  # (V,)
-    right = spans[..., 2][valid].long()  # (V,)
+
+    b_idx = torch.arange(B, device=hidden.device).unsqueeze(1).expand_as(valid)[valid]  # (V,)
+    left = left_all[valid].long()
+    split = spans[..., 1][valid].long()
+    right = right_all[valid].long()
     # Clamp to valid range (defensive against padding -1).
     left = left.clamp(0, n - 1)
     right = right.clamp(0, n - 1)
-    split = split.clamp(left, right.clamp(min=1) - 1)
+    split = split.clamp(left, right - 1)  # gold split in [left, right-1]
 
-    # For each valid span (i, p, j): split scores s(q) = SCIN(i, q) + SCIN(q+1, j)
-    # for q in [i, j-1]. Spans have varying length, so loop-free via a padded
-    # max-span gather. Use a per-span arange up to max_len = (j - i).
-    max_len = int((right - left).clamp(min=1).max().item())
-    V = left.shape[0]
-    # q = i + r, r in [0, max_len); shape (V, R).
-    r = torch.arange(max_len, device=hidden.device)  # (R,)
-    q = left.unsqueeze(1) + r.unsqueeze(0)  # (V, R)
-    valid_q = q < right.unsqueeze(1)  # q <= j-1
+    # Candidate splits q = left + r for r in [0, max_len); valid where q < right.
+    max_len = int((right - left).clamp(min=2).max().item())
+    r = torch.arange(max_len, device=hidden.device)            # (R,)
+    q = left.unsqueeze(1) + r.unsqueeze(0)                     # (V, R)
+    valid_q = q < right.unsqueeze(1)                           # q <= right-1
+
+    # s(q) = SCIN(st, q) + SCIN(q+1, en) expands to the four terms of get_span_score:
+    #   ||orth(h_{st-1}, h_q)|| + ||orth(h_q, h_{q+1})||
+    # + ||orth(h_q,    h_en)|| + ||orth(h_en, h_{en+1})||
+    # Indexing into O_pad (size n+1): O_pad[a, b] = O[a-1, b]; O_pad[0,*]=0; O_pad[*,n]=0.
+    b_idx_v = b_idx.unsqueeze(1)                               # (V, 1)
+    left_v = left.unsqueeze(1)                                 # (V, 1)
+    right_v = right.unsqueeze(1)                               # (V, 1)
     q_clamped = q.clamp(0, n - 1)
-    # SCIN(i, q) and SCIN(q+1, j). Broadcast (V,1) batch/row indices with (V,R) cols.
-    b_idx_v = b_idx.unsqueeze(1)  # (V, 1)
-    left_v = left.unsqueeze(1)  # (V, 1)
-    right_v = right.unsqueeze(1)  # (V, 1)
-    scin_iq = SCIN[b_idx_v, left_v, q_clamped]  # (V, R)
-    q1 = (q + 1).clamp(0, n - 1)
-    scin_q1j = SCIN[b_idx_v, q1, right_v]  # (V, R)
-    s = scin_iq + scin_q1j  # (V, R)
+    q1 = (q + 1).clamp(0, n)                                   # O_pad index in [0, n]
+    term_st_q = O_pad[b_idx_v, left_v, q_clamped]              # ||orth(h_{st-1}, h_q)||
+    term_q_q1 = O_pad[b_idx_v, q1, q1]                         # ||orth(h_q, h_{q+1})||
+    term_q_en = O_pad[b_idx_v, q1, right_v]                    # ||orth(h_q, h_en)||
+    term_en_en1 = O_pad[b_idx_v, right_v + 1, right_v + 1]     # ||orth(h_en, h_{en+1})||
+    s = term_st_q + term_q_q1 + term_q_en + term_en_en1        # (V, R)
     s = s.masked_fill(~valid_q, float("-inf"))
-    # CE favoring the gold split q = p (= split). gold position r_gold = p - i.
-    r_gold = (split - left).clamp(0, max_len - 1)
-    loss = F.cross_entropy(s, r_gold, reduction="mean")
+
+    # Per-span CE favoring the gold split q = split; gold position r_gold = split - left.
+    r_gold = (split - left).clamp(0, max_len - 1)              # (V,)
+    logp = F.log_softmax(s, dim=-1)                            # (V, R)
+    span_ce = -logp.gather(1, r_gold.unsqueeze(1)).squeeze(1)  # (V,)
+
+    # Macro reduction: mean over spans within each sentence, then mean over sentences.
+    b_idx_flat = b_idx  # (V,)
+    sent_sum = torch.zeros(B, device=hidden.device, dtype=span_ce.dtype)
+    sent_cnt = torch.zeros(B, device=hidden.device, dtype=span_ce.dtype)
+    sent_sum.index_add_(0, b_idx_flat, span_ce)
+    sent_cnt.index_add_(0, b_idx_flat, torch.ones_like(span_ce))
+    sent_mean = sent_sum / sent_cnt.clamp(min=1)
+    valid_sent = sent_cnt > 0
+    loss = sent_mean[valid_sent].mean()
     return loss

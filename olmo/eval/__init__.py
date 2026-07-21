@@ -51,6 +51,10 @@ def build_downstream_evaluator(
         task_kwargs["samples_per_sent"] = eval_cfg.samples_per_sent
     if eval_cfg.tree_eval_type is not None:
         task_kwargs["tree_eval_type"] = eval_cfg.tree_eval_type
+    # Beam-search BLiMP: always load the terminal-only data (the model generates
+    # its own NT structure during word_sync_beam_search).
+    if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "beam_search", False):
+        task_kwargs["force_terminal"] = True
     if train_config.finetune_task is not None:
         task_kwargs["shots_num"] = 0
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
@@ -78,7 +82,8 @@ def build_downstream_evaluator(
             contiguous=contiguous,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
-    if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl:
+    if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl \
+        or (eval_cfg.label == "BLiMP" and getattr(eval_cfg, "beam_search", False)):
         eval_batch_size = 1
     
     ds_eval_dataloader = DataLoader(

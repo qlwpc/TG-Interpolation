@@ -35,6 +35,63 @@ METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond
 LOG_2_OF_E = 1.44269504089
 
 
+def _world_size() -> int:
+    """Number of distributed ranks (1 if distributed is unavailable/uninitialized)."""
+    import torch.distributed as _dist
+    if _dist.is_available() and _dist.is_initialized():
+        return _dist.get_world_size()
+    return 1
+
+
+def _all_reduce_tensor(t: torch.Tensor) -> torch.Tensor:
+    """SUM all-reduce a fixed-size tensor metric state across ranks.
+
+    For metrics whose state is a pre-allocated tensor scattered into *disjoint*
+    slots by ``sent_id``/position (``BLiMPMetric``, ``TGPerplexityDocumentLevelMetric``).
+    Each rank writes only its own partition; unwritten slots stay 0, so a SUM
+    all-reduce reconstructs the global tensor regardless of how many ``update()``
+    calls each rank made.
+
+    This is the count-insensitive replacement for torchmetrics'
+    ``sync_on_compute=True`` + ``dist_reduce_fx="sum"``, which deadlocks when
+    ranks call ``update()`` a different number of times (the case under
+    ``DistributedEvalSampler`` when the dataset size isn't divisible by the world
+    size — counts differ by at most one).
+    """
+    if _world_size() > 1:
+        import torch.distributed as _dist
+        t = t.clone()  # don't mutate the rank-local view in place
+        _dist.all_reduce(t, op=_dist.ReduceOp.SUM)
+    return t
+
+
+def _gather_list(lst: list) -> list:
+    """All-gather + concatenate a list metric state across ranks.
+
+    For metrics whose state is a list appended per ``update()`` (``ICLMetric``,
+    ``BeamSearchICLMetric``, ``DecomposedICLMetric``, ``RougeMetric``,
+    ``TGPerplexitySentenceLevelMetric``, ``SyntacticGeneralizationMetric``).
+
+    List gather is **count-insensitive**: each rank contributes however many
+    items it appended, and the concatenation is the global list regardless of
+    per-rank update counts. This replaces torchmetrics' ``sync_on_compute=True``
+    gather, which requires equal update counts per rank and deadlocks otherwise.
+    """
+    if _world_size() <= 1:
+        return lst
+    import torch.distributed as _dist
+    world = _dist.get_world_size()
+    gathered = [None] * world
+    _dist.all_gather_object(gathered, [lst])
+    out = []
+    for rank_payload in gathered:
+        # rank_payload is the [lst] wrapper we sent; None/empty means that rank
+        # sent nothing (no updates this eval).
+        if rank_payload:
+            out.extend(rank_payload[0])
+    return out
+
+
 class ICLMetric(Metric):
     # update method does not require access to global metric state
     full_state_update: bool = False
@@ -49,7 +106,11 @@ class ICLMetric(Metric):
         bootstrap significance testing. Only rank 0 writes (``compute()`` runs
         after a full cross-rank state gather due to ``sync_on_compute=True``).
         """
-        super().__init__(sync_on_compute=True)
+        # sync_on_compute=False: we gather list state explicitly in compute()
+        # via _gather_list (count-insensitive). torchmetrics' built-in sync
+        # deadlocks when ranks call update() unequal times (DistributedEvalSampler
+        # with N not divisible by world size).
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
         self.tree_eval_type = tree_eval_type
@@ -176,7 +237,12 @@ class ICLMetric(Metric):
             )
 
     def compute(self) -> torch.Tensor:
-        # states should have been synced from all accelerators at this point
+        # Gather per-rank list state across ranks (count-insensitive). Replaces
+        # torchmetrics' sync_on_compute=True gather, which deadlocks when ranks
+        # update unequal times under DistributedEvalSampler.
+        self.loglikelihoods = _gather_list(self.loglikelihoods)
+        self.labels = _gather_list(self.labels)
+        self.loglikelihoods_term = _gather_list(self.loglikelihoods_term)
         # account for duplicates here because of DistributedSampler compensating for drop_last=False
         loglikelihood_dict: Dict[int, Dict[int, float]] = {}
         label_dict : Dict[int, Set[int]] = {}
@@ -301,7 +367,9 @@ class BeamSearchICLMetric(ICLMetric):
         metric_type: str = "acc",
         doc_group: Optional[List[str]] = None,
     ) -> None:
-        Metric.__init__(self, sync_on_compute=True)
+        # sync_on_compute=False: ICLMetric.compute() gathers list state via
+        # _gather_list (count-insensitive), avoiding the unequal-count deadlock.
+        Metric.__init__(self, sync_on_compute=False)
         self.metric_type = metric_type
         self.tree_eval_type = None
         self.doc_group = doc_group
@@ -1103,7 +1171,9 @@ class RougeMetric(Metric):
                  vocab_path:str = None,
                  tokenizer:Tokenizer = None
         ) -> None:
-        super().__init__(sync_on_compute=True)
+        # sync_on_compute=False: compute() gathers list state via _gather_list
+        # (count-insensitive), avoiding the unequal-count deadlock.
+        super().__init__(sync_on_compute=False)
         self.add_state("predictions", default=[], dist_reduce_fx=None)
         self.add_state("references", default=[], dist_reduce_fx=None)
         self.tokenizer = tokenizer
@@ -1124,6 +1194,9 @@ class RougeMetric(Metric):
         self.references = []
 
     def compute(self):
+        # Gather per-rank list state across ranks (count-insensitive).
+        self.predictions = _gather_list(self.predictions)
+        self.references = _gather_list(self.references)
         rouge = evaluate.load('rouge')
         predictions_str = []
         references_str = []
@@ -1176,7 +1249,11 @@ class TGPerplexityDocumentLevelMetric(Metric):
             self.cur_batch = 0
             self.cur_sent += 1
 
-    def compute(self) -> torch.Tensor: 
+    def compute(self) -> torch.Tensor:
+        # SUM all-reduce the fixed-size loglikelihoods tensor across ranks
+        # (count-insensitive: each rank wrote its own disjoint slots). Required
+        # under multi-GPU DistributedEvalSampler; a no-op for single-device eval.
+        self.loglikelihoods = _all_reduce_tensor(self.loglikelihoods)
         data_numwords = sum(self.term_length)
         ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
         ppl = np.exp(-ppl / data_numwords)
@@ -1194,7 +1271,9 @@ class TGPerplexitySentenceLevelMetric(Metric):
             term_length = None
         ) -> None:
         """metric_type: f1, acc, len_norm, pmi_dc, ce_loss, bpb"""
-        super().__init__(sync_on_compute=True)
+        # sync_on_compute=False: compute() gathers list state via _gather_list
+        # (count-insensitive), avoiding the unequal-count deadlock.
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = "sent_ppl"
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
@@ -1243,7 +1322,10 @@ class TGPerplexitySentenceLevelMetric(Metric):
             )
 
     def compute(self) -> torch.Tensor:
-        # states should have been synced from all accelerators at this point
+        # Gather per-rank list state across ranks (count-insensitive). Replaces
+        # torchmetrics' sync_on_compute=True gather, which deadlocks when ranks
+        # update unequal times under DistributedEvalSampler.
+        self.loglikelihoods = _gather_list(self.loglikelihoods)
         # account for duplicates here because of DistributedSampler compensating for drop_last=False
         samples_per_sent = 300
         sent_cnt = len(self.loglikelihoods)//samples_per_sent
@@ -1523,7 +1605,9 @@ class SyntacticGeneralizationMetric(Metric):
             metric_type="syntactic_generation",
             tree_eval_type="default",
         ) -> None:
-        super().__init__(sync_on_compute=True)
+        # sync_on_compute=False: compute() gathers list state via _gather_list
+        # (count-insensitive), avoiding the unequal-count deadlock.
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
         self.tree_eval_type = tree_eval_type
@@ -1571,6 +1655,11 @@ class SyntacticGeneralizationMetric(Metric):
         getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
 
     def compute(self) -> Dict[str, float]:
+        # Gather per-rank list state across ranks (count-insensitive). Each
+        # test-suite list is appended per update(); list gather tolerates
+        # unequal per-rank update counts under DistributedEvalSampler.
+        for key in test_suite_dict:
+            setattr(self, key, _gather_list(getattr(self, key)))
         acc_dict = {}
         avg_acc = 0.0
         for key in test_suite_dict:
@@ -1792,7 +1881,11 @@ class BLiMPMetric(Metric):
             pair_per_task = 1000,
             tree_eval_type = "default",
         ) -> None:
-        super().__init__(sync_on_compute=True)
+        # sync_on_compute=False: compute() SUM all-reduces the fixed-size
+        # loglikelihoods tensor via _all_reduce_tensor (count-insensitive: each
+        # rank wrote its own disjoint sent_id slots). Avoids the unequal-count
+        # deadlock under DistributedEvalSampler when N % world_size != 0.
+        super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
         self.task_dict = BLiMP_TASK_DICT
@@ -1867,8 +1960,45 @@ class BLiMPMetric(Metric):
         #    self.cur_batch = 0
         #    self.cur_sent += 1
 
+    def update_beam(self, batch: Dict[str, Any], log_likelihoods: torch.Tensor):
+        """Scatter precomputed (beam-search) per-sentence log-likelihoods.
+
+        Used by ``Trainer.BLiMP_beam_eval_step``: instead of deriving CE from
+        teacher-forced logits (``update``), the beam path calls
+        ``OLMo.word_sync_beam_search`` and passes the resulting
+        ``logsumexp(beam logprob)`` here.
+
+        Sign convention: the ``loglikelihoods`` slot holds a *loss* (+CE for the
+        teacher-forcing path), and ``compute()`` negates it to get a log-prob
+        (``loglikelihoods = -self.loglikelihoods`` for SENT_SIZE==1). The beam
+        quantity is already a log-prob, so we store ``-LL`` here so that
+        ``compute()``'s negation yields ``+LL`` — matching the teacher-forcing
+        convention and keeping ``compute()`` unchanged.
+
+        Args:
+            batch: must contain ``sent_id`` (scalar or 0-d tensor when
+                ``device_eval_batch_size==1``; the BLiMP collate_fn sets it to
+                ``min(sent_ids)``).
+            log_likelihoods: ``(B,)`` tensor of per-sentence log-probs
+                (higher = more probable).
+        """
+        sid = batch["sent_id"]
+        sid = int(sid) if torch.is_tensor(sid) else sid
+        sample_id = sid % self.SENT_SIZE
+        sent_id = sid // self.SENT_SIZE
+        ll = log_likelihoods.to(self.device).to(self.loglikelihoods.dtype).neg()  # store -LL
+        B = ll.shape[0]
+        if self.SENT_SIZE == 1:
+            self.loglikelihoods[sent_id : sent_id + B] = ll
+        else:
+            self.loglikelihoods[sent_id, sample_id : sample_id + B] = ll
+
 
     def compute(self) -> torch.Tensor:
+        # SUM all-reduce the fixed-size loglikelihoods tensor across ranks
+        # (count-insensitive: each rank wrote its own disjoint sent_id slots).
+        # Required under multi-GPU DistributedEvalSampler; no-op single-device.
+        self.loglikelihoods = _all_reduce_tensor(self.loglikelihoods)
         cnt_dict = {}
         if self.SENT_SIZE!=1:
             if self.tree_eval_type == "terminal":
@@ -1928,6 +2058,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         pair_per_task: int = 1000,
         pause_token_id: int = None,
         tree_eval_type: str = "default",
+        force_terminal: bool = False,
     ):
 
         super().__init__()
@@ -1941,10 +2072,17 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.transformer_grammar_type = transformer_grammar_type
         self.pause_token_id = pause_token_id
         self.tree_eval_type = tree_eval_type
+        self.force_terminal = force_terminal
 
         self.is_qwen3 = "qwen3" in (vocab_path or "").lower()
 
-        if self.is_qwen3:
+        if force_terminal:
+            # Beam-search path: always load the terminal-only data and score one
+            # sequence per sentence (the model generates its own NT structure
+            # during word_sync_beam_search; feeding a fixed tree/tg sequence would
+            # defeat the parse-marginalization). Overrides grammar-type selection.
+            self.SENT_SIZE = 1
+        elif self.is_qwen3:
             if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
                 # Qwen3 terminal/pause: load tree_300 data, convert to terminal/pause
                 # via _convert_sequence.  Only 1 sample per sentence (all 300 trees
@@ -1961,15 +2099,18 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.length = len(self.task_list) * self.TASK_SIZE
 
         self.samples: List[Dict[str, Any]] = []
-        if transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
+        if force_terminal:
+            self.dataset_name = "terminal"
+        elif transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.dataset_name = "terminal"
         elif transformer_grammar_type[:4] == "tree":
             self.dataset_name = "tree_300"
         else:
             self.dataset_name = "tg_300"
         # Qwen3: all grammar types load from tree_300_qwen (tree format),
-        # then _convert_sequence handles format-specific conversion.
-        if self.is_qwen3:
+        # then _convert_sequence handles format-specific conversion.  Skipped
+        # under force_terminal (beam path uses the standard terminal .npy).
+        if self.is_qwen3 and not force_terminal:
             self.dataset_name = "tree_300_qwen"
         self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
         self.input_len = self.dataset.shape[1]

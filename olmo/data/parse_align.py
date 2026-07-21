@@ -22,15 +22,23 @@ in unit tests. The algorithms:
 * :func:`parse_tree_block` — stack-parse a ``[BOS, <(S>...<S)>, EOS]`` block into a
   nested ``(label, children)`` tree; BOS/EOS are returned as surrounding leaves.
 * :func:`binarize_tree` — left/right binarize a non-binary tree (preserves leaves).
-* :func:`tree_spans` — enumerate a binarized tree's constituent spans
-  ``(i, split, j)`` (leaf indices, 0-based within the tree's content leaves) and its
-  content-leaf token ids.
+* :func:`tree_spans` — enumerate a tree's constituent spans ``(i, split, j)``
+  (leaf indices, 0-based within the tree's content leaves) and its content-leaf
+  token ids. Works on the RAW tree (one span per real internal node; n-ary/unary
+  nodes get a degenerate ``split==j``) so the Pushdown stack tape counts only true
+  constituents. :func:`binarize_tree` first only if a real binary split is needed
+  (TreeReg CE).
 * :func:`compute_depth_matrix` — the Pushdown "stale stack tape"
   ``S[k,j] = #{constituents (l,r): l<=j<=r and r<=k}`` (int8, lower-triangular),
   computed in O(n^2) via a difference array + cumulative sum.
-* :func:`chunk_units` — greedily pack whole-tree units into chunks ``<= max_len``
-  terminals (whole-sentence integrity; a unit whose content exceeds ``max_len`` is
-  split at its top-level child trees).
+* :func:`iter_tree_chunks` — scan a tree-token stream and return whole-tree chunk
+  spans ``(tree_start, tree_len)`` packed to ``<= max_len`` terminal leaves
+  (vectorized two-phase bracket-depth scan; an atomic tree exceeding ``max_len``
+  is emitted as its own oversize chunk). Writes ``chunk_index.npy`` for
+  :class:`ParseAlignedDataset`.
+* :func:`parse_chunk_slice` — parse one chunk's tree-token slice into terminal
+  leaves (``input_ids``, bit-identical to ``terminal/*.npy``) and constituent
+  spans. Called per chunk by :class:`ParseAlignedDataset`.
 """
 
 from __future__ import annotations
@@ -291,14 +299,25 @@ def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union
 # Spans + depth matrix
 # --------------------------------------------------------------------------- #
 def tree_spans(tree: TreeNode) -> Tuple[List[int], List[Span]]:
-    """Enumerate a binarized tree's content leaves and constituent spans.
+    """Enumerate a tree's content leaves and constituent spans (no binarization).
+
+    Works on a RAW (non-binarized) tree: emits exactly one ``(left, split, right)``
+    span per real internal node, so the span set is the tree's true constituents
+    (no artificial ``X|<``/``X|>`` nodes). This is the form the Pushdown stack tape
+    needs — :func:`compute_depth_matrix` uses only ``(left, right)`` and must NOT
+    count binarization-induced artificial constituents (they would inflate depth).
 
     Returns ``(leaves, spans)`` where ``leaves`` is the in-order list of leaf token
     ids (the terminal content), and ``spans`` is a list of ``(left, split, right)``
-    for each *internal* node: the node spans leaves ``[left..right]`` and splits at
-    ``split`` (left child = ``[left..split]``, right child = ``[split+1..right]``).
-    A unary internal node (single child) has ``split == right`` (degenerate split);
-    callers may skip such spans for the TreeReg CE.
+    for each *internal* node: the node spans leaves ``[left..right]``. ``split`` is:
+
+    * the real bifurcation point for a binary node (left child = ``[left..split]``,
+      right child = ``[split+1..right]``) — what TreeReg's CE loss consumes;
+    * **degenerate** (``split == right``) for unary (1 child) and n-ary (>2 children)
+      nodes, signalling "no binary bifurcation imposed". Callers that need a real
+      binary split (e.g. TreeReg CE) should :func:`binarize_tree` first; callers that
+      only use ``(left, right)`` (e.g. the Pushdown stack tape) may skip binarization
+      and ignore ``split``.
     """
     leaves: List[int] = []
     spans: List[Span] = []
@@ -339,10 +358,13 @@ def tree_spans(tree: TreeNode) -> Tuple[List[int], List[Span]]:
             elif len(children) == 1:
                 spans.append((left, right, right))  # unary; degenerate split
             elif len(children) > 2:
-                # Should not happen after binarize_tree, but stay robust: pick
-                # the split after the first child.
-                split = child_ranges[0][1]
-                spans.append((left, split, right))
+                # Non-binarized n-ary node: one real constituent over [left..right]
+                # with NO imposed binary bifurcation -> degenerate split (split==right),
+                # matching the unary convention. compute_depth_matrix (the Pushdown
+                # stack tape) uses only (left, right) so this is correct for it;
+                # callers needing a real binary split (TreeReg CE) must binarize_tree
+                # first (which replaces this node with nested binary children).
+                spans.append((left, right, right))
             ranges[id(node)] = (left, right)
     return leaves, spans
 
@@ -393,137 +415,27 @@ def compute_depth_matrix(spans: Sequence[Span], n_leaves: int, max_depth: int = 
 
 
 # --------------------------------------------------------------------------- #
-# Chunking (whole-tree units)
+# Tree-stream chunk iterator (for preprocessing / dataset indexing)
 # --------------------------------------------------------------------------- #
-@dataclass
-class TreeUnit:
-    """One whole parse-tree unit = a document block (or a sub-forest when a block
-    exceeds ``max_len``). Stores the segment list so terminal/spans can be rebuilt
-    with correct chunk-local offsets. Each ``('tree', ...)`` segment carries its own
-    binarized content leaves + spans (0-based over those content leaves)."""
+def _binarize_segments(segments: List[Segment], direction: str, binarize: bool = True) -> List[Segment]:
+    """Convert each tree segment into (leaves, spans).
 
-    segments: List[Segment]
-
-    @property
-    def n_terminals(self) -> int:
-        total = 0
-        for kind, data in self.segments:
-            if kind == "leaves":
-                total += len(data)
-            else:  # tree -> (leaves, spans)
-                total += len(data[0])
-        return total
-
-    @property
-    def n_trees(self) -> int:
-        return sum(1 for k, _ in self.segments if k == "tree")
-
-
-def _binarize_segments(segments: List[Segment], direction: str) -> List[Segment]:
+    When ``binarize=True`` (default, TreeReg), :func:`binarize_tree` the tree first
+    so every internal node is binary and ``split`` is a real bifurcation point.
+    When ``binarize=False`` (Pushdown stack tape), span the RAW tree directly — one
+    span per real internal node, n-ary nodes get a degenerate split — so
+    :func:`compute_depth_matrix` counts only true constituents (binarization would
+    inject artificial ``X|<``/``X|>`` spans whose (l,r) sub-ranges inflate depth).
+    """
     out: List[Segment] = []
     for kind, data in segments:
         if kind == "leaves":
             out.append((kind, data))
         else:
-            btree = binarize_tree(data, direction)
+            btree = binarize_tree(data, direction) if binarize else data
             leaves, spans = tree_spans(btree)
             out.append(("tree", (leaves, spans)))
     return out
-
-
-def _unit_from_segments(segments: List[Segment]) -> TreeUnit:
-    return TreeUnit(segments=segments)
-
-
-def _split_oversized(segments: List[Segment], max_len: int) -> List[TreeUnit]:
-    """Split a block's segments into sub-units each ``<= max_len`` terminals, at
-    tree boundaries. Leaf-runs (BOS/whitespace) attach to the following tree;
-    trailing leaves attach to the last sub-unit. An atomic single-tree sub-unit
-    that still exceeds ``max_len`` is emitted unchanged (never cut mid-tree)."""
-    # Greedily group segments into sub-units by terminal budget.
-    units: List[TreeUnit] = []
-    cur: List[Segment] = []
-    cur_len = 0
-    for seg in segments:
-        seg_len = len(seg[1]) if seg[0] == "leaves" else len(seg[1][0])
-        if cur and cur_len + seg_len > max_len and any(k == "tree" for k, _ in cur):
-            units.append(_unit_from_segments(cur))
-            cur, cur_len = [], 0
-        cur.append(seg)
-        cur_len += seg_len
-    if cur:
-        units.append(_unit_from_segments(cur))
-    return units if units else [_unit_from_segments(segments)]
-
-
-def chunk_units(
-    blocks: Sequence[Sequence[int]],
-    vocab: TreeVocab,
-    direction: str,
-    max_len: int = 2048,
-) -> List[List[TreeUnit]]:
-    """Greedily pack whole-tree units into chunks of ``<= max_len`` terminals.
-
-    Each block becomes a :class:`TreeUnit` (a forest of its top-level sentence
-    trees); blocks longer than ``max_len`` are split at tree boundaries into sub-
-    units. Units are then greedily packed into chunks. No parse tree is ever split
-    across a chunk boundary (an atomic tree exceeding ``max_len`` is emitted as its
-    own oversize chunk rather than cut).
-    """
-    chunks: List[List[TreeUnit]] = []
-    cur: List[TreeUnit] = []
-    cur_len = 0
-    for block in blocks:
-        segments = _binarize_segments(parse_block_segments(block, vocab), direction)
-        if not segments:
-            continue
-        unit = _unit_from_segments(segments)
-        units = [unit] if unit.n_terminals <= max_len else _split_oversized(segments, max_len)
-        for u in units:
-            ulen = u.n_terminals
-            if cur and cur_len + ulen > max_len:
-                chunks.append(cur)
-                cur, cur_len = [], 0
-            cur.append(u)
-            cur_len += ulen
-    if cur:
-        chunks.append(cur)
-    return chunks
-
-
-def chunk_to_tensors(chunk: Sequence[TreeUnit]) -> Dict[str, Any]:
-    """Flatten a chunk (list of units) into terminal ids, the depth matrix S, and
-    the constituent spans (chunk-local terminal indices).
-
-    * ``terminals``: ``(T,)`` int64 — the model input (BOS...EOS per block, concatenated).
-    * ``depth_matrix``: ``(T, T)`` int8 — Pushdown stale tape. Leaves not in any
-      constituent (BOS/EOS/whitespace) stay at depth 0.
-    * ``spans``: ``(M, 3)`` int32 — TreeReg ``(left, split, right)`` in terminal indices.
-    """
-    terminals: List[int] = []
-    spans: List[Span] = []
-    for u in chunk:
-        for kind, data in u.segments:
-            if kind == "leaves":
-                terminals.extend(int(x) for x in data)
-            else:  # tree -> (content_leaves, tree_spans)
-                leaves, tspans = data
-                t0 = len(terminals)
-                terminals.extend(int(x) for x in leaves)
-                for (l, sp, r) in tspans:
-                    spans.append((t0 + l, t0 + sp, t0 + r))
-    T = len(terminals)
-    S = compute_depth_matrix(spans, T) if T > 0 else np.zeros((0, 0), dtype=np.int8)
-    return {
-        "terminals": np.asarray(terminals, dtype=np.int64),
-        "depth_matrix": S,
-        "spans": np.asarray(spans, dtype=np.int32).reshape(-1, 3),
-    }
-
-
-# --------------------------------------------------------------------------- #
-# Tree-stream chunk iterator (for preprocessing / dataset indexing)
-# --------------------------------------------------------------------------- #
 def _block_ranges(n_blocks: int, workers: int) -> List[Tuple[int, int]]:
     """Split ``[0, n_blocks)`` into ``workers`` contiguous (lo, hi) ranges."""
     base = n_blocks // workers
@@ -746,8 +658,8 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     #
     # For every candidate start tree k, the furthest tree e with
     # sum(leaves[k..e]) <= max_len is found in ONE vectorized searchsorted on the
-    # prefix-sum array: e[k] = searchsorted(csum, csum[k]-1 + max_len, 'right')-1,
-    # clamped to [k, T-1] (an oversize tree maps to e==k, i.e. its own chunk).
+    # prefix-sum array, clamped to [k, T-1] (an oversize tree maps to e==k, i.e.
+    # its own chunk).
     # The chunks are then the pointer chain 0 -> e[0]+1 -> e[e[0]+1]+1 -> ...,
     # which advances by a full chunk per step — O(#chunks) iterations (~5M for
     # train), NOT O(#trees) (~250M). The old per-tree Python loop was the
@@ -755,11 +667,16 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     leaves = tree_leaves.astype(np.int64)
     csum = np.concatenate(([0], np.cumsum(leaves)))  # csum[k] = sum leaves[0..k-1]
     # For start k: target prefix = (leaves before k) + max_len = csum[k] + max_len.
-    # e[k] = largest index with csum[e[k]+1] - csum[k] <= max_len, i.e. csum[e[k]+1] <= target.
-    # searchsorted(csum, target, 'right')-1 gives that index in the csum array,
-    # which is e (tree index). Clamp so e >= k (oversize -> single-tree chunk).
+    # We want the largest tree index e with sum(leaves[k..e]) <= max_len, i.e.
+    # csum[e+1] - csum[k] <= max_len, i.e. csum[e+1] <= target.
+    # searchsorted(csum, target, 'right') returns the first position p with
+    # csum[p] > target, so csum[p-1] <= target and the largest valid e+1 is p-1,
+    # i.e. e = p - 2. (Using p-1 here was an off-by-one: it gave csum[e+1] > target,
+    # so chunks packed max_len+overflow leaves and ParseAlignedDataset truncated
+    # the tail — dropping ~0.7% of dev tokens.) Clamp so e >= k: an atomic tree
+    # whose own leaves exceed max_len has p = k+1, e = k-1 -> clamp to k (own chunk).
     targets = csum[:T] + max_len                 # one per start tree
-    e_arr = np.searchsorted(csum, targets, side="right") - 1
+    e_arr = np.searchsorted(csum, targets, side="right") - 2
     e_arr = np.clip(e_arr, np.arange(T), T - 1)  # oversize trees -> e == k
     e_plus1 = e_arr + 1                          # next start tree after a chunk
     # Walk the pointer chain from k=0; collect chunk start trees.
@@ -796,14 +713,21 @@ def _count_leaves_in_span(tree_arr, start, end, vocab) -> int:
     return int((~is_nt).sum())
 
 
-def parse_chunk_slice(tree_slice: Sequence[int], vocab: TreeVocab, direction: str) -> Dict[str, Any]:
+def parse_chunk_slice(
+    tree_slice: Sequence[int], vocab: TreeVocab, direction: str, binarize: bool = True
+) -> Dict[str, Any]:
     """Parse one chunk's tree-token slice -> terminal leaves (input_ids) + spans.
 
     This is what the data loader calls per chunk. Returns:
     * ``input_ids``: ``(T,)`` int64 — terminal leaves (== terminal.npy tokens).
     * ``spans``: ``(M, 3)`` int32 — constituent ``(left, split, right)`` over input_ids.
+
+    ``binarize=True`` (default, TreeReg): binarize the tree so every span's ``split``
+    is a real binary bifurcation (TreeReg CE needs this). ``binarize=False`` (Pushdown
+    stack tape): span the raw tree — one span per real constituent, n-ary nodes
+    degenerate — so the depth matrix counts only true constituents.
     """
-    segments = _binarize_segments(parse_block_segments(tree_slice, vocab), direction)
+    segments = _binarize_segments(parse_block_segments(tree_slice, vocab), direction, binarize)
     terminals: List[int] = []
     spans: List[Span] = []
     for kind, data in segments:
@@ -830,11 +754,14 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
     Serves whole-tree chunks (from a precomputed ``chunk_index.npy`` over
     ``tree/*.npy``) as ``{input_ids, tree_spans, tree_span_mask, attention_mask}``.
     The terminal ``input_ids`` are the chunk's tree leaves (bit-identical to
-    ``terminal/*.npy``); ``tree_spans`` are the binarized constituent spans over
-    those leaves. The Pushdown depth matrix is computed on the GPU in the model
-    forward (not here). Duck-types :class:`MemMapDataset` (``__len__``/``__getitem__``
-    + an ``offsets`` property) so the existing :class:`IterableDataset` wrapper and
-    samplers work unchanged.
+    ``terminal/*.npy``); ``tree_spans`` are the constituent spans over those leaves
+    (binarized for TreeReg — real binary splits; raw for Pushdown — one span per real
+    constituent, since :func:`compute_depth_matrix` uses only ``(l, r)`` and
+    binarization would inject artificial spans that inflate the stack-tape depth).
+    The Pushdown depth matrix is computed on the GPU in the model forward (not here).
+    Duck-types :class:`MemMapDataset` (``__len__``/``__getitem__`` + an ``offsets``
+    property) so the existing :class:`IterableDataset` wrapper and samplers work
+    unchanged.
     """
 
     def __init__(
@@ -847,6 +774,7 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         pad_token_id: int = 50258,
         generate_attention_mask: bool = True,
         include_instance_metadata: bool = True,
+        binarize: bool = True,
     ):
         import os
         self.tree_npy = tree_npy
@@ -862,6 +790,7 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.max_len = max_len
         self.pad_token_id = pad_token_id
         self.generate_attention_mask = generate_attention_mask
+        self.binarize = binarize
         self.transformer_grammar_type = ""  # set by caller if needed
         # MemMap-compat attributes.
         self._num_instances = int(len(self._chunk_index))
@@ -878,7 +807,8 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         index = int(index)
         s, l = self._chunk_index[index]
         s, l = int(s), int(l)
-        out = parse_chunk_slice(np.asarray(self._tree[s : s + l]), self.vocab, self.direction)
+        out = parse_chunk_slice(np.asarray(self._tree[s : s + l]), self.vocab,
+                                self.direction, self.binarize)
         input_ids = out["input_ids"]
         spans = out["spans"]
         # Truncate to max_len (atomic trees slightly over max_len).
@@ -1006,14 +936,19 @@ def preprocess_split(
     warm_cache: bool = False,
     max_spans_override: Optional[int] = None,
     load_tree_to_ram: bool = False,
+    binarize: bool = True,
 ) -> Dict[str, str]:
-    """Process a ``tree/*.npy`` parse stream into binarized chunks + the stale
+    """Process a ``tree/*.npy`` parse stream into chunks + the stale
     Pushdown depth matrix, saved to ``out_dir``.
 
     For each whole-tree chunk (``<= max_len`` terminal leaves, packed by
-    :func:`iter_tree_chunks`): binarize (left/right), extract terminal leaves
-    (``input_ids`` — bit-identical to ``terminal/*.npy``) and constituent spans,
-    and (optionally) compute the stale depth matrix ``S[k,j]`` (int8). Saves:
+    :func:`iter_tree_chunks`): extract terminal leaves (``input_ids`` — bit-identical
+    to ``terminal/*.npy``) and constituent spans, and (optionally) compute the stale
+    depth matrix ``S[k,j]`` (int8). When ``binarize=True`` (default, TreeReg) the tree
+    is binarized first so spans carry real binary splits; when ``binarize=False``
+    (Pushdown) the raw tree is spanned — one span per real constituent — so the depth
+    matrix counts only true constituents (binarization would inject artificial
+    spans that inflate the stack-tape depth). Saves:
 
     * ``chunk_index.npy`` ``(n_chunks, 2)`` int64 — tree-stream slice per chunk.
     * ``input_ids.npy`` ``(n_chunks, max_len)`` int32 — terminal leaves, padded.
@@ -1075,7 +1010,8 @@ def preprocess_split(
         sample = sorted(sample, key=lambda c: c[0])  # stream order -> cache-friendly
         max_spans = 1
         for (s, l) in sample:
-            out = parse_chunk_slice(np.asarray(_tree_for_sample[s : s + l]), vocab, direction)
+            out = parse_chunk_slice(np.asarray(_tree_for_sample[s : s + l]), vocab,
+                                    direction, binarize)
             if len(out["spans"]) > max_spans:
                 max_spans = len(out["spans"])
         max_spans = max(max_spans + 8, 1)  # headroom
@@ -1110,15 +1046,15 @@ def preprocess_split(
         ranges = [(r[0], min(r[0] + 2000, r[1])) for r in
                   [(i, min(i + 2000, n_chunks)) for i in range(0, n_chunks, 2000)]]
         fn = functools.partial(_parse_range_to_memmap, tree_src, tokenizer_path,
-                               direction, max_len, pad_token_id,
+                               direction, max_len, pad_token_id, binarize,
                                p_input_ids, p_spans, p_span_counts, max_spans)
         with Pool(workers) as pool:
             for done in pool.imap_unordered(fn, ranges):
                 pass
     else:
         _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len,
-                               pad_token_id, p_input_ids, p_spans, p_span_counts,
-                               max_spans, (0, n_chunks))
+                               pad_token_id, binarize, p_input_ids, p_spans,
+                               p_span_counts, max_spans, (0, n_chunks))
     _TREE_RAM = None
     input_ids_m.flush(); spans_m.flush(); span_counts_m.flush()
 
@@ -1198,7 +1134,7 @@ _TREE_RAM: Optional["np.ndarray"] = None
 
 
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
-                           p_input_ids, p_spans, p_span_counts, max_spans, rng):
+                           binarize, p_input_ids, p_spans, p_span_counts, max_spans, rng):
     """Worker: parse chunks [rng[0], rng[1]) and write to the shared memmaps.
 
     ``tree_src`` is the tree.npy path. If the module global ``_TREE_RAM`` is set
@@ -1220,7 +1156,7 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
     lo, hi = rng
     for i in range(lo, hi):
         s, l = int(chunk_index[i, 0]), int(chunk_index[i, 1])
-        out = parse_chunk_slice(np.asarray(tree[s : s + l]), vocab, direction)
+        out = parse_chunk_slice(np.asarray(tree[s : s + l]), vocab, direction, binarize)
         ids = out["input_ids"]
         sp = out["spans"]
         if len(ids) > max_len:
@@ -1241,7 +1177,11 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="Binarize tree/*.npy + generate the stale depth matrix.")
+    ap = argparse.ArgumentParser(
+        description="Parse tree/*.npy into constituent spans + the stale Pushdown depth matrix. "
+                    "Default binarizes (TreeReg); --no_binarize spans the raw tree (Pushdown: "
+                    "the depth matrix must count only real constituents, not binarization artifacts)."
+    )
     ap.add_argument("--tree_npy", required=True)
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--direction", default="both", choices=["left", "right", "both"])
@@ -1265,6 +1205,11 @@ if __name__ == "__main__":
                          "via fork (copy-on-write) and read from RAM with ZERO disk input I/O. "
                          "The fix for the seek storm that wedges 16 mmap workers in D state on a "
                          "contended mechanical disk. Requires RAM >= tree.npy size.")
+    ap.add_argument("--no_binarize", action="store_true",
+                    help="span the RAW tree (one span per real constituent) instead of binarizing. "
+                         "Use for the Pushdown stack tape: compute_depth_matrix uses only (l, r) and "
+                         "binarization injects artificial X|</X|> spans whose sub-ranges inflate the "
+                         "tape depth. TreeReg (which needs real binary splits) must NOT set this.")
     args = ap.parse_args()
     dirs = ["left", "right"] if args.direction == "both" else [args.direction]
     for d in dirs:
@@ -1274,4 +1219,5 @@ if __name__ == "__main__":
             save_depth_matrix=not args.no_depth, workers=args.workers,
             scan_workers=args.scan_workers, warm_cache=args.warm_cache,
             max_spans_override=args.max_spans, load_tree_to_ram=args.load_tree_to_ram,
+            binarize=not args.no_binarize,
         )

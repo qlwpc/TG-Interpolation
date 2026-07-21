@@ -737,6 +737,11 @@ class Trainer:
             doc_lens=batch.get("doc_lens"),
             max_doc_lens=batch.get("max_doc_lens"),
             tree_spans=batch.get("tree_spans"),
+            compute_attachment_logits=(
+                self.dist_model.training
+                and self.cfg.model.transformer_grammar_type == "pushdown"
+                and batch.get("tree_spans") is not None
+            ),
         )
         logits = olmo_out.logits
         logits_for_loss = logits[..., :-1, :].contiguous()
@@ -779,12 +784,36 @@ class Trainer:
                 )
                 if loss_reduction == "sum":
                     treereg_loss = treereg_loss * batch["input_ids"].shape[0]
-        return ce_loss, z_loss, logits, treereg_loss
+
+        # Pushdown attachment-head auxiliary loss (Murty et al. 2023, Eq. 5):
+        # cross-entropy of the head's reduce-target logits against the oracle
+        # reduce target derived from the gold spans. Train-only (the forward only
+        # computed attachment_logits when training + pushdown + tree_spans).
+        attachment_loss = None
+        if (self.dist_model.training
+                and self.cfg.model.transformer_grammar_type == "pushdown"
+                and getattr(olmo_out, "attachment_logits", None) is not None
+                and batch.get("tree_spans") is not None):
+            from olmo.attachment import derive_oracle_reduce_targets, compute_attachment_loss
+            att_logits = olmo_out.attachment_logits          # (B, n, n)
+            B, n = att_logits.shape[0], att_logits.shape[1]
+            spans = batch["tree_spans"]
+            span_mask = batch.get("tree_span_mask")
+            if span_mask is None:
+                span_mask = (spans[..., 0] >= 0)
+            oracle = derive_oracle_reduce_targets(spans, n, span_mask)   # (B, n)
+            am = batch.get("attention_mask")
+            if am is None:
+                am = torch.ones(B, n, dtype=torch.bool, device=att_logits.device)
+            attachment_loss = compute_attachment_loss(att_logits, oracle, am)
+            if loss_reduction == "sum":
+                attachment_loss = attachment_loss * batch["input_ids"].shape[0]
+        return ce_loss, z_loss, logits, treereg_loss, attachment_loss
 
     def train_micro_batch(
         self, micro_batch: Dict[str, Any], batch_size_in_loss_tokens: int
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        ce_loss, z_loss, logits, treereg_loss = self.model_forward(
+        ce_loss, z_loss, logits, treereg_loss, attachment_loss = self.model_forward(
             micro_batch, compute_z_loss=self.cfg.softmax_auxiliary_loss, loss_reduction="sum"
         )
         ce_loss = ce_loss / batch_size_in_loss_tokens
@@ -801,6 +830,12 @@ class Trainer:
         if treereg_loss is not None:
             tr = treereg_loss / batch_size_in_loss_tokens
             loss = loss + self.cfg.model.treereg_alpha * tr
+
+        # Add Pushdown attachment-head auxiliary loss (already summed over the
+        # micro-batch above).
+        if attachment_loss is not None:
+            att = attachment_loss / batch_size_in_loss_tokens
+            loss = loss + self.cfg.model.pushdown_attachment_weight * att
 
         # In case this helps with memory utilization.
         del micro_batch
@@ -958,7 +993,7 @@ class Trainer:
 
     def eval_batch(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
         with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
-            ce_loss, _, logits, _ = self.model_forward(batch, loss_reduction="none")
+            ce_loss, _, logits, _, _ = self.model_forward(batch, loss_reduction="none")
         return ce_loss.mean(dim=-1), logits
 
     def eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
@@ -1086,10 +1121,26 @@ class Trainer:
                     # depth bias vanishes, treereg loss is train-only), so they belong
                     # here, not in word_sync_beam_search (which inserts TG NT tokens the
                     # model never learned).
-                    if self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type in ("pushdown", "treereg"):
+                    if self.cfg.model.transformer_grammar_type == "pushdown":
+                        # pushdown is inference-dependent on tree_spans (its trained
+                        # depth-bias path degenerates without it). The SG batch has no
+                        # parse, so run a span-tracking beam search that marginalizes
+                        # over incremental parses, scoring the tagged continuation CE.
+                        sent_d = move_to_device(sent, self.device)
+                        tag = sent["tag"][0][1:]  # drop BOS slot, align with shifted tokens
+                        with self._summon_params_ctx():
+                            score = self.dist_model.module.pushdown_beam_search(
+                                eval_input_ids=sent_d["input_ids"][0],
+                                beam_size=20, max_reduce=4,
+                                bos_id=self.cfg.model.eos_token_id,  # BOS; caller may override
+                                tag=tag,
+                                use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
+                            )
+                        score_dict[sent["condition_name"]] = score
+                    elif self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type == "treereg":
                         print(sent["input_ids"])
                         sent = move_to_device(sent, self.device)
-                        ce_loss, _ , logits, _ = self.model_forward(sent, loss_reduction="none")
+                        ce_loss, _ , logits, _, _ = self.model_forward(sent, loss_reduction="none")
                         # Align tag mask with ce_loss positions.
                         # tag and input_ids are built equal-length in prep_examples; ce_loss is one
                         # shorter (predicts tokens 1..L-1). Drop the tag's first position — the BOS
@@ -1189,6 +1240,63 @@ class Trainer:
                         (doc_id, cont_id, log_likelihood, label_id,
                          cont_str_len, cont_byte_len), 0.0
                     )
+
+    def BLiMP_beam_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
+        """Beam-search BLiMP: score each sentence's terminal sequence via
+        ``OLMo.word_sync_beam_search`` (parse-marginalized log-likelihood) and
+        scatter the per-sentence ``logsumexp(beam logprob)`` into ``BLiMPMetric``
+        via ``update_beam``. ``BLiMPMetric.compute`` (reused unchanged) then
+        compares good-vs-bad per minimal pair, exactly as the teacher-forcing
+        path does — only the per-sentence score source differs.
+
+        Mirrors ``beam_search_icl_eval_step`` (call signature, beam-marginalized
+        LL extraction) and ``SG_eval_step`` (nc/max_length derivation).
+        ``device_eval_batch_size`` is forced to 1 for this path
+        (``build_downstream_evaluator``), so ``batch`` holds one sentence.
+        """
+        dataset = evaluator.eval_loader.dataset
+        vocab = dataset.vocab
+        eval_cfg = next(e for e in self.cfg.evaluators if e.label == "BLiMP")
+        beam_size = eval_cfg.beam_size
+        nc_ratio = eval_cfg.beam_nc_ratio
+        pc = eval_cfg.beam_pc
+        max_len_factor = eval_cfg.beam_max_len_factor
+        tree_eval_type = getattr(dataset, "tree_eval_type", "default")
+        ll_list: List[torch.Tensor] = []
+        with torch.no_grad():
+            with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
+                for idx in range(batch["input_ids"].shape[0]):
+                    seq = batch["input_ids"][idx]
+                    # Strip trailing pad; keep BOS..EOS. word_sync_beam_search
+                    # seeds past_input from seq[0] (BOS) and starts at istart=1,
+                    # so the BOS is the seed (not scored) and terminals+EOS at
+                    # 1..L-1 are force-scored.
+                    nonpad = (seq != self.cfg.model.pad_token_id).nonzero().squeeze(-1)
+                    L = int(nonpad[-1]) + 1 if nonpad.numel() else seq.shape[0]
+                    eval_input_ids = seq[:L].clone()
+                    nc = max(int(nc_ratio * L), 5)
+                    max_len = max(max_len_factor * L, 10)
+                    with self._summon_params_ctx():
+                        beams = self.dist_model.module.word_sync_beam_search(
+                            vocab=vocab,
+                            eval_input_ids=eval_input_ids,
+                            max_length=max_len,
+                            beam_size=beam_size,
+                            nc=nc,
+                            pc=pc,
+                            generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=max_len + 10),
+                            strategy=BeamSearchType.word_sync_dfs,
+                            transformer_grammar_type=self.cfg.model.transformer_grammar_type,
+                            tree_eval_type=tree_eval_type,
+                        )
+                    if beams:
+                        lp = torch.tensor([b["logprob"] for b in beams], device=self.device)
+                        ll = torch.logsumexp(lp, dim=0)
+                    else:
+                        ll = torch.tensor(-float("inf"), device=self.device)
+                    ll_list.append(ll)
+        evaluator.eval_metric.update_beam(batch, torch.stack(ll_list))
+        barrier()
 
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         with torch.no_grad():
@@ -1340,6 +1448,8 @@ class Trainer:
                     self.TG_doc_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "syntactic_generalization":
                     self.SG_eval_step(eval_batch, evaluator)
+                elif evaluator.label == "BLiMP" and getattr(eval_config, "beam_search", False):
+                    self.BLiMP_beam_eval_step(eval_batch, evaluator)
                 elif evaluator.type == EvaluatorType.rouge:
                     self.summarization_eval_step(eval_batch, evaluator)
                 elif evaluator.type == EvaluatorType.beam_search_icl:

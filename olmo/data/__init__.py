@@ -126,6 +126,9 @@ def build_memmap_dataset(
         # parsing from tree.npy + chunk_index.npy.
         if (parse_dir / "input_ids.npy").exists():
             from .parse_align import PrecomputedParseDataset
+            # NOTE: spans.npy was built by the preprocessing CLI. For pushdown it
+            # MUST have been built with --no_binarize (raw spans) so the stack-tape
+            # depth counts only real constituents; for treereg it must be binarized.
             return PrecomputedParseDataset(  # type: ignore[return-value]
                 data_dir=str(parse_dir),
                 pad_token_id=train_config.model.pad_token_id,
@@ -140,6 +143,14 @@ def build_memmap_dataset(
                 "on-the-fly parsing."
             )
         direction = getattr(train_config.model, "parse_binarize_direction", "left")
+        # Auto-derive binarize: treereg needs the binary split (CE loss); pushdown
+        # must skip binarization so the stack-tape depth isn't inflated by artificial
+        # X|</X|> constituents. model.parse_binarize overrides when set.
+        bcfg = getattr(train_config.model, "parse_binarize", None)
+        if bcfg is not None:
+            binarize = bool(bcfg)
+        else:
+            binarize = train_config.model.transformer_grammar_type == "treereg"
         return ParseAlignedDataset(  # type: ignore[return-value]
             tree_npy=str(tree_paths[0]),
             chunk_index_npy=str(parse_dir / "chunk_index.npy"),
@@ -148,6 +159,7 @@ def build_memmap_dataset(
             max_len=train_config.model.max_sequence_length,
             pad_token_id=train_config.model.pad_token_id,
             generate_attention_mask=data_config.generate_attention_mask,
+            binarize=binarize,
         )
     paths: List[str]
     metadata: List[Dict[str, Any]] = []

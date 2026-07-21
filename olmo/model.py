@@ -1302,6 +1302,19 @@ class OLMoOutput(NamedTuple):
     loss, Nandi et al. 2025). ``None`` unless ``transformer_grammar_type == 'treereg'``.
     """
 
+    attachment_logits: Optional[torch.Tensor] = None
+    """
+    Pushdown attachment-head logits ``(B, n, n)`` fp32 (Murty et al. 2023, Eq. 5):
+    ``logits[b, k, j]`` is the score for reduce target ``r_k = j``. ``None`` unless
+    ``transformer_grammar_type == 'pushdown'`` and ``compute_attachment_logits``.
+    """
+
+    final_hidden: Optional[torch.Tensor] = None
+    """
+    Final-layer residual hidden state ``(B, n, d)`` (captured before ``ln_f``).
+    Exposed for the pushdown attachment-head loss. ``None`` unless pushdown.
+    """
+
 
 class OLMoGenerateOutput(NamedTuple):
     token_ids: torch.LongTensor
@@ -1454,6 +1467,17 @@ class OLMo(nn.Module):
         if config.embedding_layer_norm:
             self.transformer.update({"emb_norm": LayerNorm.build(config)})
 
+        # Pushdown attachment head (Murty et al. 2023, Eq. 5): predicts each
+        # token's reduce target r_k from the final-layer hidden states. Train-only
+        # at the loss site (olmo/train.py); does not alter the depth-bias forward.
+        # Single head at the model level (the paper uses W+MLP once, at layer L).
+        if config.transformer_grammar_type == "pushdown":
+            from olmo.attachment import PushdownAttachmentHead
+            self.pushdown_attachment_head = PushdownAttachmentHead(
+                d_model=config.d_model,
+                vocab_size=config.embedding_size or config.vocab_size,
+            )
+
         # When `init_device="meta"` FSDP will call `reset_parameters()` to initialize weights.
         if init_params and self.config.init_device != "meta":
             self.reset_parameters()
@@ -1577,6 +1601,7 @@ class OLMo(nn.Module):
         doc_lens: Optional[torch.Tensor] = None,
         max_doc_lens: Optional[Sequence[int]] = None,
         tree_spans: Optional[torch.Tensor] = None,
+        compute_attachment_logits: bool = False,
     ) -> OLMoOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -1829,6 +1854,32 @@ class OLMo(nn.Module):
                     assert cache is not None
                     attn_key_values.extend(cache)
 
+        # Pushdown attachment head: compute the reduce-target logits from the
+        # final-layer residual, captured BEFORE ln_f and BEFORE the last_logits_only
+        # slice (the head needs the full (B, n, d) sequence: keys h_j^L over all
+        # prefix tokens, query h̃_k = MLP(emb(x_k), h_{k-1}^L)). Train-only at the
+        # loss site; not computed during KV-cache generation.
+        attachment_logits = None
+        final_hidden = None
+        if (self.config.transformer_grammar_type == "pushdown"
+                and compute_attachment_logits
+                and past_key_values is None):
+            final_hidden = x  # full (B, n, d) pre-ln_f residual
+            # Recover the 1-D valid-key bool mask from `attention_mask`. By this
+            # point OLMo.forward's else-branch may have reshaped it to a float
+            # (B,1,1,n) additive bias where 0.0 = valid and finfo.min = padded;
+            # or it may still be the raw bool (B,n) if no branch ran. Normalize.
+            am = attention_mask
+            if am is not None:
+                if am.dtype == torch.bool:
+                    am = am.view(am.shape[0], -1)
+                else:
+                    # float additive bias: valid == 0.0, pad == finfo.min (<0).
+                    am = (am.view(am.shape[0], -1) == 0.0)
+            attachment_logits = self.pushdown_attachment_head(
+                x, input_ids, self.transformer.wte.weight, am,
+            )
+
         if last_logits_only:
             # shape: (batch_size, 1, d_model)
             x = x[:, -1, :].unsqueeze(1)
@@ -1854,6 +1905,8 @@ class OLMo(nn.Module):
             attn_key_values=attn_key_values,
             hidden_states=tuple(all_hidden_states) if output_hidden_states else None,
             treereg_hidden=treereg_hidden,
+            attachment_logits=attachment_logits,
+            final_hidden=final_hidden,
         )
 
     def get_fsdp_wrap_policy(self, wrap_strategy: Optional[FSDPWrapStrategy] = None):
@@ -2535,3 +2588,207 @@ class OLMo(nn.Module):
             i = i + 1
 
         return beams
+    def pushdown_beam_search(
+        self,
+        eval_input_ids: torch.Tensor,
+        beam_size: int = 20,
+        max_reduce: int = 4,
+        bos_id: Optional[int] = None,
+        tag: Optional[List[int]] = None,
+        use_attachment_head: bool = False,
+    ) -> float:
+        """Shift-reduce beam search that tracks span/stack state for pushdown models.
+
+        Marginalizes over incremental parses y of the given terminal sequence x by
+        maintaining, per beam hypothesis, the closed constituent spans (which become
+        the pushdown depth-bias ``tree_spans`` input) and an open-constituent stack.
+        Each step: enumerate 0..max_reduce REDUCE actions (each closes spans, changing
+        the depth bias but not the token sequence), then SHIFT the next eval token,
+        scoring with the model's depth-biased forward.
+
+        This lets pushdown run its trained ``_pushdown_attention`` depth-bias path at
+        inference (which ``tree_spans=None`` degenerates). When ``use_attachment_head``
+        is False (default), reduce sequences use a uniform prior (score 0) and only
+        SHIFT log-probs score. When True, the trained attachment head (Murty et al. 2023,
+        Eq. 5) scores each candidate's reduce target ``r_k`` via ``log p(r_k | x_<k)``,
+        added to the SHIFT log-prob (faithful to Eq. 7's joint ``p(x,y)=prod p(x_k)p(r_k)``).
+
+        Args:
+            eval_input_ids: 1-D long tensor of terminal token ids (the sequence x).
+            beam_size: number of hypotheses retained after each step's prune.
+            max_reduce: max consecutive reduces enumerated per hypothesis per step.
+            bos_id: BOS token id; if None, uses ``self.config.eos_token_id`` fallback
+                (caller should pass the tokenizer's BOS).
+            tag: optional 0/1 list (len == len(eval_input_ids)) marking positions whose
+                per-token CE should be summed (SG scoring). If None, returns full
+                sequence surprisal -log p(x).
+
+        Returns:
+            If ``tag`` is None: surprisal = -logsumexp_y logprob_y (marginalized -log p(x)).
+            If ``tag`` given: sum of per-token CE at tagged positions for the best beam
+            (matches SG's ``sum(per_tok_ce * tag_tensor)`` scoring).
+        """
+        # closures are stored as (l, r) pairs (the depth tape ignores the split —
+        # compute_depth_matrix_gpu only reads spans[:, 0] and spans[:, 2]). We keep a
+        # consistent split = r for pad compatibility, but it is never consumed.
+        from olmo.pushdown import compute_depth_matrix_gpu  # noqa: F401 (kept for parity)
+
+        device = self.device
+        if eval_input_ids.dim() > 1:
+            eval_input_ids = eval_input_ids[0]
+        tokens = eval_input_ids.tolist()
+        n = len(tokens)
+
+        # Initial beam: BOS only, empty closed spans, empty open stack.
+        start_tok = bos_id if bos_id is not None else tokens[0]
+        beams = [{
+            "input_ids": [start_tok],   # terminals emitted so far (prefix)
+            "closed": [],               # list of (l, r) closed constituent spans
+            "stack": [],                # list of (l, r) open constituents (r = current right-end)
+            "logprob": 0.0,
+            "per_tok_lp": [],           # shift log-prob per emitted terminal (for tag scoring)
+        }]
+
+        def enumerate_reduce_seqs(stack_len: int, max_r: int) -> List[int]:
+            # Number of consecutive reduces to apply: 0..min(max_r, stack_len).
+            # Each reduce pops one open constituent and closes a span. Reducing more
+            # than the stack allows is invalid.
+            upper = min(max_r, stack_len)
+            return list(range(upper + 1))
+
+        def apply_reduces(beam: dict, n_reduces: int) -> Tuple[dict, int]:
+            # Close n_reduces spans from the open stack. Each reduce pops the top open
+            # constituent (l, r) and closes span (l, last_pos) where last_pos is the
+            # current last token position. This forms a right-branching close chain:
+            # the innermost open constituent closes first, the outermost last (largest
+            # r), approximating the BBC binarized-tree depth profile as closely as the
+            # shift-reduce action space allows. (The depth tape only uses (l, r); the
+            # split is irrelevant — see compute_depth_matrix_gpu.)
+            #
+            # Returns (new_state, r_k) where r_k is the attachment head's reduce target
+            # for the just-shifted token: the right-end of the OUTERMOST popped
+            # constituent (the one x_{last_pos} reduces onto). For n_reduces==0
+            # (shift-only), r_k = last_pos (self-attachment, Eq. 5 j==k branch).
+            last_pos = len(beam["input_ids"]) - 1  # position of the last emitted token
+            if n_reduces == 0:
+                return beam, last_pos  # shift-only: r_k = k (self-score)
+            closed = list(beam["closed"])
+            stack = list(beam["stack"])
+            r_k = last_pos  # default (shift-only fallback)
+            for i in range(n_reduces):
+                if not stack:
+                    break
+                l, r = stack.pop()
+                closed.append((l, last_pos))  # (l, r); split unused by depth tape
+                # The outermost popped constituent (last iteration) is the reduce
+                # target; its right-end r is r_k. (Inner pops are sub-reduces in the
+                # right-branching chain; the head scores only the outermost attach.)
+                if i == n_reduces - 1:
+                    r_k = r
+            return ({"input_ids": beam["input_ids"], "closed": closed, "stack": stack,
+                     "logprob": beam["logprob"], "per_tok_lp": beam["per_tok_lp"]}, r_k)
+
+        # Process each eval token (SHIFT). The BOS is already in input_ids; shift
+        # tokens[0..n-1]. Position k = len(input_ids)-1 after each shift.
+        #
+        # EFFICIENCY: batch ALL (beam x reduce-prefix) hypotheses into ONE forward per
+        # SHIFT step. The model already supports batched tree_spans (B, M, 3) — see
+        # olmo/data/collator.py:132 — so we collate the per-hypothesis closed spans into
+        # a single (N, M, 3) -1-padded tensor and run self.forward once with
+        # last_logits_only=True. This replaces the old ~100 serial batch-1 forwards per
+        # token (beam_size * (max_reduce+1)) with a single batched forward.
+        for t in tokens:
+            # 1. Expand every beam by its reduce-prefixes -> candidate states.
+            cand_states = []  # list of state dicts
+            cand_rks = []     # attachment reduce target r_k per candidate (for head scoring)
+            for beam in beams:
+                for n_red in enumerate_reduce_seqs(len(beam["stack"]), max_reduce):
+                    state, rk = apply_reduces(beam, n_red) if n_red > 0 else (beam, len(beam["input_ids"]) - 1)
+                    cand_states.append(state)
+                    cand_rks.append(rk)
+            if not cand_states:
+                break
+
+            # 2. Collate into one batched forward. All states share the same input_ids
+            # length K = len(cand_states[0]["input_ids"]) (every beam in `beams` is at
+            # the same prefix length; reduce-only does not grow input_ids).
+            K = len(cand_states[0]["input_ids"])
+            inp_ids = torch.tensor(
+                [s["input_ids"] for s in cand_states], dtype=torch.long, device=device
+            )  # (N, K)
+            attn_mask = torch.ones(inp_ids.shape[0], K, dtype=torch.bool, device=device)
+            # Collate tree_spans: (N, M, 3) -1-padded, M = max closed count across batch.
+            max_closed = max(len(s["closed"]) for s in cand_states)
+            max_closed = max(max_closed, 1)
+            ts = torch.full((inp_ids.shape[0], max_closed, 3), -1,
+                            dtype=torch.long, device=device)
+            for i, s in enumerate(cand_states):
+                for j, (l, r) in enumerate(s["closed"]):
+                    ts[i, j, 0] = l
+                    ts[i, j, 1] = r   # split (unused by depth tape; set = r for safety)
+                    ts[i, j, 2] = r
+
+            # 3. One batched forward. last_logits_only -> (N, 1, vocab). When the
+            # attachment head is enabled, also request attachment_logits (N, K, K) to
+            # score each candidate's reduce target r_k (Murty et al. Eq. 7: add
+            # log p(r_k | x_<k) to the SHIFT log-prob).
+            with torch.no_grad():
+                out = self.forward(
+                    input_ids=inp_ids, attention_mask=attn_mask,
+                    tree_spans=ts, last_logits_only=True,
+                    compute_attachment_logits=use_attachment_head,
+                )
+            # log_softmax over vocab, gather the eval-token log-prob per candidate.
+            log_probs = torch.log_softmax(out.logits[:, 0, :].float(), dim=-1)  # (N, vocab)
+            tok_lps = log_probs[:, t]  # (N,)
+
+            # Attachment-head structural prior (Murty et al. Eq. 7): add log p(r_k)
+            # to each candidate's SHIFT log-prob. r_k is the candidate's reduce target
+            # (the right-end of the outermost reduced constituent, or last_pos for
+            # shift-only). The head's logits[b, q, j] score p(r_q = j); query q is the
+            # last prefix position (last_pos = K-1), key j is r_k. Clamp r_k to [0, K-1].
+            if use_attachment_head and out.attachment_logits is not None:
+                att = out.attachment_logits                   # (N, K, K) fp32
+                q_idx = K - 1                                  # the just-shifted query position
+                rk = torch.tensor(cand_rks, dtype=torch.long, device=att.device)
+                rk = rk.clamp(0, K - 1)                        # defensive
+                att_logp = torch.log_softmax(att[:, q_idx, :].float(), dim=-1)  # (N, K)
+                attach_lps = att_logp.gather(1, rk.unsqueeze(1)).squeeze(1)    # (N,)
+                attach_lps = attach_lps.tolist()
+            else:
+                attach_lps = [0.0] * len(cand_states)
+
+            # 4. Build next beams: append t, open a new constituent at position K.
+            next_beams = []
+            for state, shift_lp, attach_lp in zip(cand_states, tok_lps.tolist(), attach_lps):
+                if math.isnan(shift_lp) or shift_lp < -3e37:
+                    continue
+                next_beams.append({
+                    "input_ids": state["input_ids"] + [t],
+                    "closed": state["closed"],
+                    "stack": state["stack"] + [(K, K)],  # new constituent opens at K (l, r)
+                    "logprob": state["logprob"] + shift_lp + attach_lp,
+                    "per_tok_lp": state["per_tok_lp"] + [shift_lp],
+                })
+            if not next_beams:
+                break
+            # Prune to beam_size by logprob (keep best).
+            next_beams.sort(key=lambda b: b["logprob"], reverse=True)
+            beams = next_beams[:beam_size]
+
+        if not beams:
+            return float("inf")
+        if tag is None:
+            # Marginalize over parses (Murty et al.): p(x) = sum_y p(x,y) =>
+            # log p(x) = logsumexp_y logprob_y. Surprisal = -log p(x).
+            logprobs = torch.tensor([b["logprob"] for b in beams], dtype=torch.float64)
+            return -torch.logsumexp(logprobs, dim=0).item()
+        # Tag scoring (SG): best beam's sum of per-token CE at tagged positions.
+        # per_tok_lp aligns with the shifted terminals (tokens[0..n-1]); tag marks
+        # which of those positions to sum (1 = include).
+        best = max(beams, key=lambda b: b["logprob"])
+        per_tok_ce = [-lp for lp in best["per_tok_lp"]]  # CE = -log p
+        tag = list(tag)
+        # Clamp length; tag may be one shorter (ce_loss is one shorter than input).
+        m = min(len(per_tok_ce), len(tag))
+        return sum(per_tok_ce[i] for i in range(m) if tag[i])

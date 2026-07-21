@@ -517,7 +517,23 @@ class ModelConfig(BaseConfig):
     pushdown_max_depth: int = 64
     """Max constituent depth for the Pushdown stack-tape depth embedding table."""
     pushdown_attachment_weight: float = 1.0
-    """Weight of the auxiliary attachment-head loss (0.0 = depth-key bias only)."""
+    """Weight of the auxiliary attachment-head loss (Murty et al. 2023, Eq. 5):
+    ``L = L_LM + pushdown_attachment_weight * L_attach``. The attachment head
+    predicts each token's reduce target r_k from the final-layer hidden states,
+    supervised by a cross-entropy against the oracle reduce target derived from
+    the gold parse. 1.0 = equal weight with the LM loss (same convention as
+    ``treereg_alpha``). Train-only; does not alter the depth-bias forward path."""
+    pushdown_attachment_layer: int = -1
+    """Layer whose final hidden state feeds the attachment head. ``-1`` = the
+    final layer (the paper's choice; the head uses h_j^L and h̃_k^L). Reserved
+    for future tuning — currently only ``-1`` is implemented."""
+    pushdown_use_attachment_head_inference: bool = False
+    """If True, pushdown_beam_search scores each reduce candidate with the trained
+    attachment head's ``log p(r_k)`` (Murty et al. Eq. 7 joint). False = uniform
+    reduce prior (the pre-head behavior). Only effective after the model is
+    trained with ``pushdown_attachment_weight > 0`` (a checkpoint with head
+    weights); the legacy ``step33862`` checkpoint has no trained head, so keep
+    False for it."""
     pushdown_use_flex: bool = True
     """If True, compute the Pushdown depth bias via a FlexAttention ``score_mod``
     (fused flash-class kernel) instead of the full ``(B, n_h, n, n)`` additive
@@ -545,6 +561,12 @@ class ModelConfig(BaseConfig):
     # ---- shared parse-binarization direction ----
     parse_binarize_direction: str = "left"
     """Binarization direction for the parse trees: 'left' or 'right'."""
+    parse_binarize: Optional[bool] = None
+    """Whether to binarize parse trees for span extraction. ``None`` = auto:
+    ``treereg`` -> ``True`` (its CE loss is defined over the binary split), ``pushdown``
+    -> ``False`` (the stack tape :func:`~olmo.data.parse_align.compute_depth_matrix`
+    uses only ``(l, r)`` and binarization injects artificial ``X|<``/``X|>`` constituents
+    whose sub-ranges inflate the depth). Set explicitly to override the auto rule."""
 
 
     @property
@@ -788,6 +810,22 @@ class EvaluatorConfig(BaseConfig):
     subset_num_batches: Optional[int] = None
     samples_per_sent: Optional[int] = None
     tree_eval_type: Optional[str] = None
+    # Enable beam-search scoring for this evaluator (else teacher-forcing).
+    # Currently honored only for label=="BLiMP": when True, each sentence is
+    # scored via OLMo.word_sync_beam_search (parse-marginalized log-likelihood)
+    # instead of teacher-forced cross-entropy.
+    beam_search: bool = False
+    # Beam-search parameters. Defaults mirror OLMo.word_sync_beam_search
+    # (olmo/model.py) and the derivation used by SG_eval_step:
+    #   beam_size  -> word_sync_beam_search(beam_size=300)
+    #   beam_pc    -> word_sync_beam_search(pc=4)
+    #   beam_nc_ratio -> nc = max(int(ratio * L), 5); ratio 1.2 reproduces the
+    #                   function's internal default nc=int(1.2*Genlength)
+    #   beam_max_len_factor -> max_length = max(factor * L, 10)  (SG_eval_step)
+    beam_size: int = 300
+    beam_nc_ratio: float = 1.2
+    beam_pc: int = 4
+    beam_max_len_factor: int = 3
 
 
 class TruncationDirection(StrEnum):
