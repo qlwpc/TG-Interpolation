@@ -192,13 +192,18 @@ def test_contrast_old_samplers_buggy():
 
 def test_contiguous_preserves_doc_locality():
     print("=== test_contiguous_preserves_doc_locality ===")
-    """tg_doc needs all samples of one doc on the same rank. With contiguous blocks,
-    any contiguous doc range [a,b) lands entirely on one rank (no split)."""
-    ds = ListDataset(900)  # say 3 docs of 300 samples each
+    """tg_doc needs all samples of one doc on the same rank. Plain contiguous blocks
+    split a doc that straddles a count-based boundary, so tg_doc passes group_starts
+    (per-document sample-index boundaries) and the sampler partitions DOCUMENTS."""
+    import torch
+    ds = ListDataset(900)  # 3 docs of 300 samples each
     docs = [(0, 300), (300, 600), (600, 900)]
-    blocks = [list(DistributedEvalSampler(ds, num_replicas=4, rank=r, contiguous=True)) for r in range(4)]
+    group_starts = torch.LongTensor([0, 300, 600, 900])
+    blocks = [list(DistributedEvalSampler(ds, num_replicas=4, rank=r, group_starts=group_starts)) for r in range(4)]
+    # Every sample covered exactly once across ranks.
+    all_idx = sorted(i for blk in blocks for i in blk)
+    assert all_idx == list(range(900)), f"coverage gap/dup: {all_idx[:5]}...{all_idx[-5:]}"
     for d_start, d_end in docs:
-        # every sample in this doc must be on the same rank
         ranks_for_doc = set()
         for sample in range(d_start, d_end):
             for r, idxs in enumerate(blocks):
@@ -208,13 +213,17 @@ def test_contiguous_preserves_doc_locality():
             f"doc [{d_start},{d_end}) split across ranks {ranks_for_doc} (would break KV cache)")
         print(f"  doc [{d_start}:{d_end}) entirely on rank {ranks_for_doc.pop()}")
 
-    # Now check a doc that straddles a block boundary (doc 300..600, blocks end at 225/450/675)
-    # With contiguous blocks on 900/4 = [0..224][225..449][450..674][675..899]:
-    # doc [300,600) spans rank1(225-449) and rank2(450-674) -> split!
-    # This is EXPECTED: a doc larger than a block will split. tg_doc datasets must be
-    # constructed so docs align to blocks, OR tg_doc uses num_evaled/doc_id logic that
-    # resets per-doc (which it does: `if batch["doc_id"] > self.cur_doc_id: reset`).
-    print("  (note: docs larger than a block will split — tg_doc handles via doc_id reset)")
+    # Uneven docs (200, 400, 100, 200) across 3 ranks: 4 docs / 3 ranks -> ranks
+    # get [2,1,1] docs. Verify no doc splits and full coverage.
+    ds2 = ListDataset(900)
+    gs2 = torch.LongTensor([0, 200, 600, 700, 900])
+    blocks2 = [list(DistributedEvalSampler(ds2, num_replicas=3, rank=r, group_starts=gs2)) for r in range(3)]
+    all2 = sorted(i for blk in blocks2 for i in blk)
+    assert all2 == list(range(900)), "uneven-doc coverage mismatch"
+    for d_start, d_end in [(0, 200), (200, 600), (600, 700), (700, 900)]:
+        ranks_for_doc = {r for r, idxs in enumerate(blocks2) for s in range(d_start, d_end) if s in idxs}
+        assert len(ranks_for_doc) == 1, f"uneven doc [{d_start},{d_end}) split: {ranks_for_doc}"
+    print("  (uneven docs: no splits, full coverage)")
     print("  PASS\n")
 
 
