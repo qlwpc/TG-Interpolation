@@ -22,3 +22,10 @@ run_folder/
 /run_scripts/
 dataset/
 dataset.tar
+
+# Generated analysis output / tokenized eval data
+analysis-output/
+evaluation/SG/tokenized_qwen3/
+
+# Research paper PDFs (kept locally as references, not tracked)
+*.pdf

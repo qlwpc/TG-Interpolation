@@ -772,9 +772,11 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         direction: str = "left",
         max_len: int = 2048,
         pad_token_id: int = 50258,
+        eos_token_id: int = 50256,
         generate_attention_mask: bool = True,
         include_instance_metadata: bool = True,
         binarize: bool = True,
+        generate_doc_lengths: bool = False,
     ):
         import os
         self.tree_npy = tree_npy
@@ -789,7 +791,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.direction = direction
         self.max_len = max_len
         self.pad_token_id = pad_token_id
+        self.eos_token_id = eos_token_id
         self.generate_attention_mask = generate_attention_mask
+        self.generate_doc_lengths = generate_doc_lengths
         self.binarize = binarize
         self.transformer_grammar_type = ""  # set by caller if needed
         # MemMap-compat attributes.
@@ -826,6 +830,12 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
             item["tree_span_mask"] = torch.zeros((0,), dtype=torch.bool)
         if self.generate_attention_mask:
             item["attention_mask"] = torch.ones(len(input_ids), dtype=torch.bool)
+        # Document lengths (eval-only): split the chunk by EOS so the model can
+        # apply intra-document attention masking for faithful PPL. The chunk packs
+        # multiple complete top-level trees, so it contains multiple documents.
+        if self.generate_doc_lengths:
+            from .util import get_document_lengths
+            item["doc_lens"] = get_document_lengths(input_ids, self.eos_token_id)
         # Instance metadata for the `lm` evaluator (see PrecomputedParseDataset).
         if self._include_instance_metadata:
             from copy import deepcopy
@@ -848,10 +858,14 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, data_dir: str, pad_token_id: int = 50258,
-                 load_depth: bool = False, include_instance_metadata: bool = True):
+                 eos_token_id: int = 50256,
+                 load_depth: bool = False, include_instance_metadata: bool = True,
+                 generate_doc_lengths: bool = False):
         import os
         self.data_dir = data_dir
         self.pad_token_id = pad_token_id
+        self.eos_token_id = eos_token_id
+        self.generate_doc_lengths = generate_doc_lengths
         self._include_instance_metadata = include_instance_metadata
         self._metadata = {"path": str(data_dir)}
         self.input_ids = np.load(os.path.join(data_dir, "input_ids.npy"), mmap_mode="r")
@@ -909,6 +923,16 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         if self.depth is not None:
             item["tree_depth_matrix"] = torch.tensor(
                 np.asarray(self.depth[index]), dtype=torch.int8)
+        # Document lengths (eval-only): split by EOS so the model applies
+        # intra-document attention masking for faithful PPL. Computed on the FULL
+        # (padded) input_ids, matching MemMapDataset: trailing pads (pad != EOS)
+        # fall into a final trailing "doc" so cu_doc_lens covers every seq_len
+        # position (required by flash_attn_varlen_func on the treereg path); pads
+        # are masked out of the CE by get_labels via attention_mask, and out of
+        # pushdown attention by am[b, kv_idx].
+        if self.generate_doc_lengths:
+            from .util import get_document_lengths
+            item["doc_lens"] = get_document_lengths(input_ids, self.eos_token_id)
         # Instance metadata: the `lm` evaluator (evaluator.py EvaluatorType.lm) zips
         # `batch["metadata"]` with per-instance CE loss, so every eval item must emit
         # one. MemMapDataset emits {"path": ...}; mirror that here (single data dir,

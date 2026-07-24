@@ -132,7 +132,9 @@ def build_memmap_dataset(
             return PrecomputedParseDataset(  # type: ignore[return-value]
                 data_dir=str(parse_dir),
                 pad_token_id=train_config.model.pad_token_id,
+                eos_token_id=train_config.model.eos_token_id,
                 load_depth=False,  # depth computed on GPU from spans (faster)
+                generate_doc_lengths=data_config.generate_doc_lengths,
             )
         from .parse_align import ParseAlignedDataset
         tree_paths = getattr(data_config, "parse_tree_paths", None)
@@ -158,8 +160,10 @@ def build_memmap_dataset(
             direction=direction,
             max_len=train_config.model.max_sequence_length,
             pad_token_id=train_config.model.pad_token_id,
+            eos_token_id=train_config.model.eos_token_id,
             generate_attention_mask=data_config.generate_attention_mask,
             binarize=binarize,
+            generate_doc_lengths=data_config.generate_doc_lengths,
         )
     paths: List[str]
     metadata: List[Dict[str, Any]] = []

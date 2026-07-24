@@ -43,7 +43,7 @@ model:
   init_cutoff_factor: 3
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
-  pushdown_attachment_weight: 0.0   # depth-key bias only (attachment head optional)
+  pushdown_attachment_weight: 1.0   # depth-key bias only (attachment head optional)
   parse_binarize_direction: right
   # FlexAttention score_mod path (fused flash-class kernel for the per-(q,kv) depth
   # bias). ON — the recommended training path. OLMo.forward builds a causal+pad
@@ -130,7 +130,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/dev_right
+        - ${workspace}/dataset/bbc-news/parse_aligned/dev_pushdown
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/dev.npy
   - label: TG-ppl-validation-test
@@ -141,7 +141,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/test_right
+        - ${workspace}/dataset/bbc-news/parse_aligned/test_pushdown
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/test.npy
 
@@ -156,6 +156,6 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/train_right
+    - ${workspace}/dataset/bbc-news/parse_aligned/train_pushdown
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/train.npy

@@ -1712,13 +1712,34 @@ class OLMo(nn.Module):
             if _am.dim() > 1:
                 _am = _am.view(batch_size, seq_len)
             am = _am
+            # Document masking (eval-only, generate_doc_lengths=True): block
+            # cross-document attention so PPL reflects per-doc conditioning. The
+            # depth bias is already doc-local (spans never cross an EOS doc boundary
+            # — see olmo/data/parse_align.py tree_spans), so only the causal+pad
+            # mask needs the doc constraint. doc_id[b, idx] = index of the document
+            # owning position idx; built from the per-batch cumulative doc lengths.
+            # Padded positions get an out-of-range id but are gated by `am[b, kv_idx]`.
+            doc_id = None
+            if doc_lens is not None and max_doc_lens is not None:
+                # doc_lens: (B, max_docs) with 0-pad. Exclusive doc ends per batch.
+                dl = doc_lens.to(dtype=torch.long, device=x.device)
+                ends = torch.cumsum(dl, dim=-1)           # (B, max_docs)
+                idxs = torch.arange(seq_len, device=x.device)
+                # doc_id[b, idx] = #doc-ends <= idx  (positions before the 1st end
+                # are doc 0, etc.). searchsorted(side=right) on each row.
+                doc_id = torch.stack([
+                    torch.searchsorted(ends[b], idxs, right=True) for b in range(batch_size)
+                ], dim=0)                                  # (B, seq_len) long
             def _pushdown_mask_mod(b, h, q_idx, kv_idx):
                 # Bitwise `&`, NOT Python `and`: `and` short-circuits on the *value*
                 # of `am[b, kv_idx]`, which is data-dependent control flow -> vmap
                 # (used by create_block_mask to infer the block sparsity) rejects it
                 # with "attempting to use a Tensor in some data-dependent control
-                # flow". `&` is a plain elementwise tensor op that vmap can lower.
-                return am[b, kv_idx] & (q_idx >= kv_idx)
+                # flow". `&` and `==` are plain elementwise tensor ops vmap can lower.
+                m = am[b, kv_idx] & (q_idx >= kv_idx)
+                if doc_id is not None:
+                    m = m & (doc_id[b, q_idx] == doc_id[b, kv_idx])
+                return m
             block_mask = create_block_mask(
                 mask_mod=_pushdown_mask_mod, B=batch_size, H=None,
                 Q_LEN=seq_len, KV_LEN=seq_len, device=x.device,
@@ -1731,8 +1752,15 @@ class OLMo(nn.Module):
             self.__cache["pushdown_attn_mask"] = am
             attention_bias = None
         else:
+            # Document masking (eval-only, generate_doc_lengths=True): when doc
+            # boundaries are provided, leave attention_bias=None and the bool
+            # attention_mask untouched, so OLMoBlock._scaled_dot_product_attention
+            # takes the flash_attn_varlen_func doc-mask branch (which asserts
+            # attn_mask is None). causality + doc boundary + pad are all handled
+            # by varlen over cu_doc_lens. get_labels still masks pad for the CE.
+            _doc_mask_active = (doc_lens is not None and max_doc_lens is not None)
             # Transform the attention mask into what the blocks expect.
-            if attention_mask is not None:
+            if attention_mask is not None and not _doc_mask_active:
                 # shape: (batch_size, 1, 1, seq_len)
                 attention_mask = attention_mask.to(dtype=torch.float).view(batch_size, -1)[:, None, None, :]
                 attention_mask = (1.0 - attention_mask) * torch.finfo(attention_mask.dtype).min
@@ -1746,7 +1774,7 @@ class OLMo(nn.Module):
                 # with key+value cache. Otherwise `F.scaled_dot_product_attention()` doesn't seem to compute
                 # scores correctly. But Flash_attn compute correctly
                 or (past_key_values is not None and not self.config.flash_attention)
-            ):
+            ) and not _doc_mask_active:
                 if attention_bias is None and self.config.alibi:
                     attention_bias = get_causal_attention_bias(
                         self.__cache, past_length + seq_len, x.device
@@ -2044,6 +2072,142 @@ class OLMo(nn.Module):
         attn_flops_per_token = self.config.n_layers * 8 * (self.config.d_model * self.config.max_sequence_length)
         self.__num_bck_flops = params_flops_per_token + attn_flops_per_token
         return self.__num_bck_flops
+
+    def pause_label_generate(
+        self,
+        input_ids: torch.LongTensor,
+        pause_spec: "tuple[int, int]",
+        max_real_tokens: int,
+        eos_token_id: Optional[int] = None,
+        beam_size: int = 1,
+    ) -> torch.Tensor:
+        """Greedy generation for ``pause_label`` models with deterministic pauses.
+
+        ``pause_label`` models train with a label mask that zeroes the loss at
+        every position whose *next* token is a pause (``pause_label_mask``), so
+        the model never learns to emit pause tokens. Free generation therefore
+        skips pauses, which misaligns the ``(p, q)`` grid that
+        :func:`extract_real_tokens` assumes. This generator restores the training
+        input layout by deterministically inserting pauses itself.
+
+        Pause slots use the training convention ``pause_token_id=None``
+        (repeat-mode): each pause slot repeats the block's last real token. This
+        matches ``pause_input_ids(..., pause_token_id=None, ...)`` exactly, so
+        the model sees the same paused layout at inference as at training.
+
+        Generation loop (greedy, batch=1, KV-cache-backed):
+          1. Prefill the paused prompt ``input_ids`` (already pause-expanded by
+             ``XsumDataset``) → KV cache + next-token logits.
+          2. At each step, if a pause is owed at the current block boundary
+             (``real_count % q == 0`` and pauses still owed), feed ``p`` repeats of
+             the last real token WITHOUT sampling (deterministic append + KV
+             advance). Otherwise sample the next real token via argmax, append,
+             ``real_count += 1``.
+          3. Stop on EOS or when ``real_count == max_real_tokens``.
+
+        Args:
+            input_ids: paused prompt of shape ``(1, L)`` (already expanded).
+            pause_spec: ``(p, q)`` — ``p`` pauses after every ``q`` real tokens.
+            max_real_tokens: cap on the number of REAL tokens to generate.
+            eos_token_id: stop token id (falls back to ``config.eos_token_id``).
+            beam_size: reserved for future beam search; currently greedy (=1).
+
+        Returns:
+            Tensor of shape ``(1, T)`` of REAL token ids (pauses stripped, the
+            leading BOS stripped to match ``skip_first=True``). ``T <=
+            max_real_tokens``.
+        """
+        if beam_size != 1:
+            # Beam search for pauselabel is future work; greedy is correct.
+            pass
+        p, q = pause_spec
+        if q < 1:
+            raise ValueError(f"pause denominator must be >= 1, got {q}")
+        eos = eos_token_id if eos_token_id is not None else self.config.eos_token_id
+        device = input_ids.device
+
+        # Count the prompt's real tokens by walking the (p, q) grid: real token j
+        # sits at expanded position j + (j//q)*p. ``input_ids`` (1, L) is the
+        # training-layout paused prompt, so its real-token positions line up with
+        # ``pause_input_ids(..., pause_token_id=None)``.
+        prompt_len = input_ids.shape[1]
+        real_in_prompt = 0
+        j = 0
+        while True:
+            pos = j + (j // q) * p
+            if pos >= prompt_len:
+                break
+            real_in_prompt = j + 1
+            j += 1
+        # Last real token id (needed for repeat-mode pause insertion). j now points
+        # one past the last real token's grid position; the last real token is j-1.
+        last_real_pos = (real_in_prompt - 1) + ((real_in_prompt - 1) // q) * p \
+            if real_in_prompt > 0 else None
+        last_real = int(input_ids[0, last_real_pos].item()) if last_real_pos is not None else None
+
+        # Prefill the FULL paused prompt so the KV cache reflects the training
+        # input layout (pauses included). ``logits`` predicts the token at the
+        # expanded position immediately after the prompt.
+        with torch.no_grad():
+            out = self(
+                input_ids=input_ids,
+                past_key_values=None,
+                use_cache=True,
+                last_logits_only=True,
+            )
+            logits = out.logits[:, -1, :]  # (1, vocab)
+            kv = out.attn_key_values
+
+        # Expanded position of the next token to emit (0-indexed). Token at this
+        # position is either a real token ``real_count`` or a pause (repeat of the
+        # previous real token), per pause_input_ids(pause_token_id=None).
+        exp_pos = prompt_len
+        real_count = real_in_prompt          # real tokens emitted so far
+        out_real: list = []                  # generated real token ids (excl. prompt, excl. BOS)
+        n_generated = 0
+        while n_generated < max_real_tokens:
+            real_tok_pos = real_count + (real_count // q) * p   # expanded pos of real token real_count
+            if exp_pos < real_tok_pos:
+                # The next expanded position is a PAUSE slot: deterministically
+                # repeat the last real token (no sampling) and advance KV cache.
+                # This restores the training input the model was conditioned on.
+                if last_real is None:
+                    break
+                with torch.no_grad():
+                    out = self(
+                        input_ids=torch.tensor([[last_real]], dtype=torch.long, device=device),
+                        past_key_values=kv,
+                        use_cache=True,
+                        last_logits_only=True,
+                    )
+                    logits = out.logits[:, -1, :]
+                    kv = out.attn_key_values
+                exp_pos += 1
+                continue
+            # else: the next expanded position is the real token ``real_count``;
+            # sample it (greedy argmax).
+            next_tok = int(torch.argmax(logits, dim=-1).item())
+            if next_tok == eos:
+                break
+            out_real.append(next_tok)
+            n_generated += 1
+            real_count += 1
+            last_real = next_tok
+            # Feed this real token to advance the KV cache for the next step.
+            with torch.no_grad():
+                out = self(
+                    input_ids=torch.tensor([[next_tok]], dtype=torch.long, device=device),
+                    past_key_values=kv,
+                    use_cache=True,
+                    last_logits_only=True,
+                )
+                logits = out.logits[:, -1, :]
+                kv = out.attn_key_values
+            exp_pos += 1
+
+        if not out_real:
+            return torch.zeros((1, 0), dtype=torch.long, device=device)
+        return torch.tensor([out_real], dtype=torch.long, device=device)
 
     def generate(
         self,
@@ -2347,6 +2511,17 @@ class OLMo(nn.Module):
         # tmptokenizer:Tokenizer = Tokenizer.from_file("./dataset/bbc-news/TG_GPT2_tokenizer.json")
 
         is_TG_input = (generate_TG_bias is not None) or transformer_grammar_type=="tgtree"
+        # Pause models are plain causal LMs whose input has deterministic pause
+        # repeats interleaved; they do NOT generate tree-grammar non-terminal
+        # structure. The tree-grammar decoder below samples the main beam
+        # candidates over the FULL vocab (including the NT id range), which would
+        # pollute a pause model's summary with bracket tokens it never learned to
+        # emit. Mask the entire NT range out of the main candidates when
+        # generating from a pause model (only the terminal fast-track top-k was
+        # NT-masked before — see log_probs[:, NT_start:NT_end] below). No-op for
+        # TG/tgtree (they emit NTs by design) and for scoring mode
+        # (eval_input_ids is not None).
+        is_pause = transformer_grammar_type[:5] == "pause"
         first_step = past_input is not None
         Genlength = eval_input_ids.shape[0] if eval_input_ids is not None else max_word_steps
         istart = 0
@@ -2478,6 +2653,12 @@ class OLMo(nn.Module):
                 #     log_probs[data["Stop_Add_NT"], vocab.opening_non_terminals[0] : vocab.opening_non_terminals[1]] = torch.finfo(log_probs.dtype).min
                 # del data
                 if eval_input_ids is None:
+                    if is_pause:
+                        # Pause models must NOT emit non-terminal tokens: mask the
+                        # whole NT range out of the main candidate top-k BEFORE
+                        # sampling (otherwise the tree-grammar decoder would insert
+                        # bracket tokens the pause model never learned to produce).
+                        log_probs[:, NT_start:NT_end] = torch.finfo(log_probs.dtype).min
                     topk_log_probs, topk_indices = torch.topk(log_probs.view(-1), kn, dim=-1)
                     log_probs[:, NT_start:NT_end] = torch.finfo(log_probs.dtype).min
                     topks_term_log_probs, topks_term_indices = torch.topk(log_probs.view(-1), ks, dim=-1)

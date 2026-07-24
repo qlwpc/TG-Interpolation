@@ -551,7 +551,7 @@ class DistributedEvalSampler(Sampler):
     """
 
     def __init__(self, dataset, num_replicas=None, rank=None, shuffle=False,
-                 drop_last=False, contiguous=False):
+                 drop_last=False, contiguous=False, group_starts=None):
         if num_replicas is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
@@ -572,18 +572,51 @@ class DistributedEvalSampler(Sampler):
         self.contiguous = contiguous
         self.epoch = 0
         n = len(self.dataset)
-        # Each rank gets ceil or floor of n/W; first (n % W) ranks get one extra.
-        base = n // num_replicas
-        rem = n % num_replicas
-        if rank < rem:
-            self.num_samples = base + 1
+        self.group_starts = group_starts
+        if group_starts is not None:
+            # Doc-aware partitioning: ``group_starts`` is a sorted array of length
+            # n_groups+1 where group g spans sample indices [group_starts[g],
+            # group_starts[g+1]). We partition the GROUPS (not samples) across
+            # ranks so every group lands entirely on one rank — required by tg_doc,
+            # whose KV cache accumulates across the whole document and whose
+            # metric scatters one [n_sent, SENT_SIZE] row per sentence (a group of
+            # SENT_SIZE trees). Splitting a group would break both. The first
+            # (n_groups % W) ranks get one extra group; within a rank, groups are
+            # emitted in ascending index order so KV accumulation stays causal.
+            n_groups = len(group_starts) - 1
+            g_base = n_groups // num_replicas
+            g_rem = n_groups % num_replicas
+            if rank < g_rem:
+                self._group_start = rank * (g_base + 1)
+                self._group_end = self._group_start + g_base + 1
+            else:
+                self._group_start = g_rem * (g_base + 1) + (rank - g_rem) * g_base
+                self._group_end = self._group_start + g_base
+            self.num_samples = int(group_starts[self._group_end] - group_starts[self._group_start])
+            self.total_size = n  # exact, every sample covered once
         else:
-            self.num_samples = base
-        self.total_size = n  # exact, no padding
+            # Each rank gets ceil or floor of n/W; first (n % W) ranks get one extra.
+            base = n // num_replicas
+            rem = n % num_replicas
+            if rank < rem:
+                self.num_samples = base + 1
+            else:
+                self.num_samples = base
+            self.total_size = n  # exact, no padding
 
     def __iter__(self):
         n = len(self.dataset)
-        if self.contiguous:
+        if self.group_starts is not None:
+            # Emit this rank's groups in order; flatten each group's contiguous
+            # sample range. Group boundaries are document boundaries (and thus
+            # sentence and SENT_SIZE boundaries), so the per-sentence 300-sync in
+            # TG_doc_eval_step and the metric's row scatter stay aligned.
+            gs = self.group_starts
+            indices = []
+            for g in range(self._group_start, self._group_end):
+                indices.extend(range(int(gs[g]), int(gs[g + 1])))
+            return iter(indices)
+        elif self.contiguous:
             base = n // self.num_replicas
             rem = n % self.num_replicas
             # first `rem` ranks get base+1

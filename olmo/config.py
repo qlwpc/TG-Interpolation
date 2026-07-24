@@ -826,6 +826,12 @@ class EvaluatorConfig(BaseConfig):
     beam_nc_ratio: float = 1.2
     beam_pc: int = 4
     beam_max_len_factor: int = 3
+    # BLiMP subset: number of minimal pairs per task to score (full BLiMP = 1000).
+    # Reduces both the dataset size (2*K*SENT_SIZE per task) and the compute()
+    # denominator, so a partial run reports a meaningful per-task/overall accuracy
+    # instead of being dragged down by un-scored (zero) slots. None => 1000 (full).
+    # Honored only for label=="BLiMP".
+    pair_per_task: Optional[int] = None
 
 
 class TruncationDirection(StrEnum):

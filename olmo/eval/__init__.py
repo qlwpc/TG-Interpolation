@@ -55,6 +55,10 @@ def build_downstream_evaluator(
     # its own NT structure during word_sync_beam_search).
     if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "beam_search", False):
         task_kwargs["force_terminal"] = True
+    # BLiMP subset: reduce pairs/task (and the compute() denominator) for a
+    # meaningful partial-run accuracy. None => 1000 (full BLiMP).
+    if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "pair_per_task", None) is not None:
+        task_kwargs["pair_per_task"] = eval_cfg.pair_per_task
     if train_config.finetune_task is not None:
         task_kwargs["shots_num"] = 0
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
@@ -75,11 +79,32 @@ def build_downstream_evaluator(
         # index by position. The other evaluators (SG, Rouge, ICL,
         # beam_search_icl) have no order dependence and use strided partitioning.
         contiguous = eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent] or eval_cfg.label == "BLiMP"
+        # tg_doc additionally needs whole-document partitioning: its KV cache
+        # accumulates across every sentence of a document, so a document must
+        # not be split across ranks (count-based contiguous splitting would cut
+        # mid-sentence/mid-document). Pass group_starts = per-document tree-index
+        # boundaries so the sampler partitions DOCUMENTS, not samples. Each
+        # document is an integer number of sentences (SENT_SIZE trees), so this
+        # also keeps the per-sentence 300-sync in TG_doc_eval_step aligned.
+        group_starts = None
+        if eval_cfg.type == EvaluatorType.tg_doc:
+            ds = ds_eval_dataset
+            sent_size = getattr(ds, "SENT_SIZE", None) or getattr(ds, "samples_per_sent", 300)
+            # ds.doc_index (post-prep_examples cumsum) holds per-document sentence
+            # counts; build [0, sents_0, sents_0+sents_1, ...] * SENT_SIZE.
+            doc_idx = getattr(ds, "doc_index", None)
+            if doc_idx is not None:
+                doc_sents = doc_idx.tolist() if hasattr(doc_idx, "tolist") else list(doc_idx)
+                starts = [0]
+                for s in doc_sents:
+                    starts.append(starts[-1] + int(s) * int(sent_size))
+                group_starts = torch.LongTensor(starts)
         ds_eval_sampler = DistributedEvalSampler(
             ds_eval_dataset,
             num_replicas=get_world_size(),
             rank=get_global_rank(),
             contiguous=contiguous,
+            group_starts=group_starts,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
     if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl \
@@ -116,13 +141,23 @@ def build_downstream_evaluator(
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type,
                                                tree_eval_type=getattr(ds_eval_dataset, "tree_eval_type", "default"))
     elif eval_cfg.label == "BLiMP":
+        # Opt-in beam-tree dump for offline comparison vs blimp_tree_300.
+        # Off by default so normal eval runs are unaffected.
+        import os as _bos
+        beam_dump_path = None
+        if _bos.environ.get("OLMO_BEAM_DUMP") == "1" and train_config.save_folder:
+            beam_dump_path = _bos.path.join(
+                train_config.save_folder, "beam_trees_BLiMP.jsonl"
+            )
         metric = BLiMPMetric(vocab_path=train_config.tokenizer.vocabulary,
                              metric_type=ds_eval_dataset.metric_type,
                              dataset_name=train_config.model.transformer_grammar_type,
                              device_eval_batch_size = eval_batch_size,
                              dataset_length=len(ds_eval_dataset),
                              samples_per_sent=ds_eval_dataset.SENT_SIZE,
-                             tree_eval_type=ds_eval_dataset.tree_eval_type)
+                             pair_per_task=ds_eval_dataset.pair_per_task,
+                             tree_eval_type=ds_eval_dataset.tree_eval_type,
+                             save_beam_trees_path=beam_dump_path)
     elif eval_cfg.type == EvaluatorType.rouge:
         metric = RougeMetric(tokenizer=tokenizer)
     elif eval_cfg.type == EvaluatorType.beam_search_icl:

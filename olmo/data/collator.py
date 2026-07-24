@@ -150,12 +150,28 @@ class DataCollator:
             if instance_mask is not None:
                 all_instance_mask.append(torch.tensor(instance_mask))
 
-            # Document lengths.
+            # Document lengths. Computed by the dataset (split by EOS). After
+            # right-padding input_ids to max_len, ensure doc_lens covers EVERY
+            # padded position: flash_attn_varlen_func (treereg doc-mask path)
+            # needs cu_doc_lens to sum to seq_len per instance. If the dataset
+            # emitted doc_lens over the unpadded prefix (ParseAlignedDataset
+            # fallback), extend the trailing doc with the pad tail so the sum
+            # equals the padded length; pads are still ignored in the CE
+            # (get_labels masks via attention_mask) and in pushdown (am[b,kv]).
             doc_lens = x.get("doc_lens") if isinstance(x, dict) else None
             if doc_lens is not None:
+                if not isinstance(doc_lens, torch.Tensor):
+                    doc_lens = torch.tensor(doc_lens)
+                doc_lens = doc_lens.to(dtype=torch.long)
+                # Pad length for this instance == len(padded input_ids).
+                inst_len = max_len
+                covered = int(doc_lens.sum())
+                if covered < inst_len and covered > 0:
+                    doc_lens = doc_lens.clone()
+                    doc_lens[-1] = doc_lens[-1] + (inst_len - covered)
                 doc_pad_shape = (0, max_docs - len(doc_lens))
                 all_doc_lens.append(F.pad(doc_lens, doc_pad_shape, value=0))
-                all_max_doc_lens.append(int(doc_lens.max()))
+                all_max_doc_lens.append(int(doc_lens.max()) if len(doc_lens) else 0)
 
             # Metadata.
             metadata = x.get("metadata") if isinstance(x, dict) else None

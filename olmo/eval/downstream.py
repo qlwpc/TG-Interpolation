@@ -149,10 +149,15 @@ class ICLMetric(Metric):
             # Always compute terminal mask for decomposition
             cont_tokens_seq = cont_tokens.squeeze()
             term_mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+            # term_mask is bool; coerce masks to float so downstream arithmetic
+            # (lm_log_likelihood * mask, cont_mask *= term_mask) never depends on
+            # implicit bool→float promotion (fragile if a mask arrives as int/bool
+            # from the collator or get_mask).
+            term_mask = term_mask.to(torch.float32)
 
             # Compute terminal-only log-likelihood BEFORE any mask is applied
             if cont_mask is not None:
-                lm_log_likelihood_term = (lm_log_likelihood * cont_mask).sum()
+                lm_log_likelihood_term = (lm_log_likelihood * cont_mask.float()).sum()
             else:
                 lm_log_likelihood_term = (lm_log_likelihood).sum()
 
@@ -160,7 +165,7 @@ class ICLMetric(Metric):
                 if cont_mask is None:
                     cont_mask = term_mask
                 else:
-                    cont_mask *= term_mask
+                    cont_mask = cont_mask.float() * term_mask
 
             if cont_mask is not None:
                 lm_log_likelihood *= cont_mask
@@ -421,8 +426,15 @@ class DecomposedICLMetric(ICLMetric):
         self.save_per_example_path = save_per_example_path
 
     def compute(self):
-        # Get standard accuracy from parent
+        # Temporarily null save_per_example_path so the parent's compute()
+        # doesn't write its own per_example dump (ICLMetric schema) to the same
+        # path just before _save_per_example (decomp schema) overwrites it — a
+        # double-write that wastes work and leaves a mixed-schema file if the
+        # process dies between the two writes. We write ours below instead.
+        _saved_path = self.save_per_example_path
+        self.save_per_example_path = None
         full_result = super().compute()
+        self.save_per_example_path = _saved_path
 
         # Rebuild terminal-only rankings
         loglikelihood_dict_term = {}
@@ -1183,7 +1195,7 @@ class RougeMetric(Metric):
         for b in range(predictions.shape[0]):
             # pred_summary = self.tokenizer.decode(predictions[b].tolist())
             passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
-            print(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
+            log.info(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
             self.predictions.append(predictions[b])
 
         for gold in references:
@@ -1239,15 +1251,27 @@ class TGPerplexityDocumentLevelMetric(Metric):
         self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
     def reset(self):
-        self.cur_sent = 0
-        self.cur_batch = 0
+        # No local counters needed: update() scatters by global batch["sent_id"],
+        # which is robust to unequal per-rank update counts (multi-GPU docppl).
+        pass
 
     def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
-        self.loglikelihoods[self.cur_sent, self.cur_batch:self.cur_batch + self.device_eval_batch_size] = ce_loss
-        self.cur_batch += self.device_eval_batch_size
-        if self.cur_batch == self.samples_per_sent:
-            self.cur_batch = 0
-            self.cur_sent += 1
+        # Scatter by GLOBAL flat index so multi-rank docppl writes disjoint slots:
+        # each rank processes whole documents (DistributedEvalSampler
+        # group_starts), so its indices index distinct slots of the pre-allocated
+        # [n_sent, SENT_SIZE] tensor. row = index//SENT_SIZE, col = index%SENT_SIZE
+        # — one unique slot per tree (sent_id is shared by all SENT_SIZE trees of
+        # a sentence, so it cannot distinguish them). Unwritten slots stay 0;
+        # compute() SUM all-reduces via _all_reduce_tensor. Replaces the old local
+        # cur_sent/cur_batch counters, which assumed single-rank in-order arrival
+        # and would alias across ranks.
+        idx = batch["index"]
+        if idx.dim() == 0:
+            idx = idx.unsqueeze(0)
+            ce_loss = ce_loss.unsqueeze(0)
+        row = idx // self.samples_per_sent
+        col = idx % self.samples_per_sent
+        self.loglikelihoods[row, col] = ce_loss
 
     def compute(self) -> torch.Tensor:
         # SUM all-reduce the fixed-size loglikelihoods tensor across ranks
@@ -1415,6 +1439,11 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         input_ids = self._convert_sequence(input_ids)
         return {
             "sent_id" : index//self.SENT_SIZE + 1,
+            # Flat 0-based index: unique per tree (unlike sent_id, which is shared
+            # by all SENT_SIZE trees of a sentence). Used by the docppl metric to
+            # scatter into a unique [n_sent, SENT_SIZE] slot: row=index//SENT_SIZE,
+            # col=index%SENT_SIZE. Robust to unequal per-rank update counts.
+            "index": index,
             "doc_id": self.sent_doc_id[index//self.SENT_SIZE],
             "input_ids": input_ids,
         }
@@ -1486,6 +1515,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
                 max_input_len = len(sample["input_ids"])
 
         sent_ids = []
+        flat_indices = []
         input_ids = []
         all_attention_bias = []
         all_label_mask = []
@@ -1495,6 +1525,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
                 0, (max_input_len - len(sample["input_ids"]))
             )
             sent_ids.append(sample["sent_id"])
+            flat_indices.append(sample["index"])
             # make sure Gen TG bias have the correct length
             cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
 
@@ -1519,6 +1550,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         batch = {
             "doc_id": data[0]["doc_id"] if self.metric_type=="doc" else None,
             "sent_id": torch.LongTensor(sent_ids),
+            "index": torch.LongTensor(flat_indices),
             "input_ids": torch.stack(input_ids),
         }
         if all_attention_bias:
@@ -1560,7 +1592,11 @@ formula_dict = {
     'mvrr': ['[ (%reduced_ambig%) > (%unreduced_ambig%) ] & [ (%reduced_ambig%) > (%reduced_unambig%) ] & [ [ (%reduced_ambig%) - (%unreduced_ambig%) ] > [ (%reduced_unambig%) - (%unreduced_unambig%) ] ]'],
     'mvrr_mod': ['[ (%reduced_ambig%) > (%unreduced_ambig%) ] & [ (%reduced_ambig%) > (%reduced_unambig%) ] & [ [ (%reduced_ambig%) - (%unreduced_ambig%)] > [(%reduced_unambig%) - (%unreduced_unambig%)] ]'],
     
-    'nn-nv-rpl': ['(%nn_ambig%)>(%nn_unambig%)', '(%nv_ambig%)>(%nv_unambig%)'], 
+    # nn-nv-rpl is intentionally unreachable at eval time: it is excluded from
+    # SGDataset.task_list and test_suite_dict, so no task ever looks it up here.
+    # This is a SG branch that should NOT be evaluated — kept only as a reference
+    # of the formula. Do not wire it in without an explicit decision to score it.
+    'nn-nv-rpl': ['(%nn_ambig%)>(%nn_unambig%)', '(%nv_ambig%)>(%nv_unambig%)'],
     
     'npi_orc_any': ['[ (%neg_pos%) < (%pos_pos%) ] & [ (%neg_neg%) < (%pos_neg%) ] & [ (%neg_pos%) < (%pos_neg%) ]'],
     'npi_orc_ever': ['[ (%neg_pos%) < (%pos_pos%) ] & [ (%neg_neg%) < (%pos_neg%) ] & [ (%neg_pos%) < (%pos_neg%) ]'],
@@ -1625,7 +1661,7 @@ class SyntacticGeneralizationMetric(Metric):
         '''
         input: task, condition probability variables, then eval with formula
         '''
-        print(f"task is {task} score is {score_dict}")
+        log.info(f"task is {task} score is {score_dict}")
         formula = formula_dict[task][0]
         keys = re.findall(r"%([\w|-]+)%", formula)
         keys = set(keys)
@@ -1651,7 +1687,7 @@ class SyntacticGeneralizationMetric(Metric):
         formula = formula.replace("]", ")")
 
         result = eval(formula)
-        print(f"result is {result}")
+        log.info(f"result is {result}")
         getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
 
     def compute(self) -> Dict[str, float]:
@@ -1669,8 +1705,9 @@ class SyntacticGeneralizationMetric(Metric):
             acc_dict[key] = acc
             if acc_dict[key]>0:
                 acc_dict[key] /= len(getattr(self, key))
-            if key != 'nn-nv-rpl':
-                avg_acc += acc_dict[key]
+            # nn-nv-rpl is excluded from test_suite_dict (see SGDataset.task_list),
+            # so every key here contributes to the average.
+            avg_acc += acc_dict[key]
         acc_dict["avg"] = avg_acc / len(test_suite_dict)
         return acc_dict
 
@@ -1880,6 +1917,7 @@ class BLiMPMetric(Metric):
             samples_per_sent = 300,
             pair_per_task = 1000,
             tree_eval_type = "default",
+            save_beam_trees_path: Optional[str] = None,
         ) -> None:
         # sync_on_compute=False: compute() SUM all-reduces the fixed-size
         # loglikelihoods tensor via _all_reduce_tensor (count-insensitive: each
@@ -1895,6 +1933,11 @@ class BLiMPMetric(Metric):
         self.dataset_length = dataset_length
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.tree_eval_type = tree_eval_type
+        # Optional beam-tree dump (env-gated OLMO_BEAM_DUMP=1 in build_downstream_evaluator).
+        # Trainer.BLiMP_beam_eval_step calls record_beams() per sentence with the decoded
+        # bracketed tree strings + logprobs; compute() writes the accumulated list to JSON.
+        self.save_beam_trees_path = save_beam_trees_path
+        self._beam_records: List[Dict[str, Any]] = []
 
         if dataset_name[:8] == "terminal" or dataset_name[:5] == "pause" or samples_per_sent==1:
             self.SENT_SIZE = 1
@@ -1994,6 +2037,71 @@ class BLiMPMetric(Metric):
             self.loglikelihoods[sent_id, sample_id : sample_id + B] = ll
 
 
+    def record_beams(self, sent_id, task_name, pair_id, is_bad, terminal_str, beams, topk=5):
+        """Append a per-sentence beam-tree record for offline dump.
+
+        Called by ``Trainer.BLiMP_beam_eval_step`` only when
+        ``save_beam_trees_path`` is set. All args are JSON-serializable: the
+        caller decodes token ids to strings via the HF tokenizer.
+
+        Args:
+            sent_id: flat dataset index (even=good, odd=bad within a task).
+            task_name: BLiMP task name (e.g. ``anaphor_gender_agreement``).
+            pair_id: minimal-pair index within the task.
+            is_bad: True for the ungrammatical member of the pair.
+            terminal_str: decoded terminal sentence (NT tokens stripped).
+            beams: list of beam dicts (``input_ids``, ``logprob``,
+                ``terminal_logprob``) from ``OLMo.word_sync_beam_search``.
+                Already decoded to ``tree`` strings by the caller.
+            topk: number of top beams (by logprob) to record.
+        """
+        if self.save_beam_trees_path is None:
+            return
+        # `beams` entries carry a pre-decoded ``tree`` string + scalar logprobs.
+        top = sorted(beams, key=lambda b: b.get("logprob", float("-inf")), reverse=True)[:topk]
+        self._beam_records.append({
+            "sent_id": int(sent_id),
+            "task": task_name,
+            "pair_id": int(pair_id),
+            "good_bad": "bad" if is_bad else "good",
+            "terminal": terminal_str,
+            "beams": [
+                {
+                    "tree": b["tree"],
+                    "logprob": float(b.get("logprob", 0.0)),
+                    "terminal_logprob": float(b.get("terminal_logprob", 0.0)),
+                }
+                for b in top
+            ],
+        })
+
+
+    def _save_beam_trees(self):
+        """Write accumulated beam-tree records to JSON (per-rank files).
+
+        Each rank scored its own disjoint subset of sentences
+        (DistributedEvalSampler), so each rank writes its own
+        ``<base>_rank{R}.jsonl`` file. The offline comparison script globs all
+        ``_rank*.jsonl`` files to aggregate. Under single-GPU (world_size==1)
+        this still writes ``_rank0.jsonl``.
+        """
+        if self.save_beam_trees_path is None:
+            return
+        rank = get_global_rank()
+        base = self.save_beam_trees_path
+        # Insert _rank{R} before a trailing .jsonl (else append _rank{R}.jsonl).
+        if base.endswith(".jsonl"):
+            out_path = f"{base[:-6]}_rank{rank}.jsonl"
+        else:
+            out_path = f"{base}_rank{rank}.jsonl"
+        save_dir = os.path.dirname(out_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump(self._beam_records, f)
+        log.info(f"Saved {len(self._beam_records)} beam-tree records to {out_path}")
+
+
     def compute(self) -> torch.Tensor:
         # SUM all-reduce the fixed-size loglikelihoods tensor across ranks
         # (count-insensitive: each rank wrote its own disjoint sent_id slots).
@@ -2019,7 +2127,7 @@ class BLiMPMetric(Metric):
                 p_good = loglikelihoods[id_bias + pair_id * 2]
                 p_bad = loglikelihoods[id_bias + pair_id * 2 + 1]
                 if p_good==p_bad or (not (p_good>p_bad) and not (p_bad>p_good)):
-                    print(f"index is {id_bias + pair_id * 2}, prob is {p_good}")
+                    log.warning(f"BLiMP tie at index {id_bias + pair_id * 2}, prob is {p_good}")
 
                 if p_good > p_bad:
                     cnt_dict[task] += 1
@@ -2035,6 +2143,8 @@ class BLiMPMetric(Metric):
             total_cnt += term_cnt
 
         acc_dict['overall/overall'] = total_cnt / (self.pair_per_task * len(self.task_list))
+
+        self._save_beam_trees()
 
         return acc_dict
 
@@ -2069,6 +2179,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.metric_type = metric_type
         self.task_list = BLiMP_TASK_LIST
         self.batch_size = device_eval_batch_size
+        self.pair_per_task = pair_per_task
         self.transformer_grammar_type = transformer_grammar_type
         self.pause_token_id = pause_token_id
         self.tree_eval_type = tree_eval_type
@@ -2472,16 +2583,6 @@ class COPA(ICLMultiChoiceTaskDataset):
                 for idx, line in enumerate(file):
                     self.dataset[idx][key] = convert_TG_format(line.strip())
 
-    def load_local_datasets(self):
-        self.dataset = []
-        with open(os.path.join(self.COPAPATH, f"{self.split}.jsonl"), "r") as file:
-            for line in file:
-                self.dataset.append(json.loads(line.strip()))
-        for key in ["premise", "choice1", "choice2"]:
-            with open(os.path.join(self.COPAPATH, f"{self.split}_{key}.txt"), "r") as file:
-                for idx, line in enumerate(file):
-                    self.dataset[idx][key] = convert_TG_format(line.strip())
-    
     def doc_to_text(self, doc):
         # Remove the tail part for inserting choices.
         def convert_premise(sent):
@@ -3153,7 +3254,7 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
 
                 # get domain conditional query
                 # we don't expect this to be longer than self.model_ctx_len and it won't make sense to truncate from left
-                                
+
                 cont_str_len = len(self.token_decode(continuation)) - 1
 
                 if self.ispause:
@@ -3162,12 +3263,26 @@ class WinoGrande(ICLMultiChoiceTaskDataset):
                     # continuation as a contiguous slice query[split:end] so the
                     # logits gather at [ctx_len-1 : ctx_len+cont_len-1] aligns for
                     # any divisibility of ctx_real by q.
+                    #
+                    # Expand the UNTRIMMED full_query (ctx+cont before the eval-time
+                    # [:-1] trim) and compute ctx_real from it — NOT from
+                    # actual_ctx_len. actual_ctx_len carries a +1 offset (meant to
+                    # compensate for the [:-1] trim in the non-pause metric path) and
+                    # would make split = pause_expanded_len(ctx_real, p, q) overshoot
+                    # past the end of the expanded query: empty continuation ->
+                    # degenerate majority-class score. Mirrors
+                    # ICLMultiChoiceTaskDataset.prep_examples.
+                    full_query = ctx + continuation
+                    full_dc_query = dc + continuation
+                    full_query = self.convert_grammar_input(full_query)
+                    full_dc_query = self.convert_grammar_input(full_dc_query)
+                    full_query = full_query[-self.model_ctx_len :]
                     p, q = self.pause_spec
                     gtype = self.transformer_grammar_type
-                    ctx_real = actual_ctx_len
+                    ctx_real = len(full_query) - len(continuation)
                     cont_real = len(continuation)
-                    query = pause_input_ids(query, self.pause_token_id, pause_num=gtype)
-                    dc_query = pause_input_ids(dc_query, self.pause_token_id, pause_num=gtype)
+                    query = pause_input_ids(full_query, self.pause_token_id, pause_num=gtype)
+                    dc_query = pause_input_ids(full_dc_query, self.pause_token_id, pause_num=gtype)
                     split = pause_expanded_len(ctx_real, p, q)
                     trim = pause_trailing_trim(ctx_real + cont_real, p, q)
                     continuation = query[split : len(query) - trim]
@@ -4082,6 +4197,12 @@ class MMLU(ICLMultiChoiceTaskDataset):
         split = self.split if split is None else split
         dataset_path = self.dataset_path if dataset_path is None else dataset_path
         def correct_redux(record: Dict[str, Any]):
+            # NOTE: This is intentionally NOT called here — the mmluredux data
+            # loaded by load_local_datasets is ALREADY corrected offline using
+            # exactly this logic (no_correct_answer / wrong_groundtruth /
+            # multiple_correct_answers). Kept as a self-documenting reference of
+            # the preprocessing applied to the raw redux records, not as dead code.
+            error_type = record['error_type']
             error_type = record['error_type']
             choices = record['choices']
             target_index_list = [int(record['answer'])]

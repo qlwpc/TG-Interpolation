@@ -40,19 +40,24 @@ def build_chunk_index(tree_path, tok_path, max_len, out_dir):
     idx = np.asarray(chunks, dtype=np.int64)
     out_idx = os.path.join(out_dir, "chunk_index.npy")
     np.save(out_idx, idx)
-    # Stats: terminal leaves covered = sum of leaves per chunk (approx via slice).
-    total_leaves = 0
+    # Stats: terminal leaves per chunk, computed once with the same NT predicate
+    # the data loader uses (op_lo..cl_hi inclusive). Covers ALL chunks — the old
+    # `chunks[:1]` min only inspected the first chunk.
+    leaf_counts = []
     over = 0
     for (s, l) in chunks:
         sub = np.asarray(tree[s:s + l])
         is_nt = (sub >= vocab.op_lo) & (sub <= vocab.cl_hi)
         nl = int((~is_nt).sum())
-        total_leaves += nl
+        leaf_counts.append(nl)
         if nl > max_len:
             over += 1
+    total_leaves = sum(leaf_counts)
     print(f"wrote {len(chunks)} chunks -> {out_idx}")
     print(f"  terminal leaves covered: {total_leaves}")
-    print(f"  chunk leaf count: min {min(int((~(np.asarray(tree[s:s+l])>=vocab.op_lo)).sum()) for s,l in chunks[:1]) if chunks else 0}")
+    if leaf_counts:
+        print(f"  chunk leaf count: min {min(leaf_counts)} max {max(leaf_counts)} "
+              f"mean {total_leaves / len(leaf_counts):.1f}")
     print(f"  chunks exceeding max_len (atomic trees > {max_len}): {over}")
     return out_idx
 

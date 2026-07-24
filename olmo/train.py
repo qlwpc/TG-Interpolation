@@ -44,6 +44,7 @@ from .config import (
 )
 from .data import IterableDataset
 from .eval import Evaluator
+from .eval.downstream import BLiMP_TASK_LIST
 from .exceptions import OLMoConfigurationError
 from .model import OLMo
 from .transformers_model import HuggingModel
@@ -1018,7 +1019,7 @@ class Trainer:
 
         batch_size, T = batch["input_ids"].shape[0], batch["input_ids"].shape[1]
         update_T = batch.get("add_len")
-        if batch["doc_id"] > self.cur_doc_id:
+        if batch["doc_id"] != self.cur_doc_id:
             self.kv_to_update = None
             self.doc_kv_cache = None
             self.past_key_values = None
@@ -1262,6 +1263,12 @@ class Trainer:
         pc = eval_cfg.beam_pc
         max_len_factor = eval_cfg.beam_max_len_factor
         tree_eval_type = getattr(dataset, "tree_eval_type", "default")
+        # Beam-tree dump (env-gated OLMO_BEAM_DUMP=1 -> save_beam_trees_path set in
+        # build_downstream_evaluator). When enabled, decode each sentence's top-N
+        # beam trees (bracketed NT sequences) and hand them to the metric, which
+        # writes them to JSON in compute() for offline comparison vs blimp_tree_300.
+        beam_dump_path = getattr(evaluator.eval_metric, "save_beam_trees_path", None)
+        pair_per_task = getattr(dataset, "pair_per_task", 1000)
         ll_list: List[torch.Tensor] = []
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
@@ -1285,7 +1292,18 @@ class Trainer:
                             nc=nc,
                             pc=pc,
                             generate_TG_bias=get_TG_generate_bias_func(self.cfg, max_length=max_len + 10),
-                            strategy=BeamSearchType.word_sync_dfs,
+                            # word_sync (not word_sync_dfs): the terminal fast-track
+                            # (model.py: ``if strategy==word_sync or tag_start``) is
+                            # required so the target terminal token always seeds
+                            # next_beams. word_sync_dfs lacks it, so for tree-format
+                            # models that score NT tokens above the target terminal
+                            # (trained on NT-dense tree sequences), every top-k
+                            # extension is an NT, next_beams stays empty, and the
+                            # beam dies -> empty beams -> LL=-inf. SG_eval_step avoids
+                            # this by passing tag_start/tag_end (also enables the
+                            # fast-track); BLiMP scores the whole sentence, so use
+                            # the standard word_sync strategy instead.
+                            strategy=BeamSearchType.word_sync,
                             transformer_grammar_type=self.cfg.model.transformer_grammar_type,
                             tree_eval_type=tree_eval_type,
                         )
@@ -1295,22 +1313,97 @@ class Trainer:
                     else:
                         ll = torch.tensor(-float("inf"), device=self.device)
                     ll_list.append(ll)
+
+                    if beam_dump_path is not None and beams:
+                        self._record_beam_trees(
+                            evaluator, batch, idx, eval_input_ids, beams, vocab, pair_per_task
+                        )
         evaluator.eval_metric.update_beam(batch, torch.stack(ll_list))
         barrier()
+
+    def _get_hf_tokenizer(self):
+        """Lazy-init a HF tokenizers.Tokenizer for decoding beam trees to strings.
+
+        ``SentencepieceVocab`` (compiled .so) has no ``decode``; the HF tokenizer
+        loaded from the same vocab file can decode token-id lists (including NT
+        bracket tokens) to readable strings. Cached on the Trainer for reuse.
+        """
+        if not hasattr(self, "_hf_tok"):
+            from tokenizers import Tokenizer as _HFTokenizer
+            vocab_path = str(self.cfg.tokenizer.vocabulary)
+            # Configs use a leading "./" which Tokenizer.from_file resolves relative
+            # to cwd; the repo root is the cwd for eval runs (sbatch cd's there).
+            self._hf_tok = _HFTokenizer.from_file(vocab_path)
+        return self._hf_tok
+
+    def _record_beam_trees(self, evaluator, batch, idx, eval_input_ids, beams, vocab, pair_per_task):
+        """Decode + record top-N beam trees for one sentence (dump path set)."""
+        hf_tok = self._get_hf_tokenizer()
+        sent_id = int(batch["sent_id"]) if torch.is_tensor(batch["sent_id"]) else int(batch["sent_id"])
+        # Flat layout: sent_id = task_idx*(2*K) + in_task; even=good, odd=bad.
+        K = pair_per_task
+        task_idx = sent_id // (2 * K)
+        pair_id = (sent_id % (2 * K)) // 2
+        is_bad = (sent_id % 2) == 1
+        task_name = BLiMP_TASK_LIST[task_idx] if task_idx < len(BLiMP_TASK_LIST) else f"task{task_idx}"
+        # Terminal sentence: strip NT tokens, decode.
+        term_ids = [int(t) for t in eval_input_ids.tolist() if not vocab.is_non_terminal(int(t))]
+        terminal_str = hf_tok.decode(term_ids, skip_special_tokens=False)
+        # Top-N beams by logprob, decoded to bracketed tree strings.
+        top = sorted(beams, key=lambda b: b.get("logprob", float("-inf")), reverse=True)[:5]
+        decoded_beams = []
+        for b in top:
+            tree_str = hf_tok.decode(
+                [int(t) for t in b["input_ids"].cpu().tolist()], skip_special_tokens=False
+            )
+            decoded_beams.append({
+                "tree": tree_str,
+                "logprob": float(b.get("logprob", 0.0)),
+                "terminal_logprob": float(b.get("terminal_logprob", 0.0)),
+            })
+        evaluator.eval_metric.record_beams(
+            sent_id, task_name, pair_id, is_bad, terminal_str, decoded_beams, topk=5
+        )
+
 
     def summarization_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                 with self._summon_params_ctx():
-                    # Plain causal LMs (terminal, pushdown, treereg) use plain
-                    # autoregressive generation; only TG-grammar types need
-                    # word_sync_beam_search to insert NT structure during decoding.
-                    if self.cfg.model.transformer_grammar_type in ("terminal", "pushdown", "treereg"):
+                    # Decoding path selection:
+                    # - terminal / pushdown / treereg: plain autoregressive generate().
+                    # - pause1_label: the model's loss was masked to real-token-
+                    #   predicting positions only, so it never learned to emit pause
+                    #   tokens. Free generation skips pauses, misaligning the (p, q)
+                    #   grid. Use pause_label_generate, which deterministically inserts
+                    #   p repeats of the last real token at every q-boundary (matches
+                    #   training's pause_token_id=None repeat-mode) and returns the
+                    #   real-token stream directly.
+                    # - non-label pause (pause1, pause1in2, ...): the model IS trained
+                    #   to emit pause repeats, so beam search works — but the tree-
+                    #   grammar decoder's NT candidates must be masked out (done in
+                    #   word_sync_beam_search via is_pause). Output is then de-paused
+                    #   via extract_real_tokens (on-grid) and terminalized.
+                    # - TG / tgtree: word_sync_beam_search with NT emission (unchanged).
+                    gt = self.cfg.model.transformer_grammar_type
+                    if gt in ("terminal", "pushdown", "treereg"):
                         batch = move_to_device(batch, self.device)
                         predictions = self.dist_model.module.generate(batch["input_ids"],
                                                                        max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
                                                                        beam_size=6).token_ids
                         predictions = predictions[:, 0, :].to(self.device)
+                    elif gt == "pause1_label":
+                        # Deterministic pause insertion; returns real-token ids (BOS
+                        # stripped). No NT pollution, no extract_real_tokens needed.
+                        batch = move_to_device(batch, self.device)
+                        p, q = self.cfg.model.pause_spec
+                        predictions = self.dist_model.module.pause_label_generate(
+                            input_ids=batch["input_ids"],
+                            pause_spec=(p, q),
+                            max_real_tokens=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                            eos_token_id=self.cfg.model.eos_token_id,
+                        )
+                        predictions = predictions.to(self.device)
                     else:
                         # currently only support eval_batch_size==1
                         predictions = self.dist_model.module.word_sync_beam_search(
