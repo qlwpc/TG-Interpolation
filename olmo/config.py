@@ -826,6 +826,13 @@ class EvaluatorConfig(BaseConfig):
     beam_nc_ratio: float = 1.2
     beam_pc: int = 4
     beam_max_len_factor: int = 3
+    # Pushdown beam-search parameters (transformer_grammar_type=="pushdown" only).
+    # When beam_search=True and the model is pushdown, BLiMP_beam_eval_step calls
+    # OLMo.pushdown_beam_search (parse-marginalized -log p(x)) instead of
+    # word_sync_beam_search (which inserts NT tokens a plain-causal pushdown model
+    # never learned). Defaults mirror pushdown_beam_search (olmo/model.py).
+    pushdown_beam_size: int = 20
+    pushdown_max_reduce: Optional[int] = None
     # BLiMP subset: number of minimal pairs per task to score (full BLiMP = 1000).
     # Reduces both the dataset size (2*K*SENT_SIZE per task) and the compute()
     # denominator, so a partial run reports a meaningful per-task/overall accuracy

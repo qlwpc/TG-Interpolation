@@ -57,7 +57,7 @@ model:
   tg_height_h: 5
   pushdown_max_depth: 64
   pushdown_attachment_weight: 0.0
-  pushdown_use_flex: true
+  pushdown_use_flex: false
   treereg_layer: 6
   treereg_n_heads: 3
   treereg_every_k: 10
@@ -135,6 +135,10 @@ evaluators:
   subset_num_batches: -1
   samples_per_sent: null
   tree_eval_type: null
+  # Normal BoolQ examples retain parser spans and do not invoke a beam. These
+  # settings are only the fallback for custom downstream datasets without spans.
+  pushdown_beam_size: 5
+  pushdown_max_reduce: null
 eval_interval: 1000
 tokenizer:
   identifier: .//dataset/bbc-news/TG_GPT2_tokenizer.json

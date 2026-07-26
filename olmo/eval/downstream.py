@@ -637,7 +637,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = np.array(input_ids)
         if grammar_type is None:
             grammar_type = self.transformer_grammar_type
-        if grammar_type[:8] == "terminal" or grammar_type[:5] == "pause":
+        if (
+            grammar_type[:8] == "terminal"
+            or grammar_type[:5] == "pause"
+            or grammar_type == "pushdown"
+        ):
+            # Pushdown models are trained on terminal-only sequences. Their
+            # structure is carried separately as spans / inferred attachment
+            # actions, never as TG non-terminal tokens.
             input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
         elif grammar_type == "tgtree":
             # TGTree data is already converted to LIN2 (TG) format in token_encode
@@ -660,6 +667,28 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         elif grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
+
+    def encode_pushdown_with_spans(self, string: str) -> tuple[List[int], List[tuple[int, int, int]]]:
+        """Encode a parsed string as terminals plus terminal-coordinate spans."""
+        tree_ids = encode_TG_string(
+            self.tokenizer, string, string_with_POS_tags=False
+        )
+        terminals: List[int] = []
+        stack: List[int] = []
+        spans: List[tuple[int, int, int]] = []
+        for token in tree_ids:
+            token = int(token)
+            if self.vocab.is_opening_non_terminal(token):
+                stack.append(len(terminals))
+            elif self.vocab.is_closing_non_terminal(token):
+                if stack:
+                    left = stack.pop()
+                    right = len(terminals) - 1
+                    if left <= right:
+                        spans.append((left, right, right))
+            else:
+                terminals.append(token)
+        return terminals, spans
 
     def get_shots(self, shots_split):
         self.shots = []
@@ -692,25 +721,75 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 continuations = self.doc_to_continuations(doc)
                 label_id = self.doc_to_label(doc)
                 doc_text = self.doc_to_text(doc)
-                ctx = self.token_encode(doc_text)
-                dc = self.token_encode(self.doc_to_domain_conditional(doc))
+                if self.transformer_grammar_type == "pushdown":
+                    ctx, ctx_spans = self.encode_pushdown_with_spans(doc_text)
+                    dc, _ = self.encode_pushdown_with_spans(
+                        self.doc_to_domain_conditional(doc)
+                    )
+                    # Appendix B initializes every context window with a
+                    # dedicated ROOT token. The tokenizer's BOS is that ROOT;
+                    # parser spans are shifted into the resulting coordinates.
+                    ctx = [int(self.vocab.bos)] + ctx
+                    ctx_spans = [
+                        (left + 1, split + 1, right + 1)
+                        for left, split, right in ctx_spans
+                    ]
+                    dc = [int(self.vocab.bos)] + dc
+                else:
+                    ctx = self.token_encode(doc_text)
+                    dc = self.token_encode(self.doc_to_domain_conditional(doc))
+                    ctx_spans = []
 
                 for cont_id, continuation_str in enumerate(continuations):
                     # cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                     # cont_byte_len = len(continuation_str[1:].encode("utf-8"))
-                    continuation = self.token_encode(continuation_str)
+                    if self.transformer_grammar_type == "pushdown":
+                        continuation, continuation_spans = self.encode_pushdown_with_spans(
+                            continuation_str
+                        )
+                    else:
+                        continuation = self.token_encode(continuation_str)
+                        continuation_spans = []
                     
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
                     # when train, should keep last token
                     query = ctx + continuation
                     dc_query = dc + continuation
+                    query_spans = list(ctx_spans) + [
+                        (left + len(ctx), split + len(ctx), right + len(ctx))
+                        for left, split, right in continuation_spans
+                    ]
                     # if self.split=="train":
                     #     query = ctx + continuation
                     # else:
                     #     query = ctx + continuation[:-1]
                         
-                    query = query[-self.model_ctx_len :]
+                    trim_left = max(len(query) - self.model_ctx_len, 0)
+                    if trim_left and self.transformer_grammar_type == "pushdown":
+                        # Keep a ROOT/BOS even when left truncation is necessary.
+                        # The retained suffix is treated as a fresh context forest;
+                        # crossing constituents are dropped, fully retained spans
+                        # are translated after the inserted root.
+                        trim_left = len(query) - (self.model_ctx_len - 1)
+                        query = [int(self.vocab.bos)] + query[trim_left:]
+                        query_spans = [
+                            (
+                                left - trim_left + 1,
+                                split - trim_left + 1,
+                                right - trim_left + 1,
+                            )
+                            for left, split, right in query_spans
+                            if left >= trim_left
+                        ]
+                    else:
+                        query = query[trim_left:]
+                        if trim_left:
+                            query_spans = [
+                                (left - trim_left, split - trim_left, right - trim_left)
+                                for left, split, right in query_spans
+                                if left >= trim_left
+                            ]
                     query = self.convert_grammar_input(query)
                     dc_query = self.convert_grammar_input(dc_query)
                     continuation = self.convert_grammar_input(continuation)
@@ -725,6 +804,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                     if self.split!="train":
                         query = query[:-1]
                         dc_query = dc_query[:-1]
+                        query_spans = [
+                            span for span in query_spans if span[2] < len(query)
+                        ]
                     continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
@@ -814,6 +896,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             "label_id": label_id if isinstance(label_id, int) else (cont_id if cont_id in label_id else label_id[0]), 
                                                 # since some benchmarks have multiple correct labels
                             "cont_mask": mask,
+                            "tree_spans": query_spans,
                         }
                     )
                 if self.log_instances > 0:
@@ -888,6 +971,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         all_attention_bias = []
         all_label_mask = []
         all_cont_mask = []
+        all_tree_spans = []
 
         # pad according to max_lengths
         for sample in data:
@@ -900,6 +984,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             p, q = self.pause_spec
             input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=pause_expanded_len(self.model_ctx_len, p, q)))
             queries.append(input_ids)
+            all_tree_spans.append(sample.get("tree_spans", []))
 
             label_mask = None
             if self.generate_TG_attention_bias is not None:
@@ -964,6 +1049,21 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             batch["label_mask"] = torch.stack(all_label_mask)
         if all_cont_mask:
             batch["cont_mask"] = torch.stack(all_cont_mask)
+        if any(all_tree_spans):
+            max_spans = max(len(spans) for spans in all_tree_spans)
+            tree_spans = torch.full(
+                (len(data), max_spans, 3), -1, dtype=torch.long
+            )
+            tree_span_mask = torch.zeros(
+                (len(data), max_spans), dtype=torch.bool
+            )
+            for row, spans in enumerate(all_tree_spans):
+                if spans:
+                    count = len(spans)
+                    tree_spans[row, :count] = torch.tensor(spans, dtype=torch.long)
+                    tree_span_mask[row, :count] = True
+            batch["tree_spans"] = tree_spans
+            batch["tree_span_mask"] = tree_span_mask
 
         return batch
 

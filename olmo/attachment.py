@@ -89,6 +89,14 @@ class PushdownAttachmentHead(nn.Module):
         Wh_tilde = self.W(h_tilde)                                # (B,n,d)
         # logits[b,k,j] = (W h̃_k) · h_j  ==  (h_j)^T W h̃_k  (Eq. 5, j != k branch).
         logits = torch.bmm(Wh_tilde, h.transpose(1, 2))           # (B,n,n)
+        # Eq. 5 has a distinct shift-only branch on the diagonal:
+        #   score[k,k] = h̃_k^T W h̃_k,
+        # not h_k^T W h̃_k.  Compute it separately and scatter it over the
+        # reduce-key matrix, matching the reference implementation's
+        # ``next_word_key``/``logit_self`` insertion.
+        self_logits = (Wh_tilde * h_tilde).sum(dim=-1)            # (B,n)
+        diag = torch.arange(n, device=logits.device)
+        logits[:, diag, diag] = self_logits
         # Causal mask: query k can only attend to keys j <= k. The diagonal is
         # KEPT (it is the shift-only self-score (h̃_k)^T W h̃_k, which the paper
         # folds into the same softmax). Strict upper triangle -> -inf.
@@ -189,10 +197,14 @@ def compute_attachment_loss(
     logits: torch.Tensor,
     oracle: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
+    reduction: str = "mean",
 ) -> torch.Tensor:
     """Cross-entropy of the attachment head against oracle reduce targets.
 
-    ``L_attach = mean over valid (b, k) of CE(logits[b, k, :], oracle[b, k])``.
+    ``L_attach`` is CE over valid ``(b, k)`` positions. ``reduction`` accepts
+    ``"mean"``, ``"sum"``, or ``"none"`` and follows
+    :func:`torch.nn.functional.cross_entropy` semantics (with invalid queries
+    excluded).
     The shift-only case (``oracle == k``) is a normal class — the diagonal
     self-score is its logit. Returns a graph-connected zero when no positions are
     valid (so backward never errors on empty batches).
@@ -212,10 +224,18 @@ def compute_attachment_loss(
     else:
         flat_mask = torch.ones(B * n, dtype=torch.bool, device=logits.device)
     if not flat_mask.any():
+        if reduction == "none":
+            return logits.sum(dim=-1) * 0.0
         return logits.sum() * 0.0
     # F.cross_entropy with reduction='none' ignores the -inf-padded key positions
     # correctly (they contribute -inf to the denominator only if targeted, which
     # the clamp prevents). reduction='sum' / count gives a masked mean.
     ce = F.cross_entropy(flat_logits, flat_target, reduction="none")  # (B*n,)
+    if reduction == "none":
+        return ce.masked_fill(~flat_mask, 0.0).view(B, n)
     ce = ce[flat_mask]
-    return ce.sum() / flat_mask.sum().clamp(min=1)
+    if reduction == "sum":
+        return ce.sum()
+    if reduction == "mean":
+        return ce.sum() / flat_mask.sum().clamp(min=1)
+    raise ValueError(f"unsupported attachment-loss reduction: {reduction!r}")

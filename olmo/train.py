@@ -806,9 +806,25 @@ class Trainer:
             am = batch.get("attention_mask")
             if am is None:
                 am = torch.ones(B, n, dtype=torch.bool, device=att_logits.device)
-            attachment_loss = compute_attachment_loss(att_logits, oracle, am)
-            if loss_reduction == "sum":
-                attachment_loss = attachment_loss * batch["input_ids"].shape[0]
+            else:
+                am = am.to(torch.bool)
+            # The GPT-2 data uses the same special id at sentence end and as the
+            # next sentence's BOS/ROOT. Attachment targets exist for real words
+            # and EOS, but not for BOS itself. In packed chunks BOS is position
+            # zero or a special token immediately following another special
+            # token; mask precisely those query positions.
+            boundary = batch["input_ids"][:, :n] == self.cfg.model.eos_token_id
+            previous_boundary = torch.cat(
+                [
+                    torch.ones(B, 1, dtype=torch.bool, device=boundary.device),
+                    boundary[:, :-1],
+                ],
+                dim=1,
+            )
+            am = am & ~(boundary & previous_boundary)
+            attachment_loss = compute_attachment_loss(
+                att_logits, oracle, am, reduction=loss_reduction
+            )
         return ce_loss, z_loss, logits, treereg_loss, attachment_loss
 
     def train_micro_batch(
@@ -1128,12 +1144,16 @@ class Trainer:
                         # parse, so run a span-tracking beam search that marginalizes
                         # over incremental parses, scoring the tagged continuation CE.
                         sent_d = move_to_device(sent, self.device)
-                        tag = sent["tag"][0][1:]  # drop BOS slot, align with shifted tokens
+                        # Keep the tag in input coordinates. pushdown_beam_search
+                        # skips an already-present BOS internally and maps each
+                        # incremental marginalized surprisal back to its original
+                        # token position.
+                        tag = sent["tag"][0]
                         with self._summon_params_ctx():
                             score = self.dist_model.module.pushdown_beam_search(
                                 eval_input_ids=sent_d["input_ids"][0],
-                                beam_size=20, max_reduce=4,
-                                bos_id=self.cfg.model.eos_token_id,  # BOS; caller may override
+                                beam_size=20, max_reduce=None,
+                                bos_id=dataset.vocab.bos,
                                 tag=tag,
                                 use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
                             )
@@ -1263,6 +1283,14 @@ class Trainer:
         pc = eval_cfg.beam_pc
         max_len_factor = eval_cfg.beam_max_len_factor
         tree_eval_type = getattr(dataset, "tree_eval_type", "default")
+        # Pushdown is a plain-causal LM at inference; word_sync_beam_search would
+        # insert TG NT tokens it never learned. Use pushdown_beam_search instead,
+        # which marginalizes over shift-reduce parses and runs the trained
+        # _pushdown_attention depth-bias path (tree_spans=None otherwise degenerates
+        # -> PPL 78923). Mirrors SG_eval_step (train.py:1133).
+        is_pushdown = self.cfg.model.transformer_grammar_type == "pushdown"
+        pd_beam_size = getattr(eval_cfg, "pushdown_beam_size", 20)
+        pd_max_reduce = getattr(eval_cfg, "pushdown_max_reduce", None)
         # Beam-tree dump (env-gated OLMO_BEAM_DUMP=1 -> save_beam_trees_path set in
         # build_downstream_evaluator). When enabled, decode each sentence's top-N
         # beam trees (bracketed NT sequences) and hand them to the metric, which
@@ -1283,6 +1311,25 @@ class Trainer:
                     eval_input_ids = seq[:L].clone()
                     nc = max(int(nc_ratio * L), 5)
                     max_len = max(max_len_factor * L, 10)
+                    if is_pushdown:
+                        # Parse-marginalized log p(x) via shift-reduce beam search.
+                        # tag=None -> surprisal -log p(x) = -logsumexp_y logprob_y;
+                        # log_likelihood = -surprisal = log p(x). update_beam stores
+                        # -LL so compute()'s negation yields +LL (matches the TG path).
+                        with self._summon_params_ctx():
+                            surprisal = self.dist_model.module.pushdown_beam_search(
+                                eval_input_ids=eval_input_ids,
+                                beam_size=pd_beam_size,
+                                max_reduce=pd_max_reduce,
+                                bos_id=vocab.bos,
+                                tag=None,
+                                use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
+                            )
+                        ll = torch.tensor(-surprisal, device=self.device)
+                        ll_list.append(ll)
+                        # No beam-tree dump for pushdown (beams carry spans, not NT
+                        # bracket tokens — record_beams expects TG tree strings).
+                        continue
                     with self._summon_params_ctx():
                         beams = self.dist_model.module.word_sync_beam_search(
                             vocab=vocab,
@@ -1319,6 +1366,63 @@ class Trainer:
                             evaluator, batch, idx, eval_input_ids, beams, vocab, pair_per_task
                         )
         evaluator.eval_metric.update_beam(batch, torch.stack(ll_list))
+        barrier()
+
+    def pushdown_icl_eval_step(
+        self, batch: Dict[str, Any], evaluator: Evaluator, eval_config=None
+    ) -> None:
+        """Pushdown ICL eval (boolq / downstream classification).
+
+        Downstream strings are converted to terminal tokens (the sequence type
+        used in Pushdown training) while their parser-produced TG brackets are
+        retained as terminal-coordinate spans by the dataset. Custom datasets
+        without retained spans fall back to best-beam parse inference. Logits
+        feed ``ICLMetric.update`` unchanged.
+        """
+        pad_id = self.cfg.model.pad_token_id
+        beam_size = getattr(eval_config, "pushdown_beam_size", 20)
+        max_reduce = getattr(eval_config, "pushdown_max_reduce", None)
+        batch = move_to_device(batch, self.device)
+        with torch.no_grad():
+            with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
+                for idx in range(batch["input_ids"].shape[0]):
+                    inp = batch["input_ids"][idx:idx + 1]            # (1, L_pad)
+                    real_L = int((inp[0] != pad_id).sum().item())
+                    if real_L < 2:
+                        continue
+                    if batch.get("tree_spans") is not None:
+                        spans = batch["tree_spans"][idx]
+                        span_mask = batch.get("tree_span_mask")
+                        if span_mask is not None:
+                            spans = spans[span_mask[idx]]
+                        else:
+                            spans = spans[spans[:, 0] >= 0]
+                    else:
+                        # Fallback for downstream dataset subclasses that do not
+                        # preserve parser spans in their custom prep_examples.
+                        with self._summon_params_ctx():
+                            _, spans = self.dist_model.module.pushdown_beam_search(
+                                eval_input_ids=inp[0, :real_L],
+                                beam_size=beam_size,
+                                max_reduce=max_reduce,
+                                bos_id=int(inp[0, 0].item()),
+                                tag=None,
+                                use_attachment_head=(
+                                    self.cfg.model.pushdown_use_attachment_head_inference
+                                ),
+                                return_spans=True,
+                            )
+                    ts = spans.unsqueeze(0).to(self.device) if spans.shape[0] > 0 else None
+                    with self._summon_params_ctx():
+                        attn_mask = (inp[0:1] != pad_id)
+                        out = self.dist_model.module.forward(
+                            input_ids=inp, attention_mask=attn_mask, tree_spans=ts)
+                    # 1-row batch for ICLMetric.update (slices continuation logits at
+                    # [ctx_len-1 : ctx_len+cont_len-1], positions valid in L_pad).
+                    row = {k: (v[idx:idx + 1] if torch.is_tensor(v) else v)
+                           for k, v in batch.items()}
+                    evaluator.update_metrics(
+                        row, torch.zeros(1, device=self.device), out.logits)
         barrier()
 
     def _get_hf_tokenizer(self):
@@ -1388,10 +1492,28 @@ class Trainer:
                     gt = self.cfg.model.transformer_grammar_type
                     if gt in ("terminal", "pushdown", "treereg"):
                         batch = move_to_device(batch, self.device)
-                        predictions = self.dist_model.module.generate(batch["input_ids"],
-                                                                       max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
-                                                                       beam_size=6).token_ids
-                        predictions = predictions[:, 0, :].to(self.device)
+                        if gt == "pushdown":
+                            # pushdown's depth bias degenerates without tree_spans
+                            # (plain generate() -> degenerate "It is, and it is..."
+                            # output). Use pushdown_generate, a shift-reduce beam
+                            # search that tracks spans during generation so the
+                            # _pushdown_attention depth path stays active.
+                            gen = self.dist_model.module.pushdown_generate(
+                                batch["input_ids"],
+                                max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                                beam_size=6, max_reduce=4,
+                                eos_token_id=self.cfg.model.eos_token_id,
+                                pad_token_id=self.cfg.model.pad_token_id,
+                                use_attachment_head=(
+                                    self.cfg.model.pushdown_use_attachment_head_inference
+                                ),
+                            )
+                            predictions = gen.token_ids[:, 0, :].to(self.device)
+                        else:
+                            predictions = self.dist_model.module.generate(batch["input_ids"],
+                                                                           max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                                                                           beam_size=6).token_ids
+                            predictions = predictions[:, 0, :].to(self.device)
                     elif gt == "pause1_label":
                         # Deterministic pause insertion; returns real-token ids (BOS
                         # stripped). No NT pollution, no extract_real_tokens needed.
@@ -1543,6 +1665,14 @@ class Trainer:
                     self.SG_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "BLiMP" and getattr(eval_config, "beam_search", False):
                     self.BLiMP_beam_eval_step(eval_batch, evaluator)
+                elif (evaluator.type == EvaluatorType.downstream
+                      and evaluator.label != "BLiMP"
+                      and self.cfg.model.transformer_grammar_type == "pushdown"):
+                    # BoolQ / other ICL downstream: use parser spans retained in
+                    # terminal coordinates (beam fallback for custom datasets)
+                    # so the trained depth path remains active. BLiMP is excluded:
+                    # it uses marginalized pushdown beam scoring above.
+                    self.pushdown_icl_eval_step(eval_batch, evaluator, eval_config)
                 elif evaluator.type == EvaluatorType.rouge:
                     self.summarization_eval_step(eval_batch, evaluator)
                 elif evaluator.type == EvaluatorType.beam_search_icl:

@@ -134,7 +134,15 @@ evaluators:
   device_eval_batch_size: null
   subset_num_batches: -1
   samples_per_sent: null
-  tree_eval_type: null
+  tree_eval_type: default
+  # Pushdown: use pushdown_beam_search (parse-marginalized log-likelihood) via
+  # BLiMP_beam_eval_step's pushdown branch. word_sync_beam_search would insert
+  # NT tokens a plain-causal pushdown model never learned. device_eval_batch_size
+  # is forced to 1 in build_downstream_evaluator when beam_search is True.
+  beam_search: true
+  pushdown_beam_size: 20
+  # null enumerates every currently valid attachment target, as in the paper.
+  pushdown_max_reduce: null
 eval_interval: 1000
 tokenizer:
   identifier: .//dataset/bbc-news/TG_GPT2_tokenizer.json

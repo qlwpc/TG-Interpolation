@@ -178,7 +178,11 @@ def compute_depth_matrix_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
                      accumulate=True)
     S = torch.cumsum(torch.cumsum(D, dim=1), dim=2)
     S = torch.tril(S)
-    return S.to(torch.int8)
+    # Casting float values above 127 directly to int8 wraps modulo 256 (e.g.
+    # depth 130 became -126), which later indexes the depth embedding with a
+    # negative value.  Saturate before the compact cast, just like the NumPy
+    # preprocessing path.
+    return S.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8)
 
 
 class PushdownDepthBias(nn.Module):

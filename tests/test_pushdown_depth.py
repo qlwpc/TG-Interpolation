@@ -49,6 +49,15 @@ def test_pushdown_depth_bias_shape():
     assert E.shape == (4, 17, 16)  # (n_heads, max_depth+1, d_head)
 
 
+def test_depth_matrix_saturates_before_int8_cast():
+    # Duplicate spans are malformed but possible after noisy/unary parsing.
+    # They must saturate at 127 rather than wrap into a negative int8 index.
+    spans = torch.tensor([[[0, 0, 0]] * 130], dtype=torch.long)
+    depth = compute_depth_matrix_gpu(spans, 1)
+    assert depth.dtype == torch.int8
+    assert depth.item() == 127
+
+
 def test_pushdown_model_forward_parity():
     """Empty spans (no parse) must equal no-spans; real spans must differ."""
     from olmo.config import (ModelConfig, BlockType, LayerNormType, ActivationType, InitFnType)

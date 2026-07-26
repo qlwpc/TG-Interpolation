@@ -95,6 +95,32 @@ log = logging.getLogger(__name__)
 MODEL_AND_OPTIM_FOLDER = "model_and_optim"
 
 
+def _load_state_dict_tolerant_head(model: torch.nn.Module, state_dict: Dict[str, Any]) -> None:
+    """``load_state_dict`` tolerating only ``pushdown_attachment_head.*`` mismatches.
+
+    The pushdown attachment head was added after the legacy ``step33862``
+    pushdown checkpoint was trained, so the checkpoint may lack the
+    head while the current model always creates one for pushdown (or vice-versa
+    for a checkpoint trained with the head). The head is train-only — never used
+    at eval or when ``pushdown_use_attachment_head_inference=False`` — so leaving
+    it at default (random init) is safe. This drops unexpected head keys from the
+    checkpoint and ignores missing/unexpected head keys, then re-asserts strict
+    equality for every non-head key (so real corruption still raises).
+    """
+    # Drop unexpected head keys from the checkpoint (model has no head).
+    for k in [k for k in list(state_dict)
+              if k.startswith("pushdown_attachment_head.")]:
+        if k not in model.state_dict():
+            del state_dict[k]
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    missing = [k for k in missing if not k.startswith("pushdown_attachment_head.")]
+    unexpected = [k for k in unexpected if not k.startswith("pushdown_attachment_head.")]
+    if missing or unexpected:
+        raise RuntimeError(
+            f"Error(s) in loading state_dict for {type(model).__name__}:\n"
+            f"\tMissing key(s): {missing}\n\tUnexpected key(s): {unexpected}")
+
+
 def save_fsdp_model_and_optim_state(
     checkpoint_dir: PathOrStr,
     fsdp_model: FSDP,
@@ -763,7 +789,18 @@ class FullCheckpointer(Checkpointer):
                 state_dict_to_load = load_state_dict(
                     load_path, "model.pt", local_cache=local_cache, map_location="cpu"
                 )
-                dist_model.module.load_state_dict(state_dict_to_load, strict=True)
+                # Tolerate pushdown_attachment_head key mismatch: the head was
+                # added after the legacy step33862 pushdown checkpoint was
+                # trained, so that checkpoint has no head weights
+                # while the current model always creates one for pushdown. The
+                # head is train-only (never used when
+                # pushdown_use_attachment_head_inference=False), so loading an
+                # old checkpoint without it is safe — stay strict for everything
+                # else via _load_state_dict_tolerant_head.
+                if getattr(dist_model.module.config, "transformer_grammar_type", "") == "pushdown":
+                    _load_state_dict_tolerant_head(dist_model.module, state_dict_to_load)
+                else:
+                    dist_model.module.load_state_dict(state_dict_to_load, strict=True)
 
             # Load optimizer state.
             if load_optimizer_state:

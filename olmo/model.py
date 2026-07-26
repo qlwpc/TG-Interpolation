@@ -2769,7 +2769,7 @@ class OLMo(nn.Module):
             i = i + 1
 
         return beams
-    def pushdown_beam_search(
+    def _pushdown_beam_search_legacy(
         self,
         eval_input_ids: torch.Tensor,
         beam_size: int = 20,
@@ -2777,7 +2777,18 @@ class OLMo(nn.Module):
         bos_id: Optional[int] = None,
         tag: Optional[List[int]] = None,
         use_attachment_head: bool = False,
+        return_spans: bool = False,
     ) -> float:
+        # Kept as a private compatibility alias for out-of-tree callers.
+        return self.pushdown_beam_search(
+            eval_input_ids=eval_input_ids,
+            beam_size=beam_size,
+            max_reduce=max_reduce,
+            bos_id=bos_id,
+            tag=tag,
+            use_attachment_head=use_attachment_head,
+            return_spans=return_spans,
+        )
         """Shift-reduce beam search that tracks span/stack state for pushdown models.
 
         Marginalizes over incremental parses y of the given terminal sequence x by
@@ -2808,6 +2819,10 @@ class OLMo(nn.Module):
             If ``tag`` is None: surprisal = -logsumexp_y logprob_y (marginalized -log p(x)).
             If ``tag`` given: sum of per-token CE at tagged positions for the best beam
             (matches SG's ``sum(per_tok_ce * tag_tensor)`` scoring).
+            If ``return_spans`` is True: returns a ``(score, spans)`` tuple where
+            ``spans`` is the best beam's closed-constituent list as an ``(M, 3)`` long
+            tensor (``[l, split, r]``; -1-padded), for callers (e.g. the boolq ICL path)
+            that need the inferred parse to drive a depth-biased teacher-forced forward.
         """
         # closures are stored as (l, r) pairs (the depth tape ignores the split —
         # compute_depth_matrix_gpu only reads spans[:, 0] and spans[:, 2]). We keep a
@@ -2958,18 +2973,627 @@ class OLMo(nn.Module):
             beams = next_beams[:beam_size]
 
         if not beams:
+            if return_spans:
+                return float("inf"), torch.zeros((0, 3), dtype=torch.long)
             return float("inf")
         if tag is None:
             # Marginalize over parses (Murty et al.): p(x) = sum_y p(x,y) =>
             # log p(x) = logsumexp_y logprob_y. Surprisal = -log p(x).
             logprobs = torch.tensor([b["logprob"] for b in beams], dtype=torch.float64)
-            return -torch.logsumexp(logprobs, dim=0).item()
-        # Tag scoring (SG): best beam's sum of per-token CE at tagged positions.
-        # per_tok_lp aligns with the shifted terminals (tokens[0..n-1]); tag marks
-        # which of those positions to sum (1 = include).
+            score = -torch.logsumexp(logprobs, dim=0).item()
+        else:
+            # Tag scoring (SG): best beam's sum of per-token CE at tagged positions.
+            # per_tok_lp aligns with the shifted terminals (tokens[0..n-1]); tag marks
+            # which of those positions to sum (1 = include).
+            best = max(beams, key=lambda b: b["logprob"])
+            per_tok_ce = [-lp for lp in best["per_tok_lp"]]  # CE = -log p
+            tag = list(tag)
+            # Clamp length; tag may be one shorter (ce_loss is one shorter than input).
+            m = min(len(per_tok_ce), len(tag))
+            score = sum(per_tok_ce[i] for i in range(m) if tag[i])
+        if not return_spans:
+            return score
+        # Best beam's closed spans as (M, 3) [l, split, r] long tensor (-1-padded).
         best = max(beams, key=lambda b: b["logprob"])
-        per_tok_ce = [-lp for lp in best["per_tok_lp"]]  # CE = -log p
-        tag = list(tag)
-        # Clamp length; tag may be one shorter (ce_loss is one shorter than input).
-        m = min(len(per_tok_ce), len(tag))
-        return sum(per_tok_ce[i] for i in range(m) if tag[i])
+        closed = best["closed"]
+        M = max(len(closed), 0)
+        spans = torch.full((M, 3), -1, dtype=torch.long)
+        for i, (l, r) in enumerate(closed):
+            spans[i, 0] = l
+            spans[i, 1] = r   # split (unused by depth tape; set = r for safety)
+            spans[i, 2] = r
+        return score, spans
+
+    def pushdown_beam_search(
+        self,
+        eval_input_ids: torch.Tensor,
+        beam_size: int = 20,
+        max_reduce: Optional[int] = None,
+        bos_id: Optional[int] = None,
+        tag: Optional[List[int]] = None,
+        use_attachment_head: bool = False,
+        return_spans: bool = False,
+    ):
+        """Approximate ``p(x)`` with a normalized attachment-action beam.
+
+        A beam is always a parse state *after* attaching its last token. At the
+        next step the model first predicts the next word from that state, then
+        predicts/normalizes that word's attachment decision, and finally updates
+        the stack. This is the order in Eq. 7 of Murty et al. and avoids the
+        former one-token attachment lag.
+
+        When no trained attachment head is requested, valid attachment actions
+        receive a normalized uniform prior. They are never free zero-score
+        branches, so marginal likelihood cannot grow merely because more parses
+        were enumerated. Tagged SG scores use incremental, parse-marginalized
+        word surprisal at each prefix rather than the word scores of one final
+        best parse.
+        """
+        device = self.device
+        if eval_input_ids.dim() > 1:
+            eval_input_ids = eval_input_ids[0]
+        observed = [int(t) for t in eval_input_ids.tolist()]
+        if not observed:
+            empty = torch.zeros((0, 3), dtype=torch.long)
+            return (0.0, empty) if return_spans else 0.0
+
+        # Do not score an already-present BOS twice. If no explicit BOS is
+        # present, use the requested BOS as context and score every observed
+        # token. With bos_id=None the first observed token is the context token,
+        # which is the correct convention for tokenizers trained without BOS.
+        inserted_bos = bos_id is not None and observed[0] != int(bos_id)
+        if inserted_bos:
+            seed = int(bos_id)
+            targets = observed
+            target_positions = list(range(len(observed)))
+        else:
+            seed = observed[0]
+            targets = observed[1:]
+            target_positions = list(range(1, len(observed)))
+
+        beams: List[dict] = [{
+            "input_ids": [seed],
+            "closed": [],
+            "stack": [(0, 0)],
+            "logprob": 0.0,
+        }]
+        incremental_word_lps: List[Tuple[int, float]] = []
+
+        def collate_spans(states: List[dict], seq_len: int) -> torch.Tensor:
+            max_closed = max(max((len(s["closed"]) for s in states), default=0), 1)
+            spans = torch.full(
+                (len(states), max_closed, 3), -1, dtype=torch.long, device=device
+            )
+            for bi, state in enumerate(states):
+                for si, (left, right) in enumerate(state["closed"]):
+                    if 0 <= left <= right < seq_len:
+                        spans[bi, si] = torch.tensor(
+                            [left, right, right], dtype=torch.long, device=device
+                        )
+            return spans
+
+        def action_counts(state: dict, token: int, is_last: bool) -> List[int]:
+            old_stack_len = len(state["stack"])
+            # The sentence-final EOS attaches to the oldest stack item, closing
+            # the root, as in the reference beam search. A single attachment
+            # decision can collapse an arbitrary stack suffix.
+            if is_last and token == self.config.eos_token_id:
+                return [old_stack_len]
+            # Keep the BOS/root item inaccessible before final EOS.
+            upper = max(old_stack_len - 1, 0)
+            if max_reduce is not None:
+                upper = min(upper, max(max_reduce, 0))
+            return list(range(upper + 1))
+
+        def attach_shifted(state: dict, n_reduces: int) -> Tuple[dict, int]:
+            stack = list(state["stack"])
+            closed = list(state["closed"])
+            current = stack.pop()  # the newly shifted singleton
+            reduce_target = current[1]  # self = shift only
+            for _ in range(n_reduces):
+                if not stack:
+                    break
+                left_constituent = stack.pop()
+                reduce_target = left_constituent[1]
+                current = (left_constituent[0], current[1])
+                closed.append(current)
+            stack.append(current)
+            return {
+                "input_ids": state["input_ids"],
+                "closed": closed,
+                "stack": stack,
+                "logprob": state["logprob"],
+            }, reduce_target
+
+        for step, (token, original_pos) in enumerate(zip(targets, target_positions)):
+            if not beams:
+                break
+            prefix_len = len(beams[0]["input_ids"])
+            inp = torch.tensor(
+                [b["input_ids"] for b in beams], dtype=torch.long, device=device
+            )
+            mask = torch.ones_like(inp, dtype=torch.bool)
+            spans = collate_spans(beams, prefix_len)
+            with torch.no_grad():
+                word_out = self.forward(
+                    input_ids=inp,
+                    attention_mask=mask,
+                    tree_spans=spans,
+                    last_logits_only=True,
+                )
+            word_lps = torch.log_softmax(
+                word_out.logits[:, 0, :].float(), dim=-1
+            )[:, token]
+
+            previous_mass = torch.logsumexp(
+                torch.tensor(
+                    [b["logprob"] for b in beams],
+                    dtype=torch.float64,
+                    device=device,
+                ),
+                dim=0,
+            )
+            word_mass = torch.logsumexp(
+                torch.tensor(
+                    [b["logprob"] for b in beams],
+                    dtype=torch.float64,
+                    device=device,
+                )
+                + word_lps.to(torch.float64),
+                dim=0,
+            )
+            incremental_word_lps.append(
+                (original_pos, float((word_mass - previous_mass).item()))
+            )
+
+            shifted: List[dict] = []
+            choices: List[List[int]] = []
+            for beam, word_lp in zip(beams, word_lps.tolist()):
+                if math.isnan(word_lp) or word_lp < -3e37:
+                    continue
+                shifted.append({
+                    "input_ids": beam["input_ids"] + [token],
+                    "closed": list(beam["closed"]),
+                    "stack": list(beam["stack"]) + [(prefix_len, prefix_len)],
+                    "logprob": beam["logprob"] + word_lp,
+                })
+                choices.append(action_counts(beam, token, step == len(targets) - 1))
+            if not shifted:
+                beams = []
+                break
+
+            # Score r_k only after x_k has been supplied to the attachment MLP.
+            # The prior stack tape is retained until the decision is applied.
+            attachment_rows: Optional[torch.Tensor] = None
+            if use_attachment_head:
+                shifted_inp = torch.tensor(
+                    [s["input_ids"] for s in shifted], dtype=torch.long, device=device
+                )
+                shifted_mask = torch.ones_like(shifted_inp, dtype=torch.bool)
+                shifted_spans = collate_spans(shifted, prefix_len + 1)
+                with torch.no_grad():
+                    attachment_out = self.forward(
+                        input_ids=shifted_inp,
+                        attention_mask=shifted_mask,
+                        tree_spans=shifted_spans,
+                        last_logits_only=True,
+                        compute_attachment_logits=True,
+                    )
+                if attachment_out.attachment_logits is not None:
+                    attachment_rows = attachment_out.attachment_logits[:, prefix_len, :]
+
+            next_beams: List[dict] = []
+            for bi, (state, counts) in enumerate(zip(shifted, choices)):
+                attached: List[Tuple[dict, int]] = [
+                    attach_shifted(state, count) for count in counts
+                ]
+                targets_j = [target_j for _, target_j in attached]
+                if attachment_rows is None:
+                    structural_lps = [-math.log(len(attached))] * len(attached)
+                else:
+                    valid_logits = attachment_rows[
+                        bi, torch.tensor(targets_j, dtype=torch.long, device=device)
+                    ].float()
+                    structural_lps = torch.log_softmax(valid_logits, dim=0).tolist()
+                for (new_state, _), structural_lp in zip(attached, structural_lps):
+                    new_state["logprob"] += structural_lp
+                    next_beams.append(new_state)
+
+            next_beams.sort(key=lambda state: state["logprob"], reverse=True)
+            beams = next_beams[:beam_size]
+
+        if not beams:
+            empty = torch.zeros((0, 3), dtype=torch.long)
+            return (float("inf"), empty) if return_spans else float("inf")
+
+        if tag is None:
+            final_logprobs = torch.tensor(
+                [b["logprob"] for b in beams], dtype=torch.float64
+            )
+            score = float(-torch.logsumexp(final_logprobs, dim=0).item())
+        else:
+            tag_values = list(tag)
+            score = 0.0
+            for original_pos, logp in incremental_word_lps:
+                if original_pos < len(tag_values) and tag_values[original_pos]:
+                    score -= logp
+
+        if not return_spans:
+            return score
+        best = max(beams, key=lambda state: state["logprob"])
+        closed = list(best["closed"])
+        # If BOS was inserted outside eval_input_ids, translate spans back into
+        # the caller's coordinates and discard root spans containing that BOS.
+        if inserted_bos:
+            closed = [(l - 1, r - 1) for l, r in closed if l > 0]
+        spans_out = torch.full((len(closed), 3), -1, dtype=torch.long)
+        for i, (left, right) in enumerate(closed):
+            spans_out[i] = torch.tensor([left, right, right], dtype=torch.long)
+        return score, spans_out
+
+    def _pushdown_generate_legacy(
+        self,
+        input_ids: torch.LongTensor,
+        max_steps: int = 10,
+        beam_size: int = 6,
+        max_reduce: int = 4,
+        eos_token_id: Optional[int] = None,
+        pad_token_id: Optional[int] = None,
+    ) -> "OLMoGenerateOutput":
+        # Kept as a private compatibility alias for out-of-tree callers.
+        return self.pushdown_generate(
+            input_ids=input_ids,
+            max_steps=max_steps,
+            beam_size=beam_size,
+            max_reduce=max_reduce,
+            eos_token_id=eos_token_id,
+            pad_token_id=pad_token_id,
+        )
+        """Shift-reduce beam-search GENERATION for pushdown models.
+
+        Mirrors :meth:`pushdown_beam_search`, but instead of force-shifting a given
+        eval token, each step samples the model's top-k next tokens. This keeps the
+        trained ``_pushdown_attention`` depth-bias path active during open-ended
+        generation (summarization), where the plain ``generate()`` path passes
+        ``tree_spans=None`` and the depth bias vanishes -> degenerate
+        "It is , and it is ..." output.
+
+        The prompt's parse is built incrementally: each generated token opens a
+        constituent (push) and reduces close constituents (closing spans), so the
+        depth bias tracks the model's own generated tree structure. The prompt
+        region itself contributes no spans (its tokens are not re-scored), which is
+        correct — only generated-token attention is biased.
+
+        Args:
+            input_ids: ``(B, L)`` or ``(L,)`` prompt. Trailing pad is stripped.
+            max_steps: max generated tokens (excludes prompt).
+            beam_size: beams retained per step.
+            max_reduce: max consecutive reduces per hypothesis per step.
+            eos_token_id: stop token (defaults to ``config.eos_token_id``).
+            pad_token_id: pad for output padding (defaults to ``config.pad_token_id``).
+
+        Returns:
+            ``OLMoGenerateOutput`` with ``token_ids`` ``(B, beam_size, max_steps)``
+            (generated tokens only, pad-padded) and ``scores`` ``(B, beam_size)``,
+            matching :meth:`generate`'s interface so callers are uniform.
+        """
+        device = self.device
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
+        B = input_ids.shape[0]
+        eos = eos_token_id if eos_token_id is not None else self.config.eos_token_id
+        pad = pad_token_id if pad_token_id is not None else self.config.pad_token_id
+        prompt_lists = [input_ids[b].tolist() for b in range(B)]
+
+        def apply_reduces(beam: dict, n_reduces: int) -> Tuple[dict, int]:
+            last_pos = len(beam["input_ids"]) - 1
+            if n_reduces == 0:
+                return beam, last_pos
+            closed = list(beam["closed"])
+            stack = list(beam["stack"])
+            r_k = last_pos
+            for i in range(n_reduces):
+                if not stack:
+                    break
+                l, r = stack.pop()
+                closed.append((l, last_pos))
+                if i == n_reduces - 1:
+                    r_k = r
+            return ({"input_ids": beam["input_ids"], "closed": closed, "stack": stack,
+                     "logprob": beam["logprob"], "generated": beam["generated"],
+                     "done": beam["done"]}, r_k)
+
+        all_token_ids, all_scores = [], []
+        for b in range(B):
+            prompt = list(prompt_lists[b])
+            while prompt and prompt[-1] == pad:
+                prompt.pop()
+            # Seed beam: prompt tokens, empty parse. Constituents open over
+            # generated positions as the model emits tokens.
+            beams = [{"input_ids": list(prompt), "closed": [], "stack": [],
+                      "logprob": 0.0, "generated": [], "done": False}]
+            finished: List[dict] = []
+            for _step in range(max_steps):
+                cand_states = []
+                for beam in beams:
+                    if beam["done"]:
+                        continue
+                    upper = min(max_reduce, len(beam["stack"]))
+                    for n_red in range(upper + 1):
+                        state, _rk = apply_reduces(beam, n_red)
+                        cand_states.append(state)
+                if not cand_states:
+                    break
+                K = len(cand_states[0]["input_ids"])
+                inp_ids = torch.tensor(
+                    [s["input_ids"] for s in cand_states], dtype=torch.long, device=device)
+                attn_mask = torch.ones(inp_ids.shape, dtype=torch.bool, device=device)
+                max_closed = max(max(len(s["closed"]) for s in cand_states), 1)
+                ts = torch.full((inp_ids.shape[0], max_closed, 3), -1,
+                                dtype=torch.long, device=device)
+                for i, s in enumerate(cand_states):
+                    for j, (l, r) in enumerate(s["closed"]):
+                        ts[i, j, 0] = l
+                        ts[i, j, 1] = r
+                        ts[i, j, 2] = r
+                with torch.no_grad():
+                    out = self.forward(input_ids=inp_ids, attention_mask=attn_mask,
+                                       tree_spans=ts, last_logits_only=True)
+                log_probs = torch.log_softmax(out.logits[:, 0, :].float(), dim=-1)  # (N, vocab)
+                # For each candidate, expand its top-`beam_size` next tokens.
+                next_beams: List[dict] = []
+                for ci, state in enumerate(cand_states):
+                    topk_lp, topk_tok = torch.topk(log_probs[ci], beam_size)
+                    for tl, tk in zip(topk_lp.tolist(), topk_tok.tolist()):
+                        if math.isnan(tl) or tl < -3e37:
+                            continue
+                        tok = int(tk)
+                        next_beams.append({
+                            "input_ids": state["input_ids"] + [tok],
+                            "closed": state["closed"],
+                            "stack": state["stack"] + [(K, K)],
+                            "logprob": state["logprob"] + tl,
+                            "generated": state["generated"] + [tok],
+                            "done": tok == eos,
+                        })
+                still = [nb for nb in next_beams if not nb["done"]]
+                finished.extend(nb for nb in next_beams if nb["done"])
+                still.sort(key=lambda x: x["logprob"], reverse=True)
+                beams = still[:beam_size]
+                if not beams:
+                    break
+            all_beams = finished + beams
+            all_beams.sort(key=lambda x: x["logprob"], reverse=True)
+            top = all_beams[:beam_size]
+            gen_lists, sc = [], []
+            for b_ in top:
+                g = b_["generated"]
+                if len(g) < max_steps:
+                    g = g + [pad] * (max_steps - len(g))
+                else:
+                    g = g[:max_steps]
+                gen_lists.append(g)
+                sc.append(b_["logprob"])
+            while len(gen_lists) < beam_size:
+                gen_lists.append([pad] * max_steps)
+                sc.append(-float("inf"))
+            all_token_ids.append(gen_lists)
+            all_scores.append(sc)
+
+        token_ids = torch.tensor(all_token_ids, dtype=torch.long, device=device)  # (B, beam, max_steps)
+        scores = torch.tensor(all_scores, dtype=torch.float, device=device)      # (B, beam)
+        return OLMoGenerateOutput(token_ids=token_ids, scores=scores)
+
+    def pushdown_generate(
+        self,
+        input_ids: torch.LongTensor,
+        max_steps: int = 10,
+        beam_size: int = 6,
+        max_reduce: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
+        pad_token_id: Optional[int] = None,
+        use_attachment_head: bool = False,
+    ) -> "OLMoGenerateOutput":
+        """Generate words and normalized Pushdown attachments jointly.
+
+        The prompt parse is first inferred with :meth:`pushdown_beam_search`;
+        generation therefore starts from a real prompt stack/depth tape instead
+        of an empty stack. At every decode step word probabilities are followed
+        by a normalized attachment distribution (trained head when requested,
+        uniform over valid stack actions otherwise).
+        """
+        device = self.device
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
+        eos = self.config.eos_token_id if eos_token_id is None else eos_token_id
+        pad = self.config.pad_token_id if pad_token_id is None else pad_token_id
+
+        def collate_spans(states: List[dict]) -> torch.Tensor:
+            max_closed = max(max((len(s["closed"]) for s in states), default=0), 1)
+            result = torch.full(
+                (len(states), max_closed, 3), -1, dtype=torch.long, device=device
+            )
+            for bi, state in enumerate(states):
+                seq_len = len(state["input_ids"])
+                for si, (left, right) in enumerate(state["closed"]):
+                    if 0 <= left <= right < seq_len:
+                        result[bi, si] = torch.tensor(
+                            [left, right, right], dtype=torch.long, device=device
+                        )
+            return result
+
+        def stack_from_closed(n_tokens: int, closed: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+            maximal: List[Tuple[int, int]] = []
+            unique = sorted(set(closed), key=lambda span: (span[0], -span[1]))
+            for span in unique:
+                if not any(
+                    other != span
+                    and other[0] <= span[0]
+                    and span[1] <= other[1]
+                    for other in unique
+                ):
+                    maximal.append(span)
+            covered = set()
+            for left, right in maximal:
+                covered.update(range(left, right + 1))
+            top_level = maximal + [
+                (position, position)
+                for position in range(n_tokens)
+                if position not in covered
+            ]
+            return sorted(top_level, key=lambda span: span[0])
+
+        def apply_action(state: dict, n_reduces: int) -> Tuple[dict, int]:
+            stack = list(state["stack"])
+            closed = list(state["closed"])
+            current = stack.pop()
+            reduce_target = current[1]
+            for _ in range(n_reduces):
+                if not stack:
+                    break
+                left_constituent = stack.pop()
+                reduce_target = left_constituent[1]
+                current = (left_constituent[0], current[1])
+                closed.append(current)
+            stack.append(current)
+            out = dict(state)
+            out["closed"] = closed
+            out["stack"] = stack
+            return out, reduce_target
+
+        all_tokens: List[List[List[int]]] = []
+        all_scores: List[List[float]] = []
+        for batch_idx in range(input_ids.shape[0]):
+            prompt = [int(t) for t in input_ids[batch_idx].tolist()]
+            while prompt and prompt[-1] == pad:
+                prompt.pop()
+            if not prompt:
+                prompt = [int(eos)]
+
+            # Infer the prompt's best incremental parse. Using prompt[0] as the
+            # explicit context token prevents an artificial BOS insertion and
+            # keeps returned spans in prompt coordinates.
+            _, prompt_spans = self.pushdown_beam_search(
+                torch.tensor(prompt, dtype=torch.long, device=device),
+                beam_size=beam_size,
+                max_reduce=max_reduce,
+                bos_id=prompt[0],
+                tag=None,
+                use_attachment_head=use_attachment_head,
+                return_spans=True,
+            )
+            closed = [(int(row[0]), int(row[2])) for row in prompt_spans.tolist()]
+            beams: List[dict] = [{
+                "input_ids": prompt,
+                "closed": closed,
+                "stack": stack_from_closed(len(prompt), closed),
+                "generated": [],
+                "logprob": 0.0,
+                "done": False,
+            }]
+            finished: List[dict] = []
+
+            for _ in range(max_steps):
+                if not beams:
+                    break
+                inp = torch.tensor(
+                    [state["input_ids"] for state in beams],
+                    dtype=torch.long,
+                    device=device,
+                )
+                mask = torch.ones_like(inp, dtype=torch.bool)
+                with torch.no_grad():
+                    out = self.forward(
+                        input_ids=inp,
+                        attention_mask=mask,
+                        tree_spans=collate_spans(beams),
+                        last_logits_only=True,
+                    )
+                word_logprobs = torch.log_softmax(out.logits[:, 0, :].float(), dim=-1)
+
+                shifted: List[dict] = []
+                choice_counts: List[List[int]] = []
+                top_k = min(beam_size, word_logprobs.shape[-1])
+                for bi, beam in enumerate(beams):
+                    top_lps, top_tokens = torch.topk(word_logprobs[bi], top_k)
+                    for word_lp, token in zip(top_lps.tolist(), top_tokens.tolist()):
+                        token = int(token)
+                        if math.isnan(word_lp) or word_lp < -3e37:
+                            continue
+                        position = len(beam["input_ids"])
+                        state = {
+                            "input_ids": beam["input_ids"] + [token],
+                            "closed": list(beam["closed"]),
+                            "stack": list(beam["stack"]) + [(position, position)],
+                            "generated": beam["generated"] + [token],
+                            "logprob": beam["logprob"] + word_lp,
+                            "done": token == eos,
+                        }
+                        shifted.append(state)
+                        if token == eos:
+                            choice_counts.append([len(beam["stack"])])
+                        else:
+                            upper = max(len(beam["stack"]) - 1, 0)
+                            if max_reduce is not None:
+                                upper = min(upper, max(max_reduce, 0))
+                            choice_counts.append(list(range(upper + 1)))
+
+                attachment_rows: Optional[torch.Tensor] = None
+                if shifted and use_attachment_head:
+                    shifted_inp = torch.tensor(
+                        [state["input_ids"] for state in shifted],
+                        dtype=torch.long,
+                        device=device,
+                    )
+                    shifted_mask = torch.ones_like(shifted_inp, dtype=torch.bool)
+                    with torch.no_grad():
+                        attachment_out = self.forward(
+                            input_ids=shifted_inp,
+                            attention_mask=shifted_mask,
+                            tree_spans=collate_spans(shifted),
+                            last_logits_only=True,
+                            compute_attachment_logits=True,
+                        )
+                    if attachment_out.attachment_logits is not None:
+                        attachment_rows = attachment_out.attachment_logits[:, -1, :]
+
+                expanded: List[dict] = []
+                for si, (state, counts) in enumerate(zip(shifted, choice_counts)):
+                    actions = [apply_action(state, count) for count in counts]
+                    target_ids = [target for _, target in actions]
+                    if attachment_rows is None:
+                        action_lps = [-math.log(len(actions))] * len(actions)
+                    else:
+                        logits = attachment_rows[
+                            si, torch.tensor(target_ids, dtype=torch.long, device=device)
+                        ].float()
+                        action_lps = torch.log_softmax(logits, dim=0).tolist()
+                    for (new_state, _), action_lp in zip(actions, action_lps):
+                        new_state["logprob"] += action_lp
+                        expanded.append(new_state)
+
+                finished.extend(state for state in expanded if state["done"])
+                unfinished = [state for state in expanded if not state["done"]]
+                unfinished.sort(key=lambda state: state["logprob"], reverse=True)
+                beams = unfinished[:beam_size]
+
+            candidates = finished + beams
+            candidates.sort(key=lambda state: state["logprob"], reverse=True)
+            selected = candidates[:beam_size]
+            token_rows: List[List[int]] = []
+            score_rows: List[float] = []
+            for state in selected:
+                generated = state["generated"][:max_steps]
+                generated += [pad] * (max_steps - len(generated))
+                token_rows.append(generated)
+                score_rows.append(float(state["logprob"]))
+            while len(token_rows) < beam_size:
+                token_rows.append([pad] * max_steps)
+                score_rows.append(-float("inf"))
+            all_tokens.append(token_rows)
+            all_scores.append(score_rows)
+
+        return OLMoGenerateOutput(
+            token_ids=torch.tensor(all_tokens, dtype=torch.long, device=device),
+            scores=torch.tensor(all_scores, dtype=torch.float, device=device),
+        )

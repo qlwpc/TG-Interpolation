@@ -21,6 +21,8 @@ in unit tests. The algorithms:
   ``olmo/data/tgmasking/mask.cpp``.
 * :func:`parse_tree_block` — stack-parse a ``[BOS, <(S>...<S)>, EOS]`` block into a
   nested ``(label, children)`` tree; BOS/EOS are returned as surrounding leaves.
+* :func:`collapse_unary_tree` — collapse unary chains, matching the paper's
+  BLLIP preprocessing.
 * :func:`binarize_tree` — left/right binarize a non-binary tree (preserves leaves).
 * :func:`tree_spans` — enumerate a tree's constituent spans ``(i, split, j)``
   (leaf indices, 0-based within the tree's content leaves) and its content-leaf
@@ -237,8 +239,47 @@ def count_leaves(node: Union[TreeNode, Leaf]) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# Binarization
+# Unary collapse + binarization
 # --------------------------------------------------------------------------- #
+def collapse_unary_tree(
+    node: Union[TreeNode, Leaf], join_char: str = "+"
+) -> Union[TreeNode, Leaf]:
+    """Collapse every internal unary chain while preserving terminal leaves.
+
+    ``(A (B (C x)))`` becomes ``(A+B+C x)``. A single preterminal
+    ``(C x)`` remains an internal node, matching NLTK's
+    ``collapse_unary(collapsePOS=True, collapseRoot=True)`` behavior used by
+    the Pushdown Layers preprocessing: labels are merged, but the final
+    preterminal-to-token edge is not removed.
+
+    The traversal is iterative so malformed/deep parser output cannot overflow
+    Python's recursion limit.
+    """
+    if isinstance(node, int):
+        return node
+    result: Dict[int, Union[TreeNode, Leaf]] = {}
+    stack: List[Tuple[str, Union[TreeNode, Leaf]]] = [("node", node)]
+    while stack:
+        phase, current = stack.pop()
+        if phase == "node":
+            if isinstance(current, int):
+                result[id(current)] = current
+                continue
+            stack.append(("ready", current))
+            for child in reversed(current[1]):
+                stack.append(("node", child))
+            continue
+
+        label, original_children = current
+        children = [result[id(child)] for child in original_children]
+        while len(children) == 1 and not isinstance(children[0], int):
+            child_label, child_children = children[0]
+            label = f"{label}{join_char}{child_label}"
+            children = child_children
+        result[id(current)] = (label, children)
+    return result[id(node)]
+
+
 def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union[TreeNode, Leaf]:
     """Left/right-binarize a non-binary constituency tree.
 
@@ -417,7 +458,12 @@ def compute_depth_matrix(spans: Sequence[Span], n_leaves: int, max_depth: int = 
 # --------------------------------------------------------------------------- #
 # Tree-stream chunk iterator (for preprocessing / dataset indexing)
 # --------------------------------------------------------------------------- #
-def _binarize_segments(segments: List[Segment], direction: str, binarize: bool = True) -> List[Segment]:
+def _binarize_segments(
+    segments: List[Segment],
+    direction: str,
+    binarize: bool = True,
+    collapse_unary: bool = False,
+) -> List[Segment]:
     """Convert each tree segment into (leaves, spans).
 
     When ``binarize=True`` (default, TreeReg), :func:`binarize_tree` the tree first
@@ -432,7 +478,8 @@ def _binarize_segments(segments: List[Segment], direction: str, binarize: bool =
         if kind == "leaves":
             out.append((kind, data))
         else:
-            btree = binarize_tree(data, direction) if binarize else data
+            tree = collapse_unary_tree(data) if collapse_unary else data
+            btree = binarize_tree(tree, direction) if binarize else tree
             leaves, spans = tree_spans(btree)
             out.append(("tree", (leaves, spans)))
     return out
@@ -714,7 +761,12 @@ def _count_leaves_in_span(tree_arr, start, end, vocab) -> int:
 
 
 def parse_chunk_slice(
-    tree_slice: Sequence[int], vocab: TreeVocab, direction: str, binarize: bool = True
+    tree_slice: Sequence[int],
+    vocab: TreeVocab,
+    direction: str,
+    binarize: bool = True,
+    collapse_unary: bool = False,
+    add_boundary_root: bool = False,
 ) -> Dict[str, Any]:
     """Parse one chunk's tree-token slice -> terminal leaves (input_ids) + spans.
 
@@ -727,7 +779,12 @@ def parse_chunk_slice(
     stack tape): span the raw tree — one span per real constituent, n-ary nodes
     degenerate — so the depth matrix counts only true constituents.
     """
-    segments = _binarize_segments(parse_block_segments(tree_slice, vocab), direction, binarize)
+    segments = _binarize_segments(
+        parse_block_segments(tree_slice, vocab),
+        direction,
+        binarize,
+        collapse_unary,
+    )
     terminals: List[int] = []
     spans: List[Span] = []
     for kind, data in segments:
@@ -739,6 +796,28 @@ def parse_chunk_slice(
             terminals.extend(int(x) for x in leaves)
             for (l, sp, r) in tspans:
                 spans.append((t0 + l, t0 + sp, t0 + r))
+    if add_boundary_root:
+        # The paper initializes every sentence with a ROOT token and forces the
+        # sentence-final EOS attachment back to ROOT. This repository's BOS token
+        # occupies that ROOT position in each [BOS ... EOS] block.
+        root_start: Optional[int] = None
+        for position, token in enumerate(terminals):
+            if vocab.bos == vocab.eos:
+                # GPT-2 uses the same id for BOS and EOS. Boundary occurrences
+                # therefore alternate ROOT, EOS, ROOT, EOS (including adjacent
+                # EOS/ROOT pairs between packed sentences).
+                if token == vocab.bos:
+                    if root_start is None:
+                        root_start = position
+                    else:
+                        spans.append((root_start, position, position))
+                        root_start = None
+            else:
+                if token == vocab.bos:
+                    root_start = position
+                elif token == vocab.eos and root_start is not None:
+                    spans.append((root_start, position, position))
+                    root_start = None
     return {
         "input_ids": np.asarray(terminals, dtype=np.int64),
         "spans": np.asarray(spans, dtype=np.int32).reshape(-1, 3),
@@ -961,6 +1040,8 @@ def preprocess_split(
     max_spans_override: Optional[int] = None,
     load_tree_to_ram: bool = False,
     binarize: bool = True,
+    collapse_unary: bool = False,
+    add_boundary_root: bool = False,
 ) -> Dict[str, str]:
     """Process a ``tree/*.npy`` parse stream into chunks + the stale
     Pushdown depth matrix, saved to ``out_dir``.
@@ -972,7 +1053,11 @@ def preprocess_split(
     is binarized first so spans carry real binary splits; when ``binarize=False``
     (Pushdown) the raw tree is spanned — one span per real constituent — so the depth
     matrix counts only true constituents (binarization would inject artificial
-    spans that inflate the stack-tape depth). Saves:
+    spans that inflate the stack-tape depth). ``collapse_unary=True`` removes
+    unary-chain duplicates before span extraction; together with
+    ``binarize=True`` this reproduces the paper/reference preprocessing.
+    ``add_boundary_root=True`` adds a span from each sentence BOS/ROOT through
+    EOS so the final attachment is supervised to ROOT. Saves:
 
     * ``chunk_index.npy`` ``(n_chunks, 2)`` int64 — tree-stream slice per chunk.
     * ``input_ids.npy`` ``(n_chunks, max_len)`` int32 — terminal leaves, padded.
@@ -1035,7 +1120,7 @@ def preprocess_split(
         max_spans = 1
         for (s, l) in sample:
             out = parse_chunk_slice(np.asarray(_tree_for_sample[s : s + l]), vocab,
-                                    direction, binarize)
+                                    direction, binarize, collapse_unary, add_boundary_root)
             if len(out["spans"]) > max_spans:
                 max_spans = len(out["spans"])
         max_spans = max(max_spans + 8, 1)  # headroom
@@ -1070,15 +1155,17 @@ def preprocess_split(
         ranges = [(r[0], min(r[0] + 2000, r[1])) for r in
                   [(i, min(i + 2000, n_chunks)) for i in range(0, n_chunks, 2000)]]
         fn = functools.partial(_parse_range_to_memmap, tree_src, tokenizer_path,
-                               direction, max_len, pad_token_id, binarize,
-                               p_input_ids, p_spans, p_span_counts, max_spans)
+                               direction, max_len, pad_token_id, binarize, collapse_unary,
+                               p_input_ids, p_spans, p_span_counts, max_spans,
+                               add_boundary_root=add_boundary_root)
         with Pool(workers) as pool:
             for done in pool.imap_unordered(fn, ranges):
                 pass
     else:
         _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len,
-                               pad_token_id, binarize, p_input_ids, p_spans,
-                               p_span_counts, max_spans, (0, n_chunks))
+                               pad_token_id, binarize, collapse_unary, p_input_ids, p_spans,
+                               p_span_counts, max_spans, (0, n_chunks),
+                               add_boundary_root=add_boundary_root)
     _TREE_RAM = None
     input_ids_m.flush(); spans_m.flush(); span_counts_m.flush()
 
@@ -1158,7 +1245,8 @@ _TREE_RAM: Optional["np.ndarray"] = None
 
 
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
-                           binarize, p_input_ids, p_spans, p_span_counts, max_spans, rng):
+                           binarize, collapse_unary, p_input_ids, p_spans,
+                           p_span_counts, max_spans, rng, add_boundary_root=False):
     """Worker: parse chunks [rng[0], rng[1]) and write to the shared memmaps.
 
     ``tree_src`` is the tree.npy path. If the module global ``_TREE_RAM`` is set
@@ -1180,14 +1268,22 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
     lo, hi = rng
     for i in range(lo, hi):
         s, l = int(chunk_index[i, 0]), int(chunk_index[i, 1])
-        out = parse_chunk_slice(np.asarray(tree[s : s + l]), vocab, direction, binarize)
+        out = parse_chunk_slice(
+            np.asarray(tree[s : s + l]), vocab, direction, binarize,
+            collapse_unary, add_boundary_root
+        )
         ids = out["input_ids"]
         sp = out["spans"]
         if len(ids) > max_len:
             ids = ids[:max_len]
             sp = sp[sp[:, 2] < max_len] if len(sp) else sp
         input_ids_m[i, : len(ids)] = ids
-        m = min(len(sp), max_spans)
+        if len(sp) > max_spans:
+            raise ValueError(
+                f"chunk {i} has {len(sp)} spans but output capacity is {max_spans}; "
+                "rerun with --max_spans at least this large"
+            )
+        m = len(sp)
         if m > 0:
             spans_m[i, :m] = sp[:m]
         span_counts_m[i] = m
@@ -1234,6 +1330,17 @@ if __name__ == "__main__":
                          "Use for the Pushdown stack tape: compute_depth_matrix uses only (l, r) and "
                          "binarization injects artificial X|</X|> spans whose sub-ranges inflate the "
                          "tape depth. TreeReg (which needs real binary splits) must NOT set this.")
+    ap.add_argument(
+        "--collapse_unary",
+        action="store_true",
+        help="collapse internal unary chains before span extraction (paper-faithful "
+             "Pushdown preprocessing; normally used with binarization enabled)",
+    )
+    ap.add_argument(
+        "--add_boundary_root",
+        action="store_true",
+        help="add BOS/ROOT-to-EOS spans so each final attachment is supervised to ROOT",
+    )
     args = ap.parse_args()
     dirs = ["left", "right"] if args.direction == "both" else [args.direction]
     for d in dirs:
@@ -1243,5 +1350,6 @@ if __name__ == "__main__":
             save_depth_matrix=not args.no_depth, workers=args.workers,
             scan_workers=args.scan_workers, warm_cache=args.warm_cache,
             max_spans_override=args.max_spans, load_tree_to_ram=args.load_tree_to_ram,
-            binarize=not args.no_binarize,
+            binarize=not args.no_binarize, collapse_unary=args.collapse_unary,
+            add_boundary_root=args.add_boundary_root,
         )

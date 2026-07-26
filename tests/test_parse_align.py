@@ -10,6 +10,7 @@ from olmo.data.parse_align import (
     binarize_tree,
     tree_spans,
     compute_depth_matrix,
+    parse_chunk_slice,
 )
 
 
@@ -252,6 +253,55 @@ def test_tree_spans_binary_unchanged_by_binarize():
     b_leaves, b_spans = tree_spans(binarize_tree(tree, "left"))
     assert raw_leaves == b_leaves
     assert sorted(raw_spans) == sorted(b_spans)
+
+
+def test_collapse_unary_then_binarize_matches_paper_preprocess():
+    from olmo.data.parse_align import collapse_unary_tree
+
+    # Unary A->B->C is one constituent after collapse; ternary C is then CNF
+    # binarized, adding exactly one artificial binary constituent.
+    tree = ("A", [("B", [("C", [10, 11, 12])])])
+    collapsed = collapse_unary_tree(tree)
+    assert collapsed[0] == "A+B+C"
+    leaves, spans = tree_spans(binarize_tree(collapsed, "left"))
+    assert leaves == [10, 11, 12]
+    assert len(spans) == 2
+    assert {(l, r) for l, _split, r in spans} == {(0, 2), (1, 2)}
+
+
+def test_parse_chunk_slice_collapse_unary_flag():
+    v = fake_vocab()
+    # S -> A -> two terminals. Without collapse both S and A emit the same
+    # (0,1) range; with collapse only one range remains.
+    a = encode_tree(v, "A", 10, 11)
+    block = [0, 102] + a + [105, 1]
+    raw = parse_chunk_slice(block, v, "left", binarize=True, collapse_unary=False)
+    collapsed = parse_chunk_slice(block, v, "left", binarize=True, collapse_unary=True)
+    assert raw["input_ids"].tolist() == collapsed["input_ids"].tolist()
+    assert len(collapsed["spans"]) == len(raw["spans"]) - 1
+
+
+def test_paper_preprocess_adds_bos_root_to_eos_span():
+    v = fake_vocab()
+    block = [0] + encode_tree(v, "A", 10, 11) + [1]
+    out = parse_chunk_slice(
+        block,
+        v,
+        "left",
+        binarize=True,
+        collapse_unary=True,
+        add_boundary_root=True,
+    )
+    assert out["input_ids"].tolist() == [0, 10, 11, 1]
+    assert (0, 3, 3) in map(tuple, out["spans"].tolist())
+
+
+def test_boundary_root_when_bos_and_eos_share_gpt2_id():
+    v = fake_vocab()
+    v.eos = v.bos
+    block = [0] + encode_tree(v, "A", 10, 11) + [0]
+    out = parse_chunk_slice(block, v, "left", add_boundary_root=True)
+    assert (0, 3, 3) in map(tuple, out["spans"].tolist())
 
 
 _TEST_RIGHT = "dataset/bbc-news/parse_aligned/test_right"

@@ -106,6 +106,25 @@ def test_attachment_head_causal():
     assert torch.isfinite(logits[:, lower]).all()
 
 
+def test_attachment_head_diagonal_uses_predicted_token_representation():
+    """Eq. 5's diagonal is h_tilde^T W h_tilde, not h_k^T W h_tilde."""
+    torch.manual_seed(17)
+    d, vocab, n, batch = 8, 13, 5, 2
+    head = PushdownAttachmentHead(d_model=d, vocab_size=vocab)
+    hidden = torch.randn(batch, n, d)
+    ids = torch.randint(0, vocab, (batch, n))
+    embeddings = torch.randn(vocab, d)
+    logits = head(hidden, ids, embeddings)
+
+    h = hidden.float()
+    emb = torch.nn.functional.embedding(ids, embeddings).float()
+    h_prev = torch.nn.functional.pad(h[:, :-1], (0, 0, 1, 0))
+    h_tilde = head.mlp(torch.cat([emb, h_prev], dim=-1))
+    expected = (head.W(h_tilde) * h_tilde).sum(dim=-1)
+    actual = logits.diagonal(dim1=1, dim2=2)
+    assert torch.allclose(actual, expected, atol=1e-6)
+
+
 def test_attachment_loss_gradient():
     """Loss is finite/nonzero and backprops to head.W, head.mlp, and final_hidden."""
     torch.manual_seed(1)
@@ -146,6 +165,21 @@ def test_attachment_loss_empty_oracle_is_zero():
     oracle = torch.arange(n).unsqueeze(0).expand(B, n)  # all shift-only
     loss = compute_attachment_loss(logits, oracle, attn)
     assert torch.isfinite(loss)
+
+
+def test_attachment_loss_sum_scales_by_valid_token_count():
+    torch.manual_seed(23)
+    batch, n = 2, 4
+    logits = torch.randn(batch, n, n)
+    logits = logits.masked_fill(
+        torch.triu(torch.ones(n, n, dtype=torch.bool), diagonal=1),
+        float("-inf"),
+    )
+    oracle = torch.tensor([[0, 0, 1, 2], [0, 1, 1, 3]])
+    mask = torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0]], dtype=torch.bool)
+    mean = compute_attachment_loss(logits, oracle, mask, reduction="mean")
+    summed = compute_attachment_loss(logits, oracle, mask, reduction="sum")
+    assert torch.allclose(summed, mean * mask.sum())
 
 
 # --------------------------------------------------------------------------- #
@@ -225,4 +259,3 @@ def test_beam_search_attachment_head_tag_scoring():
     )
     assert s == s  # not NaN
     assert s >= 0
-
