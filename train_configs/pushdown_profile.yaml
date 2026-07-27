@@ -67,7 +67,7 @@ model:
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
   pushdown_attachment_weight: 0.0
-  parse_binarize_direction: right
+  parse_binarize_direction: left
   pushdown_use_flex: true
 
 ddp:

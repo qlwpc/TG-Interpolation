@@ -160,7 +160,7 @@ def build_memmap_dataset(
                 f"{parse_dir}, and no data.parse_tree_paths=[tree.npy] given for "
                 "on-the-fly parsing."
             )
-        direction = getattr(train_config.model, "parse_binarize_direction", "left")
+        direction = getattr(train_config.model, "parse_binarize_direction", "right")
         # Auto-derive binarize: treereg needs the binary split (CE loss); pushdown
         # must skip binarization so the stack-tape depth isn't inflated by artificial
         # X|</X|> constituents. model.parse_binarize overrides when set.

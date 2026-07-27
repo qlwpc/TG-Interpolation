@@ -44,7 +44,7 @@ model:
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
   pushdown_attachment_weight: 1.0   # depth-key bias only (attachment head optional)
-  parse_binarize_direction: right
+  parse_binarize_direction: left
   # FlexAttention score_mod path (fused flash-class kernel for the per-(q,kv) depth
   # bias). ON — the recommended training path. OLMo.forward builds a causal+pad
   # block_mask from the 1-D attention_mask (mirroring the TG path) and the depth

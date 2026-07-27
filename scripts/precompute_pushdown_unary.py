@@ -56,7 +56,9 @@ def main() -> None:
     parser.add_argument("--tree-dir", default="dataset/tree")
     parser.add_argument("--tokenizer", default="dataset/bbc-news/TG_GPT2_tokenizer.json")
     parser.add_argument("--out-dir", required=True)
-    parser.add_argument("--direction", choices=("left", "right"), default="left")
+    parser.add_argument("--direction", choices=("left", "right"), default="right",
+                        help="binarization spine direction (NLTK factor name): "
+                             "'right'=right-recursive (default, TreeReg/NLTK), 'left'=left-recursive")
     parser.add_argument("--max-len", type=int, default=2048)
     parser.add_argument("--pad-token-id", type=int, default=50258)
     parser.add_argument("--workers", type=int, default=1)

@@ -72,23 +72,27 @@ def test_parse_tree_block_no_tree():
 # Binarization
 # --------------------------------------------------------------------------- #
 def test_binarize_left_and_right_preserve_leaves():
-    # (A 1 2 3 4)
+    # (A 1 2 3 4). Direction names follow NLTK chomsky_normal_form(factor=...):
+    # "left"  -> left-recursive spine  (((c1 c2) c3) c4), artificial nodes "|>"
+    # "right" -> right-recursive spine (c1 (c2 (c3 c4))), artificial nodes "|<"
+    # (right = official TreeReg + NLTK default).
     v = fake_vocab()
     node = ("A", [1, 2, 3, 4])
     bl = binarize_tree(node, "left")
     # Leaves in order
     assert _leaves(bl) == [1, 2, 3, 4]
-    # Left-binarized: root has 2 children, the 2nd is a chain of "|<" nodes.
+    # Left-recursive: root has 2 children, the 1st is a chain of "|>" nodes.
     assert len(bl[1]) == 2
-    assert bl[1][0] == 1
-    assert isinstance(bl[1][1], tuple) and bl[1][1][0] == "A|<"
-    assert bl == ("A", [1, ("A|<", [2, ("A|<", [3, 4])])])
+    assert bl[1][1] == 4
+    assert isinstance(bl[1][0], tuple) and bl[1][0][0] == "A|>"
+    assert bl == ("A", [("A|>", [("A|>", [1, 2]), 3]), 4])
     br = binarize_tree(node, "right")
     assert _leaves(br) == [1, 2, 3, 4]
+    # Right-recursive: root has 2 children, the 2nd is a chain of "|<" nodes.
     assert len(br[1]) == 2
-    assert br[1][1] == 4
-    assert isinstance(br[1][0], tuple) and br[1][0][0] == "A|>"
-    assert br == ("A", [("A|>", [("A|>", [1, 2]), 3]), 4])
+    assert br[1][0] == 1
+    assert isinstance(br[1][1], tuple) and br[1][1][0] == "A|<"
+    assert br == ("A", [1, ("A|<", [2, ("A|<", [3, 4])])])
 
 
 def test_binarize_already_binary_unchanged():
@@ -196,7 +200,7 @@ def test_tree_spans_binarize_adds_artificial():
     # spurious constituent.
     tree = ("S", [("A", [10, 11, 12]), 13])
     raw_leaves, raw_spans = tree_spans(tree)
-    b_leaves, b_spans = tree_spans(binarize_tree(tree, "left"))
+    b_leaves, b_spans = tree_spans(binarize_tree(tree, "right"))
     # Leaves are preserved by binarization.
     assert raw_leaves == b_leaves == [10, 11, 12, 13]
     # Binarization strictly increases the span count (one artificial A|< added).
@@ -218,7 +222,7 @@ def test_depth_matrix_no_binarize_nary():
     # Final row (full parse): all three leaves have depth 1 (the single A reduce).
     assert S[2].tolist() == [1, 1, 1]
     # Binarization injects an artificial constituent -> some leaf reaches depth 2.
-    _, b_spans = tree_spans(binarize_tree(tree, "left"))
+    _, b_spans = tree_spans(binarize_tree(tree, "right"))
     Sb = np.asarray(compute_depth_matrix(b_spans, 3))
     assert int(Sb.max()) == 2, "binarization should inflate depth to 2"
     assert int(S.max()) == 1, "no-binarize depth stays at 1"
@@ -234,8 +238,8 @@ def test_parse_chunk_slice_binarize_flag():
     block = [0] + s_tree + [1]                  # 0=BOS, 1=EOS
 
     from olmo.data.parse_align import parse_chunk_slice
-    out_b = parse_chunk_slice(block, v, direction="left", binarize=True)
-    out_n = parse_chunk_slice(block, v, direction="left", binarize=False)
+    out_b = parse_chunk_slice(block, v, direction="right", binarize=True)
+    out_n = parse_chunk_slice(block, v, direction="right", binarize=False)
     # Terminal leaves are identical regardless of binarization (BOS/EOS are kept
     # as surrounding leaves, matching terminal.npy).
     assert out_b["input_ids"].tolist() == out_n["input_ids"].tolist() == [0, 10, 11, 12, 13, 1]
@@ -253,7 +257,7 @@ def test_tree_spans_binary_unchanged_by_binarize():
     # common binary-node case).
     tree = ("S", [("A", [10, 11]), ("B", [12, 13])])
     raw_leaves, raw_spans = tree_spans(tree)
-    b_leaves, b_spans = tree_spans(binarize_tree(tree, "left"))
+    b_leaves, b_spans = tree_spans(binarize_tree(tree, "right"))
     assert raw_leaves == b_leaves
     assert sorted(raw_spans) == sorted(b_spans)
 
@@ -262,11 +266,13 @@ def test_collapse_unary_then_binarize_matches_paper_preprocess():
     from olmo.data.parse_align import collapse_unary_tree
 
     # Unary A->B->C is one constituent after collapse; ternary C is then CNF
-    # binarized, adding exactly one artificial binary constituent.
+    # binarized (direction="right" = right-recursive spine, matching official
+    # TreeReg + NLTK factor="right"), adding exactly one artificial binary
+    # constituent whose (l,r) is (1,2).
     tree = ("A", [("B", [("C", [10, 11, 12])])])
     collapsed = collapse_unary_tree(tree)
     assert collapsed[0] == "A+B+C"
-    leaves, spans = tree_spans(binarize_tree(collapsed, "left"))
+    leaves, spans = tree_spans(binarize_tree(collapsed, "right"))
     assert leaves == [10, 11, 12]
     assert len(spans) == 2
     assert {(l, r) for l, _split, r in spans} == {(0, 2), (1, 2)}
@@ -278,8 +284,8 @@ def test_parse_chunk_slice_collapse_unary_flag():
     # (0,1) range; with collapse only one range remains.
     a = encode_tree(v, "A", 10, 11)
     block = [0, 102] + a + [105, 1]
-    raw = parse_chunk_slice(block, v, "left", binarize=True, collapse_unary=False)
-    collapsed = parse_chunk_slice(block, v, "left", binarize=True, collapse_unary=True)
+    raw = parse_chunk_slice(block, v, "right", binarize=True, collapse_unary=False)
+    collapsed = parse_chunk_slice(block, v, "right", binarize=True, collapse_unary=True)
     assert raw["input_ids"].tolist() == collapsed["input_ids"].tolist()
     assert len(collapsed["spans"]) == len(raw["spans"]) - 1
 
@@ -307,7 +313,7 @@ def test_parse_chunk_slice_marks_each_top_level_tree_not_bos_blocks():
     out = parse_chunk_slice(
         block,
         v,
-        direction="left",
+        direction="right",
         binarize=True,
         collapse_unary=True,
     )
@@ -326,7 +332,7 @@ def test_paper_preprocess_adds_bos_root_to_eos_span():
     out = parse_chunk_slice(
         block,
         v,
-        "left",
+        "right",
         binarize=True,
         collapse_unary=True,
         add_boundary_root=True,
@@ -339,7 +345,7 @@ def test_boundary_root_when_bos_and_eos_share_gpt2_id():
     v = fake_vocab()
     v.eos = v.bos
     block = [0] + encode_tree(v, "A", 10, 11) + [0]
-    out = parse_chunk_slice(block, v, "left", add_boundary_root=True)
+    out = parse_chunk_slice(block, v, "right", add_boundary_root=True)
     assert (0, 3, 3) in map(tuple, out["spans"].tolist())
 
 

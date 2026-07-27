@@ -36,7 +36,7 @@ def build_chunk_index(tree_path, tok_path, max_len, out_dir):
     vocab = TreeVocab.from_tokenizer_file(tok_path)
     tree = np.load(tree_path, mmap_mode="r")
     print(f"scanning {tree_path} ({tree.shape[0]} tree tokens)...")
-    chunks = iter_tree_chunks(tree, vocab, direction="left", max_len=max_len)
+    chunks = iter_tree_chunks(tree, vocab, direction="right", max_len=max_len)
     idx = np.asarray(chunks, dtype=np.int64)
     out_idx = os.path.join(out_dir, "chunk_index.npy")
     np.save(out_idx, idx)

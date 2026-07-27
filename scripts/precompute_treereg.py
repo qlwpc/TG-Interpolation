@@ -52,8 +52,10 @@ def main() -> None:
     parser.add_argument(
         "--direction",
         choices=("left", "right"),
-        default="left",
-        help="upstream TreeReg uses left binarization",
+        default="right",
+        help="binarization spine direction (NLTK chomsky_normal_form factor name): "
+             "'right'=right-recursive (default; matches official TreeReg + NLTK default), "
+             "'left'=left-recursive",
     )
     parser.add_argument("--max-len", type=int, default=2048)
     parser.add_argument("--pad-token-id", type=int, default=50258)

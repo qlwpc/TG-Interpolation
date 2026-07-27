@@ -44,7 +44,7 @@ model:
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
   pushdown_attachment_weight: 0.0   # depth-key bias only (attachment head optional)
-  parse_binarize_direction: left
+  parse_binarize_direction: right
 
 ddp:
   grad_sync_mode: batch

@@ -124,7 +124,7 @@ def test_chunk_index_alignment_synthetic(tmp_path):
         if s != prev_end:
             cover_ok = False
         prev_end = s + l
-        out = parse_chunk_slice(np.asarray(tree[s:s + l]), v, "left")
+        out = parse_chunk_slice(np.asarray(tree[s:s + l]), v, "right")
         recon.extend(int(x) for x in out["input_ids"])
     recon = np.asarray(recon, dtype=np.int64)
 
@@ -154,7 +154,7 @@ def test_chunk_index_oversize_atomic_tree_is_own_chunk(tmp_path):
     stream = _build_synth_stream()
     max_len = 16
 
-    chunks = iter_tree_chunks(stream, v, direction="left", max_len=max_len)
+    chunks = iter_tree_chunks(stream, v, direction="right", max_len=max_len)
     # In-tree leaf count per chunk (iter_tree_chunks' packing budget).
     def in_tree_leaves(seg):
         depth = 0
@@ -197,7 +197,7 @@ def test_real_dev_bit_identity_with_terminal(tmp_path):
     recon = []
     for s, l in idx:
         s, l = int(s), int(l)
-        out = parse_chunk_slice(np.asarray(tree[s:s + l]), v, "left")
+        out = parse_chunk_slice(np.asarray(tree[s:s + l]), v, "right")
         recon.extend(int(x) for x in out["input_ids"])
     recon = np.asarray(recon, dtype=np.int64)
 
@@ -220,7 +220,7 @@ def test_real_dev_parsedataset_bit_identity_with_terminal(tmp_path):
         tree_npy=_TREE_DEV,
         chunk_index_npy=os.path.join(out_dir, "chunk_index.npy"),
         tokenizer=_TOK,
-        direction="left",
+        direction="right",
         max_len=2048,
     )
     recon = []
@@ -278,7 +278,7 @@ def test_stats_min_covers_all_chunks(tmp_path, capsys):
     out = capsys.readouterr().out
 
     # Independently recompute the true min over all chunks.
-    chunks = iter_tree_chunks(np.load(tree_path, mmap_mode="r"), v, "left", max_len=max_len)
+    chunks = iter_tree_chunks(np.load(tree_path, mmap_mode="r"), v, "right", max_len=max_len)
     true_mins = []
     for s, l in chunks:
         seg = np.asarray(np.load(tree_path, mmap_mode="r")[s:s + l])

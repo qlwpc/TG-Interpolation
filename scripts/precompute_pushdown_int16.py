@@ -43,7 +43,7 @@ def run_split(split: str, workers: int, scan_workers: int, load_ram: bool):
           flush=True)
     preprocess_split(
         tree_npy=f"{TREE}/{split}.npy", tokenizer_path=TOK,
-        direction="left", out_dir=out_dir,
+        direction="right", out_dir=out_dir,
         max_len=2048, pad_token_id=50258,
         save_depth_matrix=False,
         workers=workers, scan_workers=scan_workers,

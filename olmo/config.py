@@ -561,8 +561,11 @@ class ModelConfig(BaseConfig):
     treereg_alpha: float = 1.0
     """Weight of the TreeReg auxiliary loss (L_LM + alpha * L_TR)."""
     # ---- shared parse-binarization direction ----
-    parse_binarize_direction: str = "left"
-    """Binarization direction for the parse trees: 'left' or 'right'."""
+    parse_binarize_direction: str = "right"
+    """Binarization spine direction for the parse trees, named per NLTK
+    ``chomsky_normal_form(factor=...)``: ``'right'`` = right-recursive spine
+    (default, matches official TreeReg + NLTK default), ``'left'`` =
+    left-recursive spine."""
     parse_binarize: Optional[bool] = None
     """Whether to binarize parse trees for span extraction. ``None`` = auto:
     ``treereg`` -> ``True`` (its CE loss is defined over the binary split), ``pushdown``

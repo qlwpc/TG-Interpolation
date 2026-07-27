@@ -23,7 +23,9 @@ in unit tests. The algorithms:
   nested ``(label, children)`` tree; BOS/EOS are returned as surrounding leaves.
 * :func:`collapse_unary_tree` — collapse unary chains, matching the paper's
   BLLIP preprocessing.
-* :func:`binarize_tree` — left/right binarize a non-binary tree (preserves leaves).
+* :func:`binarize_tree` — binarize a non-binary tree into a left- or
+  right-recursive spine (preserves leaves); the ``direction`` name follows
+  NLTK ``chomsky_normal_form(factor=...)``.
 * :func:`tree_spans` — enumerate a tree's constituent spans ``(i, split, j)``
   (leaf indices, 0-based within the tree's content leaves) and its content-leaf
   token ids. Works on the RAW tree (one span per real internal node; n-ary/unary
@@ -322,26 +324,36 @@ def collapse_unary_tree(
     return result[id(node)]
 
 
-def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union[TreeNode, Leaf]:
-    """Left/right-binarize a non-binary constituency tree.
+def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "right") -> Union[TreeNode, Leaf]:
+    """Binarize a non-binary constituency tree (left/right spine direction).
+
+    The ``direction`` parameter is named to match NLTK's
+    :meth:`~nltk.tree.Tree.chomsky_normal_form` ``factor`` argument, so the
+    name denotes the **recursion direction of the introduced spine** (not which
+    child is kept): ``"right"`` = right-recursive spine, ``"left"`` =
+    left-recursive spine.
 
     Leaves (ints) are unchanged. For an internal node with children
     ``[c1, c2, ..., ck]`` (k>2):
 
-    * ``direction="left"`` (default): ``(X c1 (X|< c2 (X|< c3 c4)))`` — a
-      **right-recursive** spine. The leftmost child ``c1`` stays the parent's
-      direct left child; the remaining ``[c2..ck]`` fold right-to-left into a
-      right-recursive chain (innermost pair ``(ck-1, ck)``) hung on the right.
-      This reproduces the official TreeReg ``binarize_tree``
-      (``ananjan-nandi-9/tree_regularization``, ``src/data/data_utils.py``), which
-      returns ``(c1, (c2, (c3, ...)))``. The introduced nodes reuse the parent
-      label suffixed with ``"|<"`` so they are distinguishable but still phrasal.
-    * ``direction="right"``: ``(X (X|> (X|> c1 c2) c3) c4)`` — the left/right
-      mirror of ``"left"``. The rightmost child ``ck`` stays the parent's direct
-      right child; the remaining ``[c1..ck-1]`` fold left-to-right into a
-      **left-recursive** chain (innermost pair ``(c1, c2)``) hung on the left.
-      This is a repo-local mirror direction with no counterpart in official
-      TreeReg (which binarizes in one direction only).
+    * ``direction="right"`` (default): ``(X c1 (X|< c2 (X|< c3 c4)))`` — a
+      **right-recursive** spine (NLTK ``factor="right"``). The leftmost child
+      ``c1`` stays the parent's direct left child; the remaining ``[c2..ck]``
+      fold right-to-left into a right-recursive chain (innermost pair
+      ``(ck-1, ck)``) hung on the right. This reproduces the official TreeReg
+      ``binarize_tree`` (``ananjan-nandi-9/tree_regularization``,
+      ``src/data/data_utils.py``), which returns ``(c1, (c2, (c3, ...)))``, and
+      NLTK ``chomsky_normal_form()``'s default (``factor="right"``). The
+      introduced nodes reuse the parent label suffixed with ``"|<"`` so they are
+      distinguishable but still phrasal.
+    * ``direction="left"``: ``(X (X|> (X|> c1 c2) c3) c4)`` — a
+      **left-recursive** spine (NLTK ``factor="left"``), the mirror of
+      ``"right"``. The rightmost child ``ck`` stays the parent's direct right
+      child; the remaining ``[c1..ck-1]`` fold left-to-right into a left-recursive
+      chain (innermost pair ``(c1, c2)``) hung on the left. This is a repo-local
+      mirror direction with no counterpart in official TreeReg (which binarizes
+      in one direction only); it matches the "Binary" variant of the
+      compositional_SLMs corpus (e.g. ``1100_dev_doc.txt``, left-recursive).
 
     Leaves are preserved in order, so the terminal sequence is identical pre/post
     binarization. This function leaves unary nodes unchanged; the TreeReg
@@ -374,20 +386,21 @@ def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union
             if len(children) <= 2:
                 result[id(node_i)] = (label, children)
                 continue
-            if direction == "left":
-                # Right-recursive spine, matching official TreeReg ``binarize_tree``
-                # (ananjan-nandi-9/tree_regularization, src/data/data_utils.py),
-                # which returns ``(c1, (c2, (c3, ...)))`` for children [c1..ck]:
-                # c1 stays the parent's left child; [c2..ck] fold into a
-                # right-recursive chain hung on the right, innermost pair (ck-1, ck).
-                # Fold [c2..ck] RIGHT-TO-LEFT to get that. (A prior left-to-right
-                # fold produced ``(c1, ((c2 c3) c4)...)`` — a left-recursive spine
-                # that is NOT what TreeReg uses and is not the mirror of "right".)
+            if direction == "right":
+                # Right-recursive spine (NLTK factor="right"), matching official
+                # TreeReg ``binarize_tree`` (ananjan-nandi-9/tree_regularization,
+                # src/data/data_utils.py), which returns ``(c1, (c2, (c3, ...)))``
+                # for children [c1..ck]: c1 stays the parent's left child; [c2..ck]
+                # fold into a right-recursive chain hung on the right, innermost
+                # pair (ck-1, ck). Fold [c2..ck] RIGHT-TO-LEFT to get that.
+                # (An earlier left-to-right fold produced ``(c1, ((c2 c3) c4)...)``
+                # — a left-recursive spine that is NOT what TreeReg uses.)
                 tail = children[-1]
                 for c in reversed(children[1:-1]):
                     tail = (f"{label}|<", [c, tail])
                 result[id(node_i)] = (label, [children[0], tail])
-            elif direction == "right":
+            elif direction == "left":
+                # Left-recursive spine (NLTK factor="left"), the mirror of "right".
                 acc = (f"{label}|>", [children[0], children[1]])
                 for c in children[2:-1]:
                     acc = (f"{label}|>", [acc, c])
@@ -926,7 +939,7 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         tree_npy: str,
         chunk_index_npy: str,
         tokenizer: str,
-        direction: str = "left",
+        direction: str = "right",
         max_len: int = 2048,
         pad_token_id: int = 50258,
         eos_token_id: int = 50256,
@@ -1507,7 +1520,18 @@ if __name__ == "__main__":
     )
     ap.add_argument("--tree_npy", required=True)
     ap.add_argument("--tokenizer", required=True)
-    ap.add_argument("--direction", default="both", choices=["left", "right", "both"])
+    ap.add_argument(
+        "--direction",
+        default="both",
+        choices=["left", "right", "both"],
+        help="binarization spine direction, named per NLTK chomsky_normal_form(factor=...): "
+             "'right' = right-recursive spine (default TreeReg, NLTK factor='right'); "
+             "'left' = left-recursive spine (NLTK factor='left'). 'both' runs each. "
+             "NOTE: the <direction> output subdir suffix follows this name, so after the "
+             "left/right rename a re-run produces _left=left-recursive / _right=right-recursive; "
+             "pre-existing on-disk _left/_right dirs were generated under the OLD naming "
+             "(_left was right-recursive) and are NOT auto-renamed — regenerate to refresh.",
+    )
     ap.add_argument("--out_dir", required=True, help="output dir (a <direction> subdir is created)")
     ap.add_argument("--max_len", type=int, default=2048)
     ap.add_argument("--pad_token_id", type=int, default=50258)
