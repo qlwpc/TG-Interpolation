@@ -551,7 +551,9 @@ class ModelConfig(BaseConfig):
     (``tests/test_pushdown_flex_parity.py``) before the full run."""
     # ---- TreeReg (Nandi et al. 2025) ----
     treereg_layer: int = 6
-    """Layer whose post-block residual hidden state feeds the TreeReg SCIN loss."""
+    """1-based layer number whose post-block residual feeds the TreeReg SCIN loss.
+    This matches upstream ``hidden_states[layer_id]``, where element 0 is the
+    embedding output and element ``i`` is the output of transformer block ``i``."""
     treereg_n_heads: int = 3
     """Number of attention heads (circuit) the TreeReg loss acts on (~25% of heads)."""
     treereg_every_k: int = 10

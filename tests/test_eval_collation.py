@@ -56,6 +56,37 @@ class TestCollatorShuffleMaskDispatch:
         assert detected is expect_mask, f"'{grammar_type}'=='tree_shuffle_mask' → {detected}"
 
 
+def test_collator_pads_treereg_metadata_and_offsets_left_padded_spans():
+    collator = DataCollator(
+        pad_direction=PaddingDirection.left,
+        pad_token_id=99,
+        generate_attention_mask=True,
+        shuffle_tree="treereg",
+    )
+    items = [
+        {
+            "input_ids": torch.tensor([10, 11, 12]),
+            "tree_spans": torch.tensor([[0, 1, 2]]),
+            "treereg_word_boundaries": torch.tensor([True, False, True]),
+            "treereg_sentence_ids": torch.tensor([0, 0, 0]),
+        },
+        {
+            "input_ids": torch.tensor([20, 21, 22, 23, 24]),
+            "tree_spans": torch.tensor([[1, 2, 4]]),
+            "treereg_word_boundaries": torch.tensor(
+                [False, True, True, False, True]
+            ),
+            "treereg_sentence_ids": torch.tensor([-1, 0, 0, 0, 0]),
+        },
+    ]
+    batch = collator(items)
+    assert batch["treereg_word_boundaries"][0].tolist() == [
+        False, False, True, False, True
+    ]
+    assert batch["treereg_sentence_ids"][0].tolist() == [-1, -1, 0, 0, 0]
+    assert batch["tree_spans"][0, 0].tolist() == [2, 3, 4]
+
+
 # ---------------------------------------------------------------------------
 # Collator vocab loading
 # ---------------------------------------------------------------------------

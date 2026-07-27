@@ -108,23 +108,38 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
     return generate_TG_attention_bias
 
 def build_memmap_dataset(
-    train_config: TrainConfig, data_config: DataConfig, include_instance_metadata: bool = True
+    train_config: TrainConfig,
+    data_config: DataConfig,
+    include_instance_metadata: bool = True,
+    require_treereg_metadata: bool = False,
 ) -> MemMapDataset:
-    # Pushdown / TreeReg baselines: serve precomputed whole-tree chunks from a
-    # parse_aligned dir (chunk_index.npy) + the tree.npy it indexes. The terminal
-    # input_ids and spans are parsed on the fly; the depth matrix is computed on
-    # the GPU in the model forward.
-    if train_config.model.transformer_grammar_type in ("pushdown", "treereg"):
+    # Pushdown and TreeReg pretraining serve whole-tree chunks from a
+    # parse_aligned directory. TreeReg evaluation may instead fall through to a
+    # normal terminal MemMapDataset: the syntax is a train-only regularizer and
+    # gold parses are not required downstream. Pushdown's depth-biased forward
+    # consumes a stack tape during oracle-PPL evaluation, so parse-aligned dirs
+    # remain supported there; latent-parse downstream tasks use their own loader.
+    grammar_type = train_config.model.transformer_grammar_type
+    first_path = Path(str(data_config.paths[0])) if data_config.paths else None
+    is_precomputed_parse_dir = (
+        first_path is not None and (first_path / "input_ids.npy").exists()
+    )
+    if (
+        grammar_type == "pushdown"
+        or require_treereg_metadata
+        or (grammar_type == "treereg" and is_precomputed_parse_dir)
+    ):
         if not data_config.paths:
             raise OLMoConfigurationError(
-                "pushdown/treereg require data.paths = [parse_aligned_dir] "
+                "parse-supervised pushdown/treereg require "
+                "data.paths = [parse_aligned_dir] "
                 "(precomputed, or chunk_index dir + data.parse_tree_paths = [tree.npy])"
             )
         parse_dir = Path(str(data_config.paths[0]))
         # Prefer the precomputed dataset (input_ids.npy + spans.npy) when present —
         # no tree.npy parsing at load time. Otherwise fall back to on-the-fly
         # parsing from tree.npy + chunk_index.npy.
-        if (parse_dir / "input_ids.npy").exists():
+        if is_precomputed_parse_dir:
             from .parse_align import PrecomputedParseDataset
             # NOTE: spans.npy was built by the preprocessing CLI. For pushdown it
             # MUST have been built with --no_binarize (raw spans) so the stack-tape
@@ -135,6 +150,7 @@ def build_memmap_dataset(
                 eos_token_id=train_config.model.eos_token_id,
                 load_depth=False,  # depth computed on GPU from spans (faster)
                 generate_doc_lengths=data_config.generate_doc_lengths,
+                require_treereg_metadata=require_treereg_metadata,
             )
         from .parse_align import ParseAlignedDataset
         tree_paths = getattr(data_config, "parse_tree_paths", None)
@@ -163,6 +179,8 @@ def build_memmap_dataset(
             eos_token_id=train_config.model.eos_token_id,
             generate_attention_mask=data_config.generate_attention_mask,
             binarize=binarize,
+            collapse_unary=(grammar_type == "treereg"),
+            treereg_metadata=require_treereg_metadata,
             generate_doc_lengths=data_config.generate_doc_lengths,
         )
     paths: List[str]
@@ -257,7 +275,12 @@ def build_train_dataloader(
     collator = DataCollator.from_train_config(train_config)
     if train_config.finetune_task is None:
         dataset = build_memmap_dataset(
-            train_config, train_config.data, include_instance_metadata=include_instance_metadata
+            train_config,
+            train_config.data,
+            include_instance_metadata=include_instance_metadata,
+            require_treereg_metadata=(
+                train_config.model.transformer_grammar_type == "treereg"
+            ),
         )
     else:
         task_kwargs = {}

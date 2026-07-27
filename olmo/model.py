@@ -1426,6 +1426,23 @@ class OLMo(nn.Module):
         ):
             raise OLMoConfigurationError("n layers must be divisible by block group size")
 
+        if self.config.transformer_grammar_type == "treereg":
+            if not 1 <= self.config.treereg_layer <= self.config.n_layers:
+                raise OLMoConfigurationError(
+                    "treereg_layer is 1-based and must be in [1, n_layers]"
+                )
+            if not 1 <= self.config.treereg_n_heads <= self.config.n_heads:
+                raise OLMoConfigurationError(
+                    "treereg_n_heads must be in [1, n_heads]"
+                )
+            if self.config.treereg_every_k < 0:
+                raise OLMoConfigurationError("treereg_every_k must be non-negative")
+            if self.config.block_group_size != 1:
+                raise OLMoConfigurationError(
+                    "TreeReg currently requires block_group_size=1 so the selected "
+                    "intermediate post-block residual is available"
+                )
+
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(False)  # this is super slow so make sure torch won't use it
 
@@ -1849,7 +1866,7 @@ class OLMo(nn.Module):
                         tree_spans=tree_spans,
                     )
 
-                if _is_treereg and block_idx == _treereg_layer:
+                if _is_treereg and block_idx + 1 == _treereg_layer:
                     # Capture post-block residual for the TreeReg SCIN loss.
                     treereg_hidden = x
 

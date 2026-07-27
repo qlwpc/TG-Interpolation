@@ -62,7 +62,7 @@ model:
   treereg_n_heads: 3
   treereg_every_k: 10
   treereg_alpha: 1.0
-  parse_binarize_direction: right
+  parse_binarize_direction: left
 optimizer:
   name: adamw
   learning_rate: 0.005323
@@ -90,7 +90,7 @@ scheduler:
   warmup_min_lr: 0.0
 data:
   paths:
-  - .//dataset/bbc-news/parse_aligned/train_right
+  - .//dataset/bbc-news/parse_aligned/train_treereg
   memmap_dtype: uint16
   datasets: null
   label_mask_paths: null

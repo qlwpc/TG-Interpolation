@@ -113,6 +113,6 @@ data:
   persistent_workers: false
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/test_left
+    - ${workspace}/dataset/bbc-news/parse_aligned/test_treereg
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/test.npy

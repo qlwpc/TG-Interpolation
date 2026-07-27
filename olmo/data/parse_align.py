@@ -135,7 +135,16 @@ class TreeVocab:
 # A segment of a block: either a run of plain leaf tokens (BOS/EOS/whitespace) or
 # one complete top-level parse tree (its content leaves + constituent spans).
 # A block = [BOS, tree1, ws, tree2, ws, ..., treeK, EOS] -> a list of segments.
-Segment = Tuple[str, Any]  # ('leaves', List[int]) | ('tree', (List[int], List[Span]))
+Segment = Tuple[str, Any]
+# Before ``_binarize_segments``:
+#   ('leaves', List[int]) | ('tree', TreeNode)
+# Afterwards:
+#   ('leaves', List[int]) |
+#   ('tree', (List[int], List[Span], List[bool]))
+# The boolean list marks the first BPE token of every parser preterminal.  It is
+# deliberately derived from tree structure instead of GPT-2's ``Ġ`` spelling so
+# punctuation/newline tokenization cannot silently change the TreeReg candidate
+# split set.
 
 
 def _parse_one_tree(block: Sequence[int], start: int, vocab: TreeVocab) -> Tuple[Optional[TreeNode], int]:
@@ -238,6 +247,39 @@ def count_leaves(node: Union[TreeNode, Leaf]) -> int:
     return sum(count_leaves(c) for c in node[1])
 
 
+def tree_leaves_and_word_boundaries(
+    tree: Union[TreeNode, Leaf],
+) -> Tuple[List[int], List[bool]]:
+    """Return terminal leaves and exact parser-word starts for ``tree``.
+
+    A constituency parser preterminal contains the one or more tokenizer pieces
+    belonging to a single source word.  Its first terminal is therefore a word
+    start and the remaining terminals are continuations.  Bare terminals under a
+    malformed/mixed node are conservatively treated as individual word starts.
+
+    The traversal is iterative because the training tree stream contains trees
+    deeper than Python's recursion limit.
+    """
+    leaves: List[int] = []
+    boundaries: List[bool] = []
+    stack: List[Union[TreeNode, Leaf]] = [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, int):
+            leaves.append(int(node))
+            boundaries.append(True)
+            continue
+        _, children = node
+        if children and all(isinstance(child, int) for child in children):
+            for child_idx, child in enumerate(children):
+                leaves.append(int(child))
+                boundaries.append(child_idx == 0)
+            continue
+        for child in reversed(children):
+            stack.append(child)
+    return leaves, boundaries
+
+
 # --------------------------------------------------------------------------- #
 # Unary collapse + binarization
 # --------------------------------------------------------------------------- #
@@ -286,14 +328,25 @@ def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union
     Leaves (ints) are unchanged. For an internal node with children
     ``[c1, c2, ..., ck]`` (k>2):
 
-    * ``direction="left"``: ``(X c1 (X|< c2 (X|< c3 ...)))`` — right-recursive tail
-      (left-branching). The introduced nodes reuse the parent label suffixed with
-      ``"|<"`` so they are distinguishable but still phrasal.
-    * ``direction="right"``: ``(X (X|> ... (X|> c2 c3) c4) ck)`` — left-recursive tail
-      (right-branching).
+    * ``direction="left"`` (default): ``(X c1 (X|< c2 (X|< c3 c4)))`` — a
+      **right-recursive** spine. The leftmost child ``c1`` stays the parent's
+      direct left child; the remaining ``[c2..ck]`` fold right-to-left into a
+      right-recursive chain (innermost pair ``(ck-1, ck)``) hung on the right.
+      This reproduces the official TreeReg ``binarize_tree``
+      (``ananjan-nandi-9/tree_regularization``, ``src/data/data_utils.py``), which
+      returns ``(c1, (c2, (c3, ...)))``. The introduced nodes reuse the parent
+      label suffixed with ``"|<"`` so they are distinguishable but still phrasal.
+    * ``direction="right"``: ``(X (X|> (X|> c1 c2) c3) c4)`` — the left/right
+      mirror of ``"left"``. The rightmost child ``ck`` stays the parent's direct
+      right child; the remaining ``[c1..ck-1]`` fold left-to-right into a
+      **left-recursive** chain (innermost pair ``(c1, c2)``) hung on the left.
+      This is a repo-local mirror direction with no counterpart in official
+      TreeReg (which binarizes in one direction only).
 
     Leaves are preserved in order, so the terminal sequence is identical pre/post
-    binarization.
+    binarization. This function leaves unary nodes unchanged; the TreeReg
+    preprocessing pipeline calls :func:`collapse_unary_tree` first, matching the
+    official target extractor's drill-through behavior.
     """
     if isinstance(node, int):
         return node
@@ -322,9 +375,17 @@ def binarize_tree(node: Union[TreeNode, Leaf], direction: str = "left") -> Union
                 result[id(node_i)] = (label, children)
                 continue
             if direction == "left":
-                tail = children[1]
-                for c in children[2:]:
-                    tail = (f"{label}|<", [tail, c])
+                # Right-recursive spine, matching official TreeReg ``binarize_tree``
+                # (ananjan-nandi-9/tree_regularization, src/data/data_utils.py),
+                # which returns ``(c1, (c2, (c3, ...)))`` for children [c1..ck]:
+                # c1 stays the parent's left child; [c2..ck] fold into a
+                # right-recursive chain hung on the right, innermost pair (ck-1, ck).
+                # Fold [c2..ck] RIGHT-TO-LEFT to get that. (A prior left-to-right
+                # fold produced ``(c1, ((c2 c3) c4)...)`` — a left-recursive spine
+                # that is NOT what TreeReg uses and is not the mirror of "right".)
+                tail = children[-1]
+                for c in reversed(children[1:-1]):
+                    tail = (f"{label}|<", [c, tail])
                 result[id(node_i)] = (label, [children[0], tail])
             elif direction == "right":
                 acc = (f"{label}|>", [children[0], children[1]])
@@ -464,7 +525,7 @@ def _binarize_segments(
     binarize: bool = True,
     collapse_unary: bool = False,
 ) -> List[Segment]:
-    """Convert each tree segment into (leaves, spans).
+    """Convert each tree segment into ``(leaves, spans, word_boundaries)``.
 
     When ``binarize=True`` (default, TreeReg), :func:`binarize_tree` the tree first
     so every internal node is binary and ``split`` is a real bifurcation point.
@@ -478,10 +539,13 @@ def _binarize_segments(
         if kind == "leaves":
             out.append((kind, data))
         else:
+            original_leaves, word_boundaries = tree_leaves_and_word_boundaries(data)
             tree = collapse_unary_tree(data) if collapse_unary else data
             btree = binarize_tree(tree, direction) if binarize else tree
             leaves, spans = tree_spans(btree)
-            out.append(("tree", (leaves, spans)))
+            if leaves != original_leaves:
+                raise ValueError("unary collapse/binarization changed terminal leaves")
+            out.append(("tree", (leaves, spans, word_boundaries)))
     return out
 def _block_ranges(n_blocks: int, workers: int) -> List[Tuple[int, int]]:
     """Split ``[0, n_blocks)`` into ``workers`` contiguous (lo, hi) ranges."""
@@ -773,6 +837,9 @@ def parse_chunk_slice(
     This is what the data loader calls per chunk. Returns:
     * ``input_ids``: ``(T,)`` int64 — terminal leaves (== terminal.npy tokens).
     * ``spans``: ``(M, 3)`` int32 — constituent ``(left, split, right)`` over input_ids.
+    * ``word_boundaries``: ``(T,)`` bool — first BPE token of each parser word.
+    * ``sentence_ids``: ``(T,)`` int32 — top-level parse-tree id, or ``-1`` for
+      BOS/EOS/whitespace outside a parsed tree.
 
     ``binarize=True`` (default, TreeReg): binarize the tree so every span's ``split``
     is a real binary bifurcation (TreeReg CE needs this). ``binarize=False`` (Pushdown
@@ -787,15 +854,24 @@ def parse_chunk_slice(
     )
     terminals: List[int] = []
     spans: List[Span] = []
+    word_boundaries: List[bool] = []
+    sentence_ids: List[int] = []
+    sentence_id = 0
     for kind, data in segments:
         if kind == "leaves":
-            terminals.extend(int(x) for x in data)
+            plain = [int(x) for x in data]
+            terminals.extend(plain)
+            word_boundaries.extend([False] * len(plain))
+            sentence_ids.extend([-1] * len(plain))
         else:
-            leaves, tspans = data
+            leaves, tspans, tree_word_boundaries = data
             t0 = len(terminals)
             terminals.extend(int(x) for x in leaves)
+            word_boundaries.extend(bool(x) for x in tree_word_boundaries)
+            sentence_ids.extend([sentence_id] * len(leaves))
             for (l, sp, r) in tspans:
                 spans.append((t0 + l, t0 + sp, t0 + r))
+            sentence_id += 1
     if add_boundary_root:
         # The paper initializes every sentence with a ROOT token and forces the
         # sentence-final EOS attachment back to ROOT. This repository's BOS token
@@ -821,6 +897,8 @@ def parse_chunk_slice(
     return {
         "input_ids": np.asarray(terminals, dtype=np.int64),
         "spans": np.asarray(spans, dtype=np.int32).reshape(-1, 3),
+        "word_boundaries": np.asarray(word_boundaries, dtype=np.bool_),
+        "sentence_ids": np.asarray(sentence_ids, dtype=np.int32),
     }
 
 
@@ -855,6 +933,8 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         generate_attention_mask: bool = True,
         include_instance_metadata: bool = True,
         binarize: bool = True,
+        collapse_unary: bool = False,
+        treereg_metadata: bool = False,
         generate_doc_lengths: bool = False,
     ):
         import os
@@ -874,6 +954,8 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.generate_attention_mask = generate_attention_mask
         self.generate_doc_lengths = generate_doc_lengths
         self.binarize = binarize
+        self.collapse_unary = collapse_unary
+        self.treereg_metadata = treereg_metadata
         self.transformer_grammar_type = ""  # set by caller if needed
         # MemMap-compat attributes.
         self._num_instances = int(len(self._chunk_index))
@@ -890,14 +972,33 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         index = int(index)
         s, l = self._chunk_index[index]
         s, l = int(s), int(l)
-        out = parse_chunk_slice(np.asarray(self._tree[s : s + l]), self.vocab,
-                                self.direction, self.binarize)
+        out = parse_chunk_slice(
+            np.asarray(self._tree[s : s + l]),
+            self.vocab,
+            self.direction,
+            self.binarize,
+            collapse_unary=self.collapse_unary,
+        )
         input_ids = out["input_ids"]
         spans = out["spans"]
+        word_boundaries = out["word_boundaries"]
+        sentence_ids = out["sentence_ids"]
         # Truncate to max_len (atomic trees slightly over max_len).
         if len(input_ids) > self.max_len:
+            full_sentence_ids = sentence_ids
             input_ids = input_ids[: self.max_len]
             spans = spans[(spans[:, 2] < self.max_len) & (spans[:, 0] < self.max_len)] if len(spans) else spans
+            word_boundaries = word_boundaries[: self.max_len]
+            sentence_ids = sentence_ids[: self.max_len]
+            # Never regularize a prefix of an overlength top-level tree.  At most
+            # one contiguous top-level tree can cross the truncation boundary.
+            crossing_id = int(sentence_ids[-1]) if len(sentence_ids) else -1
+            if crossing_id >= 0 and np.any(full_sentence_ids[self.max_len :] == crossing_id):
+                crossing = sentence_ids == crossing_id
+                sentence_ids = sentence_ids.copy()
+                word_boundaries = word_boundaries.copy()
+                sentence_ids[crossing] = -1
+                word_boundaries[crossing] = False
         input_ids = torch.tensor(input_ids, dtype=torch.long)
         item: Dict[str, Any] = {"input_ids": input_ids}
         if len(spans):
@@ -909,6 +1010,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
             item["tree_span_mask"] = torch.zeros((0,), dtype=torch.bool)
         if self.generate_attention_mask:
             item["attention_mask"] = torch.ones(len(input_ids), dtype=torch.bool)
+        if self.treereg_metadata:
+            item["treereg_word_boundaries"] = torch.tensor(word_boundaries, dtype=torch.bool)
+            item["treereg_sentence_ids"] = torch.tensor(sentence_ids, dtype=torch.int32)
         # Document lengths (eval-only): split the chunk by EOS so the model can
         # apply intra-document attention masking for faithful PPL. The chunk packs
         # multiple complete top-level trees, so it contains multiple documents.
@@ -939,7 +1043,8 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
     def __init__(self, data_dir: str, pad_token_id: int = 50258,
                  eos_token_id: int = 50256,
                  load_depth: bool = False, include_instance_metadata: bool = True,
-                 generate_doc_lengths: bool = False):
+                 generate_doc_lengths: bool = False,
+                 require_treereg_metadata: bool = False):
         import os
         self.data_dir = data_dir
         self.pad_token_id = pad_token_id
@@ -957,12 +1062,34 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         spans_path = spans_int16 if os.path.exists(spans_int16) else os.path.join(data_dir, "spans.npy")
         self.spans = np.load(spans_path, mmap_mode="r")
         self.span_counts = np.load(os.path.join(data_dir, "span_counts.npy"))
+        word_boundaries_path = os.path.join(data_dir, "treereg_word_boundaries.npy")
+        sentence_ids_path = os.path.join(data_dir, "treereg_sentence_ids.npy")
+        have_treereg_metadata = (
+            os.path.exists(word_boundaries_path) and os.path.exists(sentence_ids_path)
+        )
+        if require_treereg_metadata and not have_treereg_metadata:
+            raise FileNotFoundError(
+                f"TreeReg metadata is missing from {data_dir}: expected "
+                "treereg_word_boundaries.npy and treereg_sentence_ids.npy. "
+                "Regenerate this split with scripts/precompute_treereg.py; the "
+                "legacy *_right data is not paper-faithful."
+            )
+        self.word_boundaries = (
+            np.load(word_boundaries_path, mmap_mode="r") if have_treereg_metadata else None
+        )
+        self.sentence_ids = (
+            np.load(sentence_ids_path, mmap_mode="r") if have_treereg_metadata else None
+        )
         # These mmaps are read by RANDOM chunk index across 4.88M chunks. Hint the
         # kernel MADV_RANDOM so it stops readaheading (the default readahead hoards
         # a large fraction of the 189 GB file into page cache -> cgroup OOM under
         # slurm). See _madvise_random for the full rationale.
         _madvise_random(self.input_ids)
         _madvise_random(self.spans)
+        if self.word_boundaries is not None:
+            _madvise_random(self.word_boundaries)
+        if self.sentence_ids is not None:
+            _madvise_random(self.sentence_ids)
         self.n_chunks = int(self.input_ids.shape[0])
         self.max_len = int(self.input_ids.shape[1])
         self.load_depth = load_depth
@@ -999,6 +1126,13 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
             "tree_spans": tspans,
             "tree_span_mask": span_mask,
         }
+        if self.word_boundaries is not None and self.sentence_ids is not None:
+            item["treereg_word_boundaries"] = torch.tensor(
+                np.asarray(self.word_boundaries[index]), dtype=torch.bool
+            )
+            item["treereg_sentence_ids"] = torch.tensor(
+                np.asarray(self.sentence_ids[index]), dtype=torch.int32
+            )
         if self.depth is not None:
             item["tree_depth_matrix"] = torch.tensor(
                 np.asarray(self.depth[index]), dtype=torch.int8)
@@ -1042,6 +1176,7 @@ def preprocess_split(
     binarize: bool = True,
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
+    save_treereg_metadata: bool = False,
 ) -> Dict[str, str]:
     """Process a ``tree/*.npy`` parse stream into chunks + the stale
     Pushdown depth matrix, saved to ``out_dir``.
@@ -1063,6 +1198,11 @@ def preprocess_split(
     * ``input_ids.npy`` ``(n_chunks, max_len)`` int32 — terminal leaves, padded.
     * ``spans.npy`` ``(n_chunks, max_spans, 3)`` int32 — constituent spans, pad -1.
     * ``span_counts.npy`` ``(n_chunks,)`` int32 — valid spans per chunk.
+    * ``treereg_word_boundaries.npy`` ``(n_chunks, max_len)`` bool — exact
+      parser-word starts. Only when ``save_treereg_metadata``.
+    * ``treereg_sentence_ids.npy`` ``(n_chunks, max_len)`` int16 — complete
+      top-level tree id per token, ``-1`` outside parsed trees. Only when
+      ``save_treereg_metadata``.
     * ``depth_matrix.npy`` ``(n_chunks, max_len, max_len)`` int8 — the stale tape
       ``S[k,j] = #{constituents (l,r): l<=j<=r<=k}``, padded. Only when
       ``save_depth_matrix`` (a full depth matrix is ~4.2 MB/chunk; the train split
@@ -1131,6 +1271,8 @@ def preprocess_split(
     p_input_ids = os.path.join(out_dir, "input_ids.npy")
     p_spans = os.path.join(out_dir, "spans.npy")
     p_span_counts = os.path.join(out_dir, "span_counts.npy")
+    p_word_boundaries = os.path.join(out_dir, "treereg_word_boundaries.npy")
+    p_sentence_ids = os.path.join(out_dir, "treereg_sentence_ids.npy")
     np.save(p_chunk_index, np.asarray(chunks, dtype=np.int64))
     input_ids_m = np.lib.format.open_memmap(p_input_ids, mode="w+",
         dtype=np.int32, shape=(n_chunks, max_len))
@@ -1138,8 +1280,21 @@ def preprocess_split(
         dtype=np.int32, shape=(n_chunks, max_spans, 3))
     span_counts_m = np.lib.format.open_memmap(p_span_counts, mode="w+",
         dtype=np.int32, shape=(n_chunks,))
+    word_boundaries_m = None
+    sentence_ids_m = None
+    if save_treereg_metadata:
+        word_boundaries_m = np.lib.format.open_memmap(
+            p_word_boundaries, mode="w+", dtype=np.bool_, shape=(n_chunks, max_len)
+        )
+        sentence_ids_m = np.lib.format.open_memmap(
+            p_sentence_ids, mode="w+", dtype=np.int16, shape=(n_chunks, max_len)
+        )
     input_ids_m[:] = pad_token_id
     spans_m[:] = -1
+    if word_boundaries_m is not None:
+        word_boundaries_m[:] = False
+    if sentence_ids_m is not None:
+        sentence_ids_m[:] = -1
 
     # Parse + write (parallel). With load_tree_to_ram, the fork-inherited RAM
     # array is the tree source (zero disk input I/O); otherwise workers re-mmap
@@ -1157,7 +1312,13 @@ def preprocess_split(
         fn = functools.partial(_parse_range_to_memmap, tree_src, tokenizer_path,
                                direction, max_len, pad_token_id, binarize, collapse_unary,
                                p_input_ids, p_spans, p_span_counts, max_spans,
-                               add_boundary_root=add_boundary_root)
+                               add_boundary_root=add_boundary_root,
+                               p_word_boundaries=(
+                                   p_word_boundaries if save_treereg_metadata else None
+                               ),
+                               p_sentence_ids=(
+                                   p_sentence_ids if save_treereg_metadata else None
+                               ))
         with Pool(workers) as pool:
             for done in pool.imap_unordered(fn, ranges):
                 pass
@@ -1165,12 +1326,25 @@ def preprocess_split(
         _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len,
                                pad_token_id, binarize, collapse_unary, p_input_ids, p_spans,
                                p_span_counts, max_spans, (0, n_chunks),
-                               add_boundary_root=add_boundary_root)
+                               add_boundary_root=add_boundary_root,
+                               p_word_boundaries=(
+                                   p_word_boundaries if save_treereg_metadata else None
+                               ),
+                               p_sentence_ids=(
+                                   p_sentence_ids if save_treereg_metadata else None
+                               ))
     _TREE_RAM = None
     input_ids_m.flush(); spans_m.flush(); span_counts_m.flush()
+    if word_boundaries_m is not None:
+        word_boundaries_m.flush()
+    if sentence_ids_m is not None:
+        sentence_ids_m.flush()
 
     saved = {"chunk_index": p_chunk_index, "input_ids": p_input_ids,
              "spans": p_spans, "span_counts": p_span_counts}
+    if save_treereg_metadata:
+        saved["treereg_word_boundaries"] = p_word_boundaries
+        saved["treereg_sentence_ids"] = p_sentence_ids
 
     if save_depth_matrix:
         p_depth = os.path.join(out_dir, "depth_matrix.npy")
@@ -1246,7 +1420,8 @@ _TREE_RAM: Optional["np.ndarray"] = None
 
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
                            binarize, collapse_unary, p_input_ids, p_spans,
-                           p_span_counts, max_spans, rng, add_boundary_root=False):
+                           p_span_counts, max_spans, rng, add_boundary_root=False,
+                           p_word_boundaries=None, p_sentence_ids=None):
     """Worker: parse chunks [rng[0], rng[1]) and write to the shared memmaps.
 
     ``tree_src`` is the tree.npy path. If the module global ``_TREE_RAM`` is set
@@ -1265,6 +1440,16 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
     input_ids_m = np.lib.format.open_memmap(p_input_ids, mode="r+")
     spans_m = np.lib.format.open_memmap(p_spans, mode="r+")
     span_counts_m = np.lib.format.open_memmap(p_span_counts, mode="r+")
+    word_boundaries_m = (
+        np.lib.format.open_memmap(p_word_boundaries, mode="r+")
+        if p_word_boundaries is not None
+        else None
+    )
+    sentence_ids_m = (
+        np.lib.format.open_memmap(p_sentence_ids, mode="r+")
+        if p_sentence_ids is not None
+        else None
+    )
     lo, hi = rng
     for i in range(lo, hi):
         s, l = int(chunk_index[i, 0]), int(chunk_index[i, 1])
@@ -1274,10 +1459,28 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
         )
         ids = out["input_ids"]
         sp = out["spans"]
+        word_boundaries = out["word_boundaries"]
+        sentence_ids = out["sentence_ids"]
         if len(ids) > max_len:
+            full_sentence_ids = sentence_ids
             ids = ids[:max_len]
             sp = sp[sp[:, 2] < max_len] if len(sp) else sp
+            word_boundaries = word_boundaries[:max_len]
+            sentence_ids = sentence_ids[:max_len]
+            crossing_id = int(sentence_ids[-1]) if len(sentence_ids) else -1
+            if crossing_id >= 0 and np.any(full_sentence_ids[max_len:] == crossing_id):
+                crossing = sentence_ids == crossing_id
+                sentence_ids = sentence_ids.copy()
+                word_boundaries = word_boundaries.copy()
+                sentence_ids[crossing] = -1
+                word_boundaries[crossing] = False
         input_ids_m[i, : len(ids)] = ids
+        if word_boundaries_m is not None:
+            word_boundaries_m[i, : len(ids)] = word_boundaries
+        if sentence_ids_m is not None:
+            if len(sentence_ids) and int(sentence_ids.max()) > np.iinfo(np.int16).max:
+                raise ValueError(f"chunk {i} has too many top-level trees for int16 ids")
+            sentence_ids_m[i, : len(ids)] = sentence_ids
         if len(sp) > max_spans:
             raise ValueError(
                 f"chunk {i} has {len(sp)} spans but output capacity is {max_spans}; "
@@ -1341,6 +1544,11 @@ if __name__ == "__main__":
         action="store_true",
         help="add BOS/ROOT-to-EOS spans so each final attachment is supervised to ROOT",
     )
+    ap.add_argument(
+        "--treereg_metadata",
+        action="store_true",
+        help="save exact top-level-tree ids and preterminal word-start masks for TreeReg",
+    )
     args = ap.parse_args()
     dirs = ["left", "right"] if args.direction == "both" else [args.direction]
     for d in dirs:
@@ -1352,4 +1560,5 @@ if __name__ == "__main__":
             max_spans_override=args.max_spans, load_tree_to_ram=args.load_tree_to_ram,
             binarize=not args.no_binarize, collapse_unary=args.collapse_unary,
             add_boundary_root=args.add_boundary_root,
+            save_treereg_metadata=args.treereg_metadata,
         )

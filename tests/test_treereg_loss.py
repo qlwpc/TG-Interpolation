@@ -3,7 +3,7 @@
 import torch
 import pytest
 
-from olmo.treereg import compute_treereg_loss
+from olmo.treereg import compute_treereg_loss, count_treereg_sentences
 
 
 def test_treereg_loss_shape_and_finite():
@@ -99,3 +99,134 @@ def test_treereg_macro_reduction():
     sent1 = span_ce(1, 1, 4, 9)
     expected = (sent0 + sent1) / 2
     assert abs(float(loss_macro) - expected) < 1e-4
+
+
+def test_treereg_excludes_bos_eos_without_changing_reference_math():
+    torch.manual_seed(4)
+    # Packed representation has BOS/tree/EOS, while the upstream regularizer is
+    # called on the sentence's terminal pieces only.
+    packed = torch.randn(1, 7, 12)
+    spans_global = torch.tensor([[[1, 2, 5]]])
+    mask = torch.tensor([[True]])
+    sentence_ids = torch.tensor([[-1, 0, 0, 0, 0, 0, -1]])
+    word_boundaries = torch.tensor([[False, True, True, True, True, True, False]])
+    packed_loss, count = compute_treereg_loss(
+        packed,
+        spans_global,
+        mask,
+        sentence_ids=sentence_ids,
+        word_boundaries=word_boundaries,
+        return_sentence_count=True,
+    )
+    stripped_loss = compute_treereg_loss(
+        packed[:, 1:6],
+        torch.tensor([[[0, 1, 4]]]),
+        mask,
+    )
+    assert count == 1
+    assert torch.allclose(packed_loss, stripped_loss, atol=1e-6)
+
+
+def test_treereg_restricts_candidates_to_word_boundaries():
+    torch.manual_seed(5)
+    hidden = torch.randn(1, 5, 8)
+    spans = torch.tensor([[[0, 2, 4]]])
+    mask = torch.tensor([[True]])
+    sentence_ids = torch.zeros((1, 5), dtype=torch.int32)
+    # Token 1 is a continuation piece, so split q=0 is not a candidate.
+    boundaries = torch.tensor([[True, False, True, True, True]])
+    restricted = compute_treereg_loss(
+        hidden,
+        spans,
+        mask,
+        sentence_ids=sentence_ids,
+        word_boundaries=boundaries,
+    )
+
+    # Equivalent compact reference candidates are q={1,2,3}; compute their
+    # scores through the same objective by masking no sentence context.
+    all_candidates = compute_treereg_loss(hidden, spans, mask)
+    assert torch.isfinite(restricted)
+    assert not torch.allclose(restricted, all_candidates)
+
+
+def test_treereg_ignores_degenerate_unary_spans_instead_of_clamping():
+    hidden = torch.randn(1, 6, 8, requires_grad=True)
+    spans = torch.tensor([[[1, 4, 4]]])
+    loss = compute_treereg_loss(hidden, spans, torch.tensor([[True]]))
+    assert float(loss) == 0.0
+    loss.backward()
+    assert hidden.grad is not None
+
+
+def test_two_trees_in_one_packed_row_are_macro_averaged():
+    torch.manual_seed(6)
+    hidden = torch.randn(1, 10, 8)
+    spans = torch.tensor([[[1, 2, 4], [6, 7, 8]]])
+    mask = torch.tensor([[True, True]])
+    sentence_ids = torch.tensor([[-1, 0, 0, 0, 0, -1, 1, 1, 1, -1]])
+    boundaries = sentence_ids >= 0
+    packed, count = compute_treereg_loss(
+        hidden,
+        spans,
+        mask,
+        sentence_ids=sentence_ids,
+        word_boundaries=boundaries,
+        return_sentence_count=True,
+    )
+    first = compute_treereg_loss(
+        hidden[:, 1:5], torch.tensor([[[0, 1, 3]]]), torch.tensor([[True]])
+    )
+    second = compute_treereg_loss(
+        hidden[:, 6:9], torch.tensor([[[0, 1, 2]]]), torch.tensor([[True]])
+    )
+    assert count == 2
+    assert torch.allclose(packed, (first + second) / 2, atol=1e-6)
+
+
+def test_count_treereg_sentences_counts_runs_not_bos_or_padding():
+    ids = torch.tensor([
+        [-1, 0, 0, -1, 1, 1, -1],
+        [-1, -1, 0, 0, 0, -1, -1],
+    ])
+    assert int(count_treereg_sentences(ids)) == 3
+
+
+def test_treereg_layer_one_captures_post_first_block():
+    from olmo.config import (
+        ActivationType,
+        BlockType,
+        InitFnType,
+        LayerNormType,
+        ModelConfig,
+    )
+    from olmo.model import OLMo
+
+    cfg = ModelConfig(
+        d_model=32,
+        n_heads=4,
+        n_layers=2,
+        mlp_hidden_size=64,
+        vocab_size=128,
+        embedding_size=128,
+        max_sequence_length=8,
+        block_type=BlockType.sequential,
+        layer_norm_type=LayerNormType.rms,
+        activation_type=ActivationType.swiglu,
+        rope=True,
+        flash_attention=False,
+        attention_dropout=0.0,
+        init_device="cpu",
+        init_fn=InitFnType.normal,
+        transformer_grammar_type="treereg",
+        treereg_layer=1,
+        treereg_n_heads=1,
+    )
+    model = OLMo(cfg).eval()
+    out = model(
+        input_ids=torch.randint(0, 128, (1, 6)),
+        output_hidden_states=True,
+    )
+    # hidden_states[0] is embeddings; hidden_states[1] is the state entering
+    # block 2, i.e. exactly the post-block-1 residual.
+    assert torch.allclose(out.treereg_hidden, out.hidden_states[1])

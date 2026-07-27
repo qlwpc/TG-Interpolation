@@ -43,6 +43,16 @@ class DataCollator:
         all_gold_summary = []
         all_tree_spans = []
         all_tree_span_mask = []
+        all_treereg_word_boundaries = []
+        all_treereg_sentence_ids = []
+        has_treereg_metadata = any(
+            isinstance(x, dict)
+            and (
+                "treereg_word_boundaries" in x
+                or "treereg_sentence_ids" in x
+            )
+            for x in items
+        )
         max_docs = max((len(x["doc_lens"]) if isinstance(x, dict) and "doc_lens" in x else 0 for x in items))
         max_spans = max((len(x["tree_spans"]) if isinstance(x, dict) and "tree_spans" in x else 0 for x in items))
 
@@ -138,12 +148,51 @@ class DataCollator:
                 tree_spans = tree_spans.to(dtype=torch.long)
                 if tree_spans.dim() == 1:
                     tree_spans = tree_spans.view(-1, 3)
+                if self.pad_direction == PaddingDirection.left and pad_shape[0] > 0:
+                    tree_spans = tree_spans.clone()
+                    valid_span = tree_spans[:, 0] >= 0
+                    tree_spans[valid_span] += pad_shape[0]
                 m = tree_spans.shape[0]
                 span_pad = (0, 0, 0, max(0, max_spans - m))
                 all_tree_spans.append(F.pad(tree_spans, span_pad, value=-1))
                 span_mask = torch.ones(m, dtype=torch.bool)
                 span_mask = F.pad(span_mask, (0, max(0, max_spans - m)), value=False)
                 all_tree_span_mask.append(span_mask)
+
+            # TreeReg sentence-local metadata. ``sentence_ids`` identifies each
+            # complete top-level parse tree; -1 denotes BOS/EOS/whitespace/pad.
+            # Word starts are exact preterminal boundaries from the tree stream.
+            if has_treereg_metadata:
+                if not isinstance(x, dict):
+                    raise ValueError("TreeReg metadata requires dictionary dataset items")
+                word_boundaries = x.get("treereg_word_boundaries")
+                sentence_ids = x.get("treereg_sentence_ids")
+                if word_boundaries is None or sentence_ids is None:
+                    raise ValueError(
+                        "TreeReg batch mixes items with and without sentence metadata"
+                    )
+                if not isinstance(word_boundaries, torch.Tensor):
+                    word_boundaries = torch.tensor(word_boundaries)
+                if not isinstance(sentence_ids, torch.Tensor):
+                    sentence_ids = torch.tensor(sentence_ids)
+                if len(word_boundaries) != len(input_ids) or len(sentence_ids) != len(input_ids):
+                    raise ValueError(
+                        "TreeReg word boundaries/sentence ids must align with input_ids"
+                    )
+                all_treereg_word_boundaries.append(
+                    F.pad(
+                        word_boundaries.to(dtype=torch.bool),
+                        pad_shape,
+                        value=False,
+                    )
+                )
+                all_treereg_sentence_ids.append(
+                    F.pad(
+                        sentence_ids.to(dtype=torch.int32),
+                        pad_shape,
+                        value=-1,
+                    )
+                )
 
             # Instance mask.
             instance_mask = x.get("instance_mask") if isinstance(x, dict) else None
@@ -200,6 +249,9 @@ class DataCollator:
         if all_tree_spans:
             out["tree_spans"] = torch.stack(all_tree_spans)
             out["tree_span_mask"] = torch.stack(all_tree_span_mask)
+        if all_treereg_word_boundaries:
+            out["treereg_word_boundaries"] = torch.stack(all_treereg_word_boundaries)
+            out["treereg_sentence_ids"] = torch.stack(all_treereg_sentence_ids)
         if all_metadata:
             out["metadata"] = all_metadata
         if all_gold_summary:

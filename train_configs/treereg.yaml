@@ -46,7 +46,7 @@ model:
   treereg_n_heads: 3        # ~25% of 12 heads
   treereg_every_k: 10       # apply L_TR every 10 LM steps
   treereg_alpha: 1.0        # L_LM + alpha * L_TR
-  parse_binarize_direction: right
+  parse_binarize_direction: left
 
 ddp:
   grad_sync_mode: batch
@@ -110,7 +110,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/dev_right
+        - ${workspace}/dataset/bbc-news/parse_aligned/dev_treereg
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/dev.npy
   - label: TG-ppl-validation-test
@@ -121,7 +121,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/test_right
+        - ${workspace}/dataset/bbc-news/parse_aligned/test_treereg
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/test.npy
 
@@ -136,6 +136,6 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/train_right
+    - ${workspace}/dataset/bbc-news/parse_aligned/train_treereg
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/train.npy

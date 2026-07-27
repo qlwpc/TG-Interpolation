@@ -11,6 +11,7 @@ from olmo.data.parse_align import (
     tree_spans,
     compute_depth_matrix,
     parse_chunk_slice,
+    tree_leaves_and_word_boundaries,
 )
 
 
@@ -81,11 +82,13 @@ def test_binarize_left_and_right_preserve_leaves():
     assert len(bl[1]) == 2
     assert bl[1][0] == 1
     assert isinstance(bl[1][1], tuple) and bl[1][1][0] == "A|<"
+    assert bl == ("A", [1, ("A|<", [2, ("A|<", [3, 4])])])
     br = binarize_tree(node, "right")
     assert _leaves(br) == [1, 2, 3, 4]
     assert len(br[1]) == 2
     assert br[1][1] == 4
     assert isinstance(br[1][0], tuple) and br[1][0][0] == "A|>"
+    assert br == ("A", [("A|>", [("A|>", [1, 2]), 3]), 4])
 
 
 def test_binarize_already_binary_unchanged():
@@ -279,6 +282,42 @@ def test_parse_chunk_slice_collapse_unary_flag():
     collapsed = parse_chunk_slice(block, v, "left", binarize=True, collapse_unary=True)
     assert raw["input_ids"].tolist() == collapsed["input_ids"].tolist()
     assert len(collapsed["spans"]) == len(raw["spans"]) - 1
+
+
+def test_word_boundaries_come_from_preterminals():
+    # A parser preterminal may contain several tokenizer pieces for one word.
+    # Only its first leaf is a TreeReg split candidate.
+    tree = ("S", [("A", [10, 11]), ("B", [12])])
+    leaves, boundaries = tree_leaves_and_word_boundaries(tree)
+    assert leaves == [10, 11, 12]
+    assert boundaries == [True, False, True]
+
+
+def test_parse_chunk_slice_marks_each_top_level_tree_not_bos_blocks():
+    v = fake_vocab()
+    first = encode_tree(
+        v,
+        "S",
+        encode_tree(v, "A", 10, 11),
+        encode_tree(v, "B", 12),
+    )
+    second = encode_tree(v, "A", 20, 21)
+    # BOS, two complete top-level trees separated by a plain token, EOS.
+    block = [v.bos] + first + [77] + second + [v.eos]
+    out = parse_chunk_slice(
+        block,
+        v,
+        direction="left",
+        binarize=True,
+        collapse_unary=True,
+    )
+    assert out["input_ids"].tolist() == [0, 10, 11, 12, 77, 20, 21, 1]
+    assert out["sentence_ids"].tolist() == [-1, 0, 0, 0, -1, 1, 1, -1]
+    assert out["word_boundaries"].tolist() == [
+        False, True, False, True, False, True, False, False
+    ]
+    # In particular, the syntactic S opener was stripped and did not become BOS.
+    assert 102 not in out["input_ids"]
 
 
 def test_paper_preprocess_adds_bos_root_to_eos_span():

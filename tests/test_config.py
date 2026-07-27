@@ -141,6 +141,33 @@ class TestModelConfig:
         with pytest.raises(OLMoConfigurationError):
             OLMo(cfg, init_params=False)
 
+    def test_treereg_layer_is_one_based_and_range_checked(self):
+        from olmo.model import OLMo
+
+        cfg = ModelConfig(
+            transformer_grammar_type="treereg",
+            n_layers=2,
+            treereg_layer=0,
+            treereg_n_heads=1,
+            init_device="meta",
+        )
+        with pytest.raises(OLMoConfigurationError, match="1-based"):
+            OLMo(cfg, init_params=False)
+
+    def test_treereg_rejects_block_groups(self):
+        from olmo.model import OLMo
+
+        cfg = ModelConfig(
+            transformer_grammar_type="treereg",
+            n_layers=2,
+            block_group_size=2,
+            treereg_layer=1,
+            treereg_n_heads=1,
+            init_device="meta",
+        )
+        with pytest.raises(OLMoConfigurationError, match="block_group_size=1"):
+            OLMo(cfg, init_params=False)
+
 
 # ---------------------------------------------------------------------------
 # Scheduler boundary conditions

@@ -778,13 +778,26 @@ class Trainer:
                 span_mask = batch.get("tree_span_mask")
                 if span_mask is None:
                     span_mask = (spans[..., 0] >= 0)
+                sentence_ids = batch.get("treereg_sentence_ids")
+                word_boundaries = batch.get("treereg_word_boundaries")
+                if sentence_ids is None or word_boundaries is None:
+                    raise RuntimeError(
+                        "TreeReg training requires treereg_sentence_ids and "
+                        "treereg_word_boundaries. Rebuild the parse-aligned data "
+                        "with scripts/precompute_treereg.py."
+                    )
                 d_head = self.cfg.model.d_model // self.cfg.model.n_heads
-                treereg_loss = compute_treereg_loss(
+                treereg_loss, sentence_count = compute_treereg_loss(
                     tr_hidden, spans, span_mask,
                     n_heads_subset=self.cfg.model.treereg_n_heads, d_head=d_head,
+                    sentence_ids=sentence_ids,
+                    word_boundaries=word_boundaries,
+                    return_sentence_count=True,
                 )
                 if loss_reduction == "sum":
-                    treereg_loss = treereg_loss * batch["input_ids"].shape[0]
+                    # The reference objective is a macro average over complete
+                    # top-level trees, not over packed rows or LM tokens.
+                    treereg_loss = treereg_loss * sentence_count
 
         # Pushdown attachment-head auxiliary loss (Murty et al. 2023, Eq. 5):
         # cross-entropy of the head's reduce-target logits against the oracle
@@ -828,7 +841,11 @@ class Trainer:
         return ce_loss, z_loss, logits, treereg_loss, attachment_loss
 
     def train_micro_batch(
-        self, micro_batch: Dict[str, Any], batch_size_in_loss_tokens: int
+        self,
+        micro_batch: Dict[str, Any],
+        batch_size_in_loss_tokens: int,
+        treereg_loss_denominator: Optional[float] = None,
+        device_loss_weight: float = 1.0,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         ce_loss, z_loss, logits, treereg_loss, attachment_loss = self.model_forward(
             micro_batch, compute_z_loss=self.cfg.softmax_auxiliary_loss, loss_reduction="sum"
@@ -839,20 +856,27 @@ class Trainer:
         if self.cfg.softmax_auxiliary_loss:
             assert z_loss is not None
             z_loss = z_loss / batch_size_in_loss_tokens
-            loss = ce_loss + z_loss
+            loss = (ce_loss + z_loss) * device_loss_weight
         else:
-            loss = ce_loss
+            loss = ce_loss * device_loss_weight
 
-        # Add TreeReg auxiliary loss (already summed over the micro-batch above).
+        # TreeReg is summed over complete top-level trees in this micro-batch
+        # and normalized independently of the token-level language-model loss.
         if treereg_loss is not None:
-            tr = treereg_loss / batch_size_in_loss_tokens
+            if treereg_loss_denominator is None or treereg_loss_denominator <= 0:
+                raise RuntimeError("missing positive TreeReg sentence denominator")
+            tr = treereg_loss / treereg_loss_denominator
             loss = loss + self.cfg.model.treereg_alpha * tr
 
         # Add Pushdown attachment-head auxiliary loss (already summed over the
         # micro-batch above).
         if attachment_loss is not None:
             att = attachment_loss / batch_size_in_loss_tokens
-            loss = loss + self.cfg.model.pushdown_attachment_weight * att
+            loss = loss + (
+                device_loss_weight
+                * self.cfg.model.pushdown_attachment_weight
+                * att
+            )
 
         # In case this helps with memory utilization.
         del micro_batch
@@ -879,6 +903,37 @@ class Trainer:
             device_loss_weight = get_world_size() * batch_size_in_loss_tokens / global_batch_size_in_loss_tokens.item()
         else:
             batch_size_in_loss_tokens = batch["input_ids"].numel()  # fixed: since TG or finetune task exist pad/non-loss tokens
+            device_loss_weight = 1.0
+
+        # DDP averages gradients across ranks. Dividing each rank's local
+        # sentence-loss sum by global_count/world_size therefore yields exactly
+        # the global macro average, even when ranks contain unequal numbers of
+        # complete top-level trees.
+        treereg_loss_denominator = None
+        if (
+            self.cfg.model.transformer_grammar_type == "treereg"
+            and batch.get("tree_spans") is not None
+        ):
+            k = self.cfg.model.treereg_every_k
+            step = int(getattr(self, "global_step", 0))
+            if k <= 0 or step % k == 0:
+                sentence_ids = batch.get("treereg_sentence_ids")
+                word_boundaries = batch.get("treereg_word_boundaries")
+                if sentence_ids is None or word_boundaries is None:
+                    raise RuntimeError(
+                        "TreeReg training batch is missing sentence/word-boundary "
+                        "metadata; rebuild it with scripts/precompute_treereg.py."
+                    )
+                from olmo.treereg import count_treereg_sentences
+
+                global_sentence_count = count_treereg_sentences(sentence_ids)
+                if get_world_size() > 1:
+                    dist.all_reduce(global_sentence_count)
+                if int(global_sentence_count.item()) <= 0:
+                    raise RuntimeError("TreeReg batch contains no complete top-level trees")
+                treereg_loss_denominator = (
+                    global_sentence_count.item() / get_world_size()
+                )
 
         # In case this helps with memory utilization.
         del batch
@@ -905,7 +960,12 @@ class Trainer:
             with grad_sync_context():
                 with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
                     # Run forward pass.
-                    loss, ce_loss, z_loss = self.train_micro_batch(micro_batch, batch_size_in_loss_tokens)
+                    loss, ce_loss, z_loss = self.train_micro_batch(
+                        micro_batch,
+                        batch_size_in_loss_tokens,
+                        treereg_loss_denominator=treereg_loss_denominator,
+                        device_loss_weight=device_loss_weight,
+                    )
 
                     # Update overall CE batch loss.
                     ce_batch_loss += ce_loss.detach()
@@ -916,8 +976,6 @@ class Trainer:
                         z_batch_loss += z_loss.detach()
 
                 # Run backward pass.
-                if count_loss_tokens:
-                    loss *= device_loss_weight
                 loss.backward()
 
             # Remove output hooks
