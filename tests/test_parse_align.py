@@ -381,6 +381,27 @@ def test_precomputed_dataset_emits_metadata():
     assert all(isinstance(m, dict) for m in batch["metadata"])
 
 
+def test_incomplete_precomputed_dataset_is_rejected(tmp_path):
+    """An interrupted writer must never be consumed as a training dataset."""
+    from olmo.data.parse_align import PrecomputedParseDataset
+
+    (tmp_path / "PREPROCESSING_INCOMPLETE").write_text("in progress\n")
+    with pytest.raises(RuntimeError, match="interrupted preprocessing output"):
+        PrecomputedParseDataset(str(tmp_path))
+
+
+def test_worker_cpu_candidates_are_distinct_and_allowed():
+    """Pinned parser workers must be spread over allowed physical cores."""
+    import os
+
+    from olmo.data.parse_align import _worker_cpu_candidates
+
+    candidates = _worker_cpu_candidates(4)
+    assert candidates
+    assert len(candidates) == len(set(candidates))
+    assert set(candidates).issubset(os.sched_getaffinity(0))
+
+
 
 # --------------------------------------------------------------------------- #
 # Document-length output for faithful eval PPL (doc_lens + doc masking)
@@ -405,6 +426,10 @@ def test_get_document_lengths_splits_by_eos():
     assert int(dl_real.sum()) == 9
 
 
+@pytest.mark.skipif(
+    not __import__("os").path.exists(f"{_TEST_RIGHT}/input_ids.npy"),
+    reason="test_right precomputed split not on disk",
+)
 def test_precomputed_dataset_emits_doc_lens():
     """generate_doc_lengths=True -> each item carries doc_lens whose sum equals
     the number of real (non-pad) tokens, with no pad leak into a doc."""

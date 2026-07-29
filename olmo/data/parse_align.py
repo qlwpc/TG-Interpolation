@@ -1060,19 +1060,24 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                  require_treereg_metadata: bool = False):
         import os
         self.data_dir = data_dir
+        if os.path.exists(os.path.join(data_dir, "PREPROCESSING_INCOMPLETE")):
+            raise RuntimeError(
+                f"{data_dir} is an interrupted preprocessing output and must "
+                "not be loaded; remove it and preprocess again"
+            )
         self.pad_token_id = pad_token_id
         self.eos_token_id = eos_token_id
         self.generate_doc_lengths = generate_doc_lengths
         self._include_instance_metadata = include_instance_metadata
         self._metadata = {"path": str(data_dir)}
         self.input_ids = np.load(os.path.join(data_dir, "input_ids.npy"), mmap_mode="r")
-        # Prefer the int16 spans file if present (spans are terminal indices < 2048,
-        # so int16 is lossless and halves the mmap from 149 GB to 75 GB for the train
-        # split — directly cutting cgroup page-cache pressure under slurm, which was
-        # the cause of the num_workers>0 OOM). Fall back to the int32 spans.npy.
-        # __getitem__ builds tensors with dtype=torch.long, which upcasts int16 -> int64.
-        spans_int16 = os.path.join(data_dir, "spans_int16.npy")
-        spans_path = spans_int16 if os.path.exists(spans_int16) else os.path.join(data_dir, "spans.npy")
+        # New preprocessing writes the chosen dtype directly to canonical
+        # ``spans.npy`` (TreeReg uses int16). Retain a fallback for legacy outputs
+        # that stored compact spans under ``spans_int16.npy``. __getitem__ builds
+        # torch.long tensors, so either on-disk integer dtype is upcast to int64.
+        spans_path = os.path.join(data_dir, "spans.npy")
+        if not os.path.exists(spans_path):
+            spans_path = os.path.join(data_dir, "spans_int16.npy")
         self.spans = np.load(spans_path, mmap_mode="r")
         self.span_counts = np.load(os.path.join(data_dir, "span_counts.npy"))
         word_boundaries_path = os.path.join(data_dir, "treereg_word_boundaries.npy")
@@ -1173,6 +1178,18 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
 # --------------------------------------------------------------------------- #
 # Offline preprocessing: binarize trees + generate the stale depth matrix
 # --------------------------------------------------------------------------- #
+def _available_memory_bytes() -> int:
+    """Read Linux MemAvailable without adding a psutil dependency."""
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 0
+
+
 def preprocess_split(
     tree_npy: str,
     tokenizer_path: str,
@@ -1190,6 +1207,12 @@ def preprocess_split(
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
     save_treereg_metadata: bool = False,
+    input_dtype: Any = np.int32,
+    span_dtype: Any = np.int32,
+    pin_workers: bool = False,
+    worker_task_multiplier: int = 32,
+    min_free_disk_bytes: int = 0,
+    min_free_memory_bytes: int = 0,
 ) -> Dict[str, str]:
     """Process a ``tree/*.npy`` parse stream into chunks + the stale
     Pushdown depth matrix, saved to ``out_dir``.
@@ -1208,8 +1231,11 @@ def preprocess_split(
     EOS so the final attachment is supervised to ROOT. Saves:
 
     * ``chunk_index.npy`` ``(n_chunks, 2)`` int64 — tree-stream slice per chunk.
-    * ``input_ids.npy`` ``(n_chunks, max_len)`` int32 — terminal leaves, padded.
-    * ``spans.npy`` ``(n_chunks, max_spans, 3)`` int32 — constituent spans, pad -1.
+    * ``input_ids.npy`` ``(n_chunks, max_len)`` — terminal leaves, padded.
+      ``input_dtype`` defaults to int32; uint16 is lossless for this tokenizer.
+    * ``spans.npy`` ``(n_chunks, max_spans, 3)`` — constituent spans, padded
+      with -1. ``span_dtype`` defaults to int32; int16 is lossless for sequences
+      shorter than 32768 and is written directly without a conversion pass.
     * ``span_counts.npy`` ``(n_chunks,)`` int32 — valid spans per chunk.
     * ``treereg_word_boundaries.npy`` ``(n_chunks, max_len)`` bool — exact
       parser-word starts. Only when ``save_treereg_metadata``.
@@ -1239,6 +1265,27 @@ def preprocess_split(
     """
     import os
     os.makedirs(out_dir, exist_ok=True)
+    incomplete_marker = os.path.join(out_dir, "PREPROCESSING_INCOMPLETE")
+    complete_marker = os.path.join(out_dir, "PREPROCESSING_COMPLETE")
+
+    input_dtype = np.dtype(input_dtype)
+    span_dtype = np.dtype(span_dtype)
+    if input_dtype.kind not in ("u", "i"):
+        raise ValueError(f"input_dtype must be an integer dtype, got {input_dtype}")
+    if span_dtype.kind != "i":
+        raise ValueError(
+            f"span_dtype must be signed so padding -1 is representable, got {span_dtype}"
+        )
+    input_info = np.iinfo(input_dtype)
+    if not input_info.min <= pad_token_id <= input_info.max:
+        raise ValueError(
+            f"pad_token_id={pad_token_id} does not fit input_dtype={input_dtype}"
+        )
+    if workers < 1:
+        raise ValueError("workers must be at least 1")
+    if worker_task_multiplier < 1:
+        raise ValueError("worker_task_multiplier must be at least 1")
+
     vocab = TreeVocab.from_tokenizer_file(tokenizer_path)
     if warm_cache:
         _warm_tree_cache(tree_npy)
@@ -1256,6 +1303,15 @@ def preprocess_split(
     # kept for the scan (already done) and dropped before the RAM load to save RSS.
     tree_ram = None
     if load_tree_to_ram:
+        available_memory = _available_memory_bytes()
+        required_memory = int(tree_mmap.nbytes) + int(min_free_memory_bytes)
+        if available_memory < required_memory:
+            raise RuntimeError(
+                "insufficient memory for --load-tree-to-ram: "
+                f"available={available_memory / 2**30:.1f} GiB, "
+                f"tree={tree_mmap.nbytes / 2**30:.1f} GiB, "
+                f"required reserve={min_free_memory_bytes / 2**30:.1f} GiB"
+            )
         print(f"  loading tree.npy into RAM ({tree_mmap.nbytes/1e9:.1f} GB) for fork-shared parse...")
         tree_ram = np.array(tree_mmap, dtype=tree_mmap.dtype)  # real ndarray copy
         del tree_mmap
@@ -1279,6 +1335,37 @@ def preprocess_split(
         max_spans = max(max_spans + 8, 1)  # headroom
     print(f"  max_spans={max_spans}")
 
+    estimated_output_bytes = (
+        n_chunks * max_len * input_dtype.itemsize
+        + n_chunks * max_spans * 3 * span_dtype.itemsize
+        + n_chunks * np.dtype(np.int32).itemsize
+        + n_chunks * 2 * np.dtype(np.int64).itemsize
+    )
+    if save_treereg_metadata:
+        estimated_output_bytes += n_chunks * max_len * (
+            np.dtype(np.bool_).itemsize + np.dtype(np.int16).itemsize
+        )
+    if save_depth_matrix:
+        estimated_output_bytes += n_chunks * max_len * max_len
+    disk = __import__("shutil").disk_usage(out_dir)
+    print(
+        f"  estimated output={estimated_output_bytes / 2**30:.1f} GiB; "
+        f"disk free={disk.free / 2**30:.1f} GiB; "
+        f"required reserve={min_free_disk_bytes / 2**30:.1f} GiB",
+        flush=True,
+    )
+    if disk.free - estimated_output_bytes < min_free_disk_bytes:
+        raise RuntimeError(
+            "insufficient disk headroom: estimated output would leave "
+            f"{(disk.free - estimated_output_bytes) / 2**30:.1f} GiB, below "
+            f"the required {min_free_disk_bytes / 2**30:.1f} GiB reserve"
+        )
+
+    with open(incomplete_marker, "w", encoding="utf-8") as marker:
+        marker.write("Output is incomplete until PREPROCESSING_COMPLETE exists.\n")
+    if os.path.exists(complete_marker):
+        os.remove(complete_marker)
+
     # Preallocate memory-maps (streaming; one chunk in RAM at a time).
     p_chunk_index = os.path.join(out_dir, "chunk_index.npy")
     p_input_ids = os.path.join(out_dir, "input_ids.npy")
@@ -1288,9 +1375,9 @@ def preprocess_split(
     p_sentence_ids = os.path.join(out_dir, "treereg_sentence_ids.npy")
     np.save(p_chunk_index, np.asarray(chunks, dtype=np.int64))
     input_ids_m = np.lib.format.open_memmap(p_input_ids, mode="w+",
-        dtype=np.int32, shape=(n_chunks, max_len))
+        dtype=input_dtype, shape=(n_chunks, max_len))
     spans_m = np.lib.format.open_memmap(p_spans, mode="w+",
-        dtype=np.int32, shape=(n_chunks, max_spans, 3))
+        dtype=span_dtype, shape=(n_chunks, max_spans, 3))
     span_counts_m = np.lib.format.open_memmap(p_span_counts, mode="w+",
         dtype=np.int32, shape=(n_chunks,))
     word_boundaries_m = None
@@ -1302,12 +1389,9 @@ def preprocess_split(
         sentence_ids_m = np.lib.format.open_memmap(
             p_sentence_ids, mode="w+", dtype=np.int16, shape=(n_chunks, max_len)
         )
-    input_ids_m[:] = pad_token_id
-    spans_m[:] = -1
-    if word_boundaries_m is not None:
-        word_boundaries_m[:] = False
-    if sentence_ids_m is not None:
-        sentence_ids_m[:] = -1
+    # Do not fill these potentially hundreds-of-GB arrays in the parent. That
+    # serialized setup previously occupied one CPU for hours before Pool workers
+    # even existed. Each worker initializes only its own contiguous rows below.
 
     # Parse + write (parallel). With load_tree_to_ram, the fork-inherited RAM
     # array is the tree source (zero disk input I/O); otherwise workers re-mmap
@@ -1320,8 +1404,9 @@ def preprocess_split(
     if workers > 1:
         from multiprocessing import Pool
         import functools
-        ranges = [(r[0], min(r[0] + 2000, r[1])) for r in
-                  [(i, min(i + 2000, n_chunks)) for i in range(0, n_chunks, 2000)]]
+        ranges = _block_ranges(
+            n_chunks, min(n_chunks, workers * worker_task_multiplier)
+        )
         fn = functools.partial(_parse_range_to_memmap, tree_src, tokenizer_path,
                                direction, max_len, pad_token_id, binarize, collapse_unary,
                                p_input_ids, p_spans, p_span_counts, max_spans,
@@ -1332,9 +1417,23 @@ def preprocess_split(
                                p_sentence_ids=(
                                    p_sentence_ids if save_treereg_metadata else None
                                ))
-        with Pool(workers) as pool:
-            for done in pool.imap_unordered(fn, ranges):
-                pass
+        cpu_ids = _worker_cpu_candidates(workers) if pin_workers else []
+        completed = 0
+        # Emit roughly one-percent milestones. With 32 tasks per worker, large
+        # train runs now return a completed task every few minutes rather than
+        # appearing frozen for nearly an hour between synchronized block waves.
+        report_every = max(n_chunks // 100, 1)
+        next_report = report_every
+        with Pool(
+            workers,
+            initializer=_parse_worker_initializer,
+            initargs=(cpu_ids,),
+        ) as pool:
+            for done in pool.imap_unordered(fn, ranges, chunksize=1):
+                completed += done
+                if completed >= next_report or completed == n_chunks:
+                    print(f"  parsed {completed}/{n_chunks} chunks", flush=True)
+                    next_report += report_every
     else:
         _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len,
                                pad_token_id, binarize, collapse_unary, p_input_ids, p_spans,
@@ -1378,6 +1477,12 @@ def preprocess_split(
 
     print(f"[{out_dir}] done. input_ids ({n_chunks},{max_len}), spans ({n_chunks},{max_spans},3), "
           f"depth {'saved' if save_depth_matrix else 'skipped (compute on GPU at train time)'}")
+    # Publish completion before removing the rejection marker. A crash between
+    # these operations therefore remains fail-closed rather than exposing a
+    # partially published dataset as a legacy marker-less output.
+    with open(complete_marker, "w", encoding="utf-8") as marker:
+        marker.write("ok\n")
+    os.remove(incomplete_marker)
     return saved
 
 
@@ -1429,6 +1534,56 @@ def _madvise_random(mmap_arr) -> None:
 # when load_tree_to_ram=True). Workers read it copy-on-write WITHOUT it being
 # pickled per-task (which would copy the 49 GB array per dispatch).
 _TREE_RAM: Optional["np.ndarray"] = None
+
+
+def _worker_cpu_candidates(workers: int) -> List[int]:
+    """Choose distinct allowed CPUs, preferring one SMT thread per physical core."""
+    import os
+
+    allowed = sorted(os.sched_getaffinity(0))
+    representatives: List[int] = []
+    seen_cores = set()
+    for cpu in allowed:
+        try:
+            with open(
+                f"/sys/devices/system/cpu/cpu{cpu}/topology/physical_package_id",
+                encoding="utf-8",
+            ) as f:
+                package = int(f.read())
+            with open(
+                f"/sys/devices/system/cpu/cpu{cpu}/topology/core_id",
+                encoding="utf-8",
+            ) as f:
+                core = int(f.read())
+            key = (package, core)
+        except (OSError, ValueError):
+            key = (0, cpu)
+        if key not in seen_cores:
+            seen_cores.add(key)
+            representatives.append(cpu)
+    candidates = representatives or allowed
+    count = min(workers, len(candidates))
+    if count == 0:
+        return []
+    # Spread workers across the allowed physical-core list while leaving all
+    # unselected cores free for other users and services.
+    return [
+        candidates[(idx * len(candidates)) // count]
+        for idx in range(count)
+    ]
+
+
+def _parse_worker_initializer(cpu_ids: Sequence[int]) -> None:
+    """Pin each parser process to a distinct allowed CPU when requested."""
+    if not cpu_ids:
+        return
+    import multiprocessing
+    import os
+
+    identity = multiprocessing.current_process()._identity
+    worker_index = (identity[-1] - 1) if identity else 0
+    cpu = int(cpu_ids[worker_index % len(cpu_ids)])
+    os.sched_setaffinity(0, {cpu})
 
 
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
@@ -1487,6 +1642,37 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
                 word_boundaries = word_boundaries.copy()
                 sentence_ids[crossing] = -1
                 word_boundaries[crossing] = False
+        if len(sp) > max_spans:
+            raise ValueError(
+                f"chunk {i} has {len(sp)} spans but output capacity is {max_spans}; "
+                "rerun with --max_spans at least this large"
+            )
+        input_info = np.iinfo(input_ids_m.dtype)
+        if len(ids) and (
+            int(ids.min()) < input_info.min or int(ids.max()) > input_info.max
+        ):
+            raise ValueError(
+                f"chunk {i} token range [{int(ids.min())}, {int(ids.max())}] "
+                f"does not fit {input_ids_m.dtype}"
+            )
+        span_info = np.iinfo(spans_m.dtype)
+        if len(sp) and (
+            int(sp.min()) < span_info.min or int(sp.max()) > span_info.max
+        ):
+            raise ValueError(
+                f"chunk {i} span range [{int(sp.min())}, {int(sp.max())}] "
+                f"does not fit {spans_m.dtype}"
+            )
+
+        # Initialize this row in the worker so padding is correct without a
+        # serial full-file pass in the parent process.
+        input_ids_m[i, :] = pad_token_id
+        spans_m[i, :, :] = -1
+        if word_boundaries_m is not None:
+            word_boundaries_m[i, :] = False
+        if sentence_ids_m is not None:
+            sentence_ids_m[i, :] = -1
+
         input_ids_m[i, : len(ids)] = ids
         if word_boundaries_m is not None:
             word_boundaries_m[i, : len(ids)] = word_boundaries
@@ -1494,11 +1680,6 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
             if len(sentence_ids) and int(sentence_ids.max()) > np.iinfo(np.int16).max:
                 raise ValueError(f"chunk {i} has too many top-level trees for int16 ids")
             sentence_ids_m[i, : len(ids)] = sentence_ids
-        if len(sp) > max_spans:
-            raise ValueError(
-                f"chunk {i} has {len(sp)} spans but output capacity is {max_spans}; "
-                "rerun with --max_spans at least this large"
-            )
         m = len(sp)
         if m > 0:
             spans_m[i, :m] = sp[:m]
@@ -1508,7 +1689,7 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
     # wedge every worker in D state (rq_qos_wait) at ~0 throughput. The memmap
     # pages stay in the page cache and the OS writes them back asynchronously;
     # the single end-of-run flush in preprocess_split persists everything.
-    return hi
+    return hi - lo
 
 
 if __name__ == "__main__":
