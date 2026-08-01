@@ -58,6 +58,7 @@ model:
   max_sequence_length: 2048
   vocab_size: 50320
   embedding_size: 50320
+  bos_token_id: 50260
   eos_token_id: 50256
   pad_token_id: 50258
   init_device: cuda
@@ -67,7 +68,7 @@ model:
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
   pushdown_attachment_weight: 0.0
-  parse_binarize_direction: left
+  parse_binarize_direction: right
   pushdown_use_flex: true
 
 ddp:
@@ -126,6 +127,7 @@ evaluators: []
 data:
   pad_direction: right
   generate_attention_mask: true
+  generate_doc_lengths: true
   num_workers: 4
   drop_last: true
   pin_memory: true
@@ -133,6 +135,6 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/train_right
+    - ${workspace}/dataset/bbc-news/parse_aligned/train_pushdown_unary
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/train.npy

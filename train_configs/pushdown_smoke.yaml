@@ -18,7 +18,8 @@ model:
   alibi: false
   rope: true
   flash_attention: true      # used for the no-parse (eval) path; Pushdown bias path uses SDPA
-  flex_attention: false
+  # Exercise the production Pushdown fused depth-bias path on Slurm GPU.
+  flex_attention: true
   attention_dropout: 0.0
   attention_layer_norm: false
   clip_qkv: null
@@ -35,6 +36,7 @@ model:
   max_sequence_length: 2048
   vocab_size: 50320
   embedding_size: 50320
+  bos_token_id: 50260
   eos_token_id: 50256
   pad_token_id: 50258
   init_device: cuda
@@ -43,7 +45,8 @@ model:
   init_cutoff_factor: 3
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
-  pushdown_attachment_weight: 0.0   # depth-key bias only (attachment head optional)
+  pushdown_attachment_weight: 1.0
+  pushdown_use_attachment_head_inference: true
   parse_binarize_direction: right
 
 ddp:
@@ -104,6 +107,7 @@ evaluators: []
 data:
   pad_direction: right
   generate_attention_mask: true
+  generate_doc_lengths: true
   num_workers: 2
   drop_last: true
   pin_memory: true
@@ -111,6 +115,6 @@ data:
   persistent_workers: false
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/test_left
+    - ${workspace}/dataset/bbc-news/parse_aligned/test_pushdown_unary
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/test.npy

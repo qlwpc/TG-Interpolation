@@ -1922,7 +1922,12 @@ class OLMo(nn.Module):
                     # float additive bias: valid == 0.0, pad == finfo.min (<0).
                     am = (am.view(am.shape[0], -1) == 0.0)
             attachment_logits = self.pushdown_attachment_head(
-                x, input_ids, self.transformer.wte.weight, am,
+                x,
+                input_ids,
+                self.transformer.wte.weight,
+                am,
+                root_token_id=self.config.bos_token_id,
+                eos_token_id=self.config.eos_token_id,
             )
 
         if last_logits_only:

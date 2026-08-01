@@ -141,9 +141,10 @@ def build_memmap_dataset(
         # parsing from tree.npy + chunk_index.npy.
         if is_precomputed_parse_dir:
             from .parse_align import PrecomputedParseDataset
-            # NOTE: spans.npy was built by the preprocessing CLI. For pushdown it
-            # MUST have been built with --no_binarize (raw spans) so the stack-tape
-            # depth counts only real constituents; for treereg it must be binarized.
+            # spans.npy is produced offline. TreeReg needs binary gold splits;
+            # Pushdown uses the official preprocessing contract: collapse unary
+            # chains and convert to CNF. Pushdown data additionally wraps every
+            # tree with a synthetic ROOT/EOS pair. See the preprocessing scripts.
             return PrecomputedParseDataset(  # type: ignore[return-value]
                 data_dir=str(parse_dir),
                 pad_token_id=train_config.model.pad_token_id,
@@ -151,6 +152,16 @@ def build_memmap_dataset(
                 load_depth=False,  # depth computed on GPU from spans (faster)
                 generate_doc_lengths=data_config.generate_doc_lengths,
                 require_treereg_metadata=require_treereg_metadata,
+                require_pushdown_root_token_id=(
+                    train_config.model.bos_token_id
+                    if grammar_type == "pushdown"
+                    else None
+                ),
+                expected_binarize_direction=(
+                    train_config.model.parse_binarize_direction
+                    if grammar_type == "pushdown"
+                    else None
+                ),
             )
         from .parse_align import ParseAlignedDataset
         tree_paths = getattr(data_config, "parse_tree_paths", None)
@@ -161,14 +172,14 @@ def build_memmap_dataset(
                 "on-the-fly parsing."
             )
         direction = getattr(train_config.model, "parse_binarize_direction", "right")
-        # Auto-derive binarize: treereg needs the binary split (CE loss); pushdown
-        # must skip binarization so the stack-tape depth isn't inflated by artificial
-        # X|</X|> constituents. model.parse_binarize overrides when set.
+        # Both paper-faithful pipelines use unary collapse followed by CNF.
+        # model.parse_binarize remains an explicit compatibility override for
+        # legacy/raw-span experiments.
         bcfg = getattr(train_config.model, "parse_binarize", None)
         if bcfg is not None:
             binarize = bool(bcfg)
         else:
-            binarize = train_config.model.transformer_grammar_type == "treereg"
+            binarize = True
         return ParseAlignedDataset(  # type: ignore[return-value]
             tree_npy=str(tree_paths[0]),
             chunk_index_npy=str(parse_dir / "chunk_index.npy"),
@@ -179,7 +190,11 @@ def build_memmap_dataset(
             eos_token_id=train_config.model.eos_token_id,
             generate_attention_mask=data_config.generate_attention_mask,
             binarize=binarize,
-            collapse_unary=(grammar_type == "treereg"),
+            collapse_unary=True,
+            wrap_toplevel_trees=(grammar_type == "pushdown"),
+            root_token_id=(
+                train_config.model.bos_token_id if grammar_type == "pushdown" else None
+            ),
             treereg_metadata=require_treereg_metadata,
             generate_doc_lengths=data_config.generate_doc_lengths,
         )

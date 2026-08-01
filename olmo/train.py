@@ -808,7 +808,11 @@ class Trainer:
                 and self.cfg.model.transformer_grammar_type == "pushdown"
                 and getattr(olmo_out, "attachment_logits", None) is not None
                 and batch.get("tree_spans") is not None):
-            from olmo.attachment import derive_oracle_reduce_targets, compute_attachment_loss
+            from olmo.attachment import (
+                build_attachment_query_mask,
+                compute_attachment_loss,
+                derive_oracle_reduce_targets,
+            )
             att_logits = olmo_out.attachment_logits          # (B, n, n)
             B, n = att_logits.shape[0], att_logits.shape[1]
             spans = batch["tree_spans"]
@@ -816,25 +820,15 @@ class Trainer:
             if span_mask is None:
                 span_mask = (spans[..., 0] >= 0)
             oracle = derive_oracle_reduce_targets(spans, n, span_mask)   # (B, n)
-            am = batch.get("attention_mask")
-            if am is None:
-                am = torch.ones(B, n, dtype=torch.bool, device=att_logits.device)
-            else:
-                am = am.to(torch.bool)
-            # The GPT-2 data uses the same special id at sentence end and as the
-            # next sentence's BOS/ROOT. Attachment targets exist for real words
-            # and EOS, but not for BOS itself. In packed chunks BOS is position
-            # zero or a special token immediately following another special
-            # token; mask precisely those query positions.
-            boundary = batch["input_ids"][:, :n] == self.cfg.model.eos_token_id
-            previous_boundary = torch.cat(
-                [
-                    torch.ones(B, 1, dtype=torch.bool, device=boundary.device),
-                    boundary[:, :-1],
-                ],
-                dim=1,
+            # Attachment targets exist for words and EOS, not BOS/ROOT. The
+            # local tokenizer has distinct IDs (50257/50256), while some GPT-2
+            # tokenizers share them; handle both contracts explicitly.
+            am = build_attachment_query_mask(
+                batch["input_ids"][:, :n],
+                batch.get("attention_mask"),
+                self.cfg.model.bos_token_id,
+                self.cfg.model.eos_token_id,
             )
-            am = am & ~(boundary & previous_boundary)
             attachment_loss = compute_attachment_loss(
                 att_logits, oracle, am, reduction=loss_reduction
             )
@@ -893,8 +887,10 @@ class Trainer:
         # In both cases we rescale by a per-device weight so the DDP-averaged gradient
         # equals sum(loss over all real tokens) / (global #real loss tokens), robust to
         # ranks carrying unequal token counts.
-        count_loss_tokens = self.cfg.finetune_task is not None or is_pause_label(
-            self.cfg.model.transformer_grammar_type
+        count_loss_tokens = (
+            self.cfg.finetune_task is not None
+            or is_pause_label(self.cfg.model.transformer_grammar_type)
+            or batch.get("label_mask") is not None
         )
         if count_loss_tokens:
             global_batch_size_in_loss_tokens = (self.get_labels(batch, self.cfg.model.pad_token_id) != self.cfg.model.pad_token_id).sum()

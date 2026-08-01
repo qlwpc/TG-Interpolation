@@ -443,6 +443,13 @@ class ModelConfig(BaseConfig):
     The ID of the end-of-sentence special token.
     """
 
+    bos_token_id: int = 50257
+    """
+    The ID of the beginning-of-sentence / ROOT special token. This is distinct
+    from ``eos_token_id`` in the TG GPT-2 tokenizer; Pushdown also supports
+    tokenizers that share the two IDs.
+    """
+
     pad_token_id: int = 50256
     """
     The ID of the token to use for padding. Defaults to the ID of the EOS token.
@@ -568,10 +575,8 @@ class ModelConfig(BaseConfig):
     left-recursive spine."""
     parse_binarize: Optional[bool] = None
     """Whether to binarize parse trees for span extraction. ``None`` = auto:
-    ``treereg`` -> ``True`` (its CE loss is defined over the binary split), ``pushdown``
-    -> ``False`` (the stack tape :func:`~olmo.data.parse_align.compute_depth_matrix`
-    uses only ``(l, r)`` and binarization injects artificial ``X|<``/``X|>`` constituents
-    whose sub-ranges inflate the depth). Set explicitly to override the auto rule."""
+    both ``treereg`` and ``pushdown`` use unary-collapsed CNF trees, matching their
+    official preprocessing. Set explicitly only for a legacy/raw-span experiment."""
 
 
     @property

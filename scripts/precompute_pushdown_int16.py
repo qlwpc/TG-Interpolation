@@ -1,5 +1,11 @@
 #!/usr/bin/env python
-"""Precompute Pushdown spans (NO binarization) + store as int16.
+"""Legacy raw-span Pushdown ablation (not the paper-faithful preprocessor).
+
+For normal Pushdown training use ``scripts/precompute_pushdown_unary.py``. That
+script collapses unary chains, converts trees to CNF, adds boundary-root spans,
+writes canonical ``spans.npy`` directly as int16, and includes resource guards.
+
+This file is retained only to reproduce old raw-span checkpoints.
 
 Pipeline per split:
   1. preprocess_split(binarize=False, save_depth_matrix=False)
@@ -8,9 +14,7 @@ Pipeline per split:
   3. delete the int32 spans.npy (loader prefers spans_int16.npy) -> int16-only storage
   4. verify PrecomputedParseDataset reads the int16 mmap + upcasts to int64
 
-The Pushdown stack tape (compute_depth_matrix) uses only (l, r); binarization
-injects artificial X|</X|> constituents whose sub-ranges inflate the depth, so
-Pushdown MUST use raw (no-binarize) spans. int16 halves disk vs int32.
+The output is intentionally not used by the current pretraining configuration.
 
 Usage:
     python scripts/precompute_pushdown_int16.py <split> [workers] [scan_workers]

@@ -35,6 +35,8 @@ model:
   max_sequence_length: 2048
   vocab_size: 50320
   embedding_size: 50320
+  # Pushdown ROOT/SOS. Token 50260 is <|CLS|> in this tokenizer.
+  bos_token_id: 50260
   eos_token_id: 50256
   pad_token_id: 50258
   init_device: cuda
@@ -43,8 +45,15 @@ model:
   init_cutoff_factor: 3
   transformer_grammar_type: pushdown
   pushdown_max_depth: 64
-  pushdown_attachment_weight: 1.0   # depth-key bias only (attachment head optional)
-  parse_binarize_direction: left
+  # Murty et al. jointly optimize LM and gold attachment cross-entropies.
+  pushdown_attachment_weight: 1.0
+  # New checkpoints have a trained attachment head, so downstream scoring must
+  # marginalize over latent parses with its p(r_k), not a uniform reduce prior.
+  pushdown_use_attachment_head_inference: true
+  # Matches scripts/precompute_pushdown_unary.py's default and the official
+  # NLTK right-recursive CNF preprocessing. Precomputed data already contains
+  # the spans; this also keeps the on-the-fly fallback consistent.
+  parse_binarize_direction: right
   # FlexAttention score_mod path (fused flash-class kernel for the per-(q,kv) depth
   # bias). ON — the recommended training path. OLMo.forward builds a causal+pad
   # block_mask from the 1-D attention_mask (mirroring the TG path) and the depth
@@ -103,7 +112,9 @@ save_num_unsharded_checkpoints_to_keep: 1
 load_path: null
 
 max_duration: 1ep
-stop_at: 1442500
+# Match the terminal and TreeReg comparison budget. The previous value
+# had two accidental trailing zeroes and therefore ran until max_duration.
+stop_at: 14425
 global_train_batch_size: 144
 device_train_microbatch_size: 12    # flex path peak is small (int8 S ~50MB + P ~77MB/layer);
                                     # 12 is conservative — sweep 24/32 on GPU after the parity test passes
@@ -130,7 +141,7 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/dev_pushdown
+        - ${workspace}/dataset/bbc-news/parse_aligned/dev_pushdown_unary
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/dev.npy
   - label: TG-ppl-validation-test
@@ -141,13 +152,15 @@ evaluators:
       generate_doc_lengths: true
       generate_attention_mask: true
       paths:
-        - ${workspace}/dataset/bbc-news/parse_aligned/test_pushdown
+        - ${workspace}/dataset/bbc-news/parse_aligned/test_pushdown_unary
       parse_tree_paths:
         - ${workspace}/dataset/bbc-news/tree/test.npy
 
 data:
   pad_direction: right
   generate_attention_mask: true
+  # Every packed [ROOT ... EOS] tree is an independent paper sentence.
+  generate_doc_lengths: true
   num_workers: 0
   drop_last: true
   pin_memory: true
@@ -156,6 +169,6 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-    - ${workspace}/dataset/bbc-news/parse_aligned/train_pushdown
+    - ${workspace}/dataset/bbc-news/parse_aligned/train_pushdown_unary
   parse_tree_paths:
     - ${workspace}/dataset/bbc-news/tree/train.npy

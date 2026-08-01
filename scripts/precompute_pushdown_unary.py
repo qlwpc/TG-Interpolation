@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Build paper-faithful Pushdown parse-aligned data.
+"""Build unary-collapsed, CNF Pushdown parse-aligned data.
 
 The Murty et al. preprocessing collapses unary chains and converts each parse
 to Chomsky normal form before deriving attachment labels and stack tapes. This
@@ -8,12 +8,15 @@ script applies the equivalent operations to this repository's tokenized
 
   1. collapse internal unary chains;
   2. left- or right-binarize n-ary nodes;
-  3. add the paper's BOS/ROOT-to-EOS sentence attachment;
+  3. wrap every top-level tree as ``[ROOT] leaves [EOS]``;
   4. save terminal input ids and binary constituent spans;
   5. write ``spans.npy`` directly as int16 after validating every row.
 
-It writes to a new output directory and never removes an existing raw-Pushdown
-dataset.
+It writes to a new output directory and never removes an existing dataset.
+
+The default ROOT is tokenizer token 50260 (``<|CLS|>``); EOS is 50256
+(``<|endoftext|>``). Document-level boundary leaves outside parsed trees are
+discarded, so every emitted sequence follows the paper's sentence convention.
 
 Example:
     python scripts/precompute_pushdown_unary.py \
@@ -66,6 +69,10 @@ def main() -> None:
                              "'right'=right-recursive (default, TreeReg/NLTK), 'left'=left-recursive")
     parser.add_argument("--max-len", type=int, default=2048)
     parser.add_argument("--pad-token-id", type=int, default=50258)
+    parser.add_argument("--root-token-id", type=int, default=50260,
+                        help="ROOT token prepended to every top-level tree")
+    parser.add_argument("--sentence-eos-token-id", type=int, default=50256,
+                        help="EOS token appended to every top-level tree")
     parser.add_argument(
         "--workers", type=int, default=0,
         help="parser processes; 0 chooses a conservative automatic value",
@@ -164,7 +171,10 @@ def main() -> None:
         load_tree_to_ram=args.load_tree_to_ram,
         binarize=True,
         collapse_unary=True,
-        add_boundary_root=True,
+        add_boundary_root=False,
+        wrap_toplevel_trees=True,
+        root_token_id=args.root_token_id,
+        sentence_eos_token_id=args.sentence_eos_token_id,
         input_dtype=np.uint16,
         span_dtype=np.int16,
         pin_workers=args.pin_workers,
@@ -172,8 +182,17 @@ def main() -> None:
         min_free_memory_bytes=memory_reserve,
     )
 
-    dataset = PrecomputedParseDataset(args.out_dir, pad_token_id=args.pad_token_id)
+    dataset = PrecomputedParseDataset(
+        args.out_dir,
+        pad_token_id=args.pad_token_id,
+        eos_token_id=args.sentence_eos_token_id,
+        require_pushdown_root_token_id=args.root_token_id,
+        expected_binarize_direction=args.direction,
+    )
     first = dataset[0]
+    manifest_path = os.path.join(args.out_dir, "preprocessing.json")
+    if not os.path.exists(manifest_path):
+        raise AssertionError(f"missing preprocessing manifest: {manifest_path}")
     if dataset.spans.dtype != np.int16:
         raise AssertionError(f"expected int16 spans.npy, got {dataset.spans.dtype}")
     print(

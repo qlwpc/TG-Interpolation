@@ -17,9 +17,24 @@ import torch
 
 from olmo.attachment import (
     PushdownAttachmentHead,
-    derive_oracle_reduce_targets,
+    build_attachment_query_mask,
     compute_attachment_loss,
+    derive_oracle_reduce_targets,
 )
+
+
+def test_attachment_query_mask_distinct_bos_eos():
+    ids = torch.tensor([[50257, 10, 50256, 50257, 11, 50256, 50258]])
+    attention = torch.tensor([[1, 1, 1, 1, 1, 1, 0]], dtype=torch.bool)
+    mask = build_attachment_query_mask(ids, attention, 50257, 50256)
+    assert mask.tolist() == [[False, True, True, False, True, True, False]]
+
+
+def test_attachment_query_mask_shared_bos_eos():
+    ids = torch.tensor([[0, 10, 0, 0, 11, 0, 2]])
+    attention = torch.tensor([[1, 1, 1, 1, 1, 1, 0]], dtype=torch.bool)
+    mask = build_attachment_query_mask(ids, attention, 0, 0)
+    assert mask.tolist() == [[False, True, True, False, True, True, False]]
 
 
 # --------------------------------------------------------------------------- #
@@ -106,6 +121,27 @@ def test_attachment_head_causal():
     assert torch.isfinite(logits[:, lower]).all()
 
 
+def test_attachment_head_masks_keys_from_previous_packed_sentence():
+    torch.manual_seed(3)
+    d, vocab = 8, 32
+    head = PushdownAttachmentHead(d_model=d, vocab_size=vocab)
+    hidden = torch.randn(1, 8, d)
+    ids = torch.tensor([[30, 1, 2, 31, 30, 3, 4, 31]])
+    embeddings = torch.randn(vocab, d)
+    logits = head(
+        hidden,
+        ids,
+        embeddings,
+        torch.ones_like(ids, dtype=torch.bool),
+        root_token_id=30,
+        eos_token_id=31,
+    )
+    # Query 6 belongs to the second sentence (ROOT at 4): keys 0..3 are masked,
+    # while its own ROOT and causal positions 4..6 remain finite.
+    assert torch.isneginf(logits[0, 6, :4]).all()
+    assert torch.isfinite(logits[0, 6, 4:7]).all()
+
+
 def test_attachment_head_diagonal_uses_predicted_token_representation():
     """Eq. 5's diagonal is h_tilde^T W h_tilde, not h_k^T W h_tilde."""
     torch.manual_seed(17)
@@ -123,6 +159,19 @@ def test_attachment_head_diagonal_uses_predicted_token_representation():
     expected = (head.W(h_tilde) * h_tilde).sum(dim=-1)
     actual = logits.diagonal(dim1=1, dim2=2)
     assert torch.allclose(actual, expected, atol=1e-6)
+
+
+def test_attachment_head_stays_fp32_under_bfloat16_autocast():
+    """Regression for the CUDA AMP diagonal-assignment dtype mismatch."""
+    torch.manual_seed(19)
+    head = PushdownAttachmentHead(d_model=8, vocab_size=16)
+    hidden = torch.randn(1, 5, 8)
+    ids = torch.randint(0, 16, (1, 5))
+    embeddings = torch.randn(16, 8)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        logits = head(hidden, ids, embeddings)
+    assert logits.dtype == torch.float32
+    assert torch.isfinite(logits.diagonal(dim1=1, dim2=2)).all()
 
 
 def test_attachment_loss_gradient():

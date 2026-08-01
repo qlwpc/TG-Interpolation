@@ -29,6 +29,50 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def build_attachment_query_mask(
+    input_ids: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    bos_token_id: int,
+    eos_token_id: int,
+) -> torch.Tensor:
+    """Return positions with a Pushdown attachment target.
+
+    Words and EOS have targets; BOS/ROOT and padding do not. With distinct
+    BOS/EOS IDs every BOS is removed directly. If a tokenizer shares the two
+    IDs, packed boundaries alternate ``... EOS, BOS ...``; position zero and a
+    boundary immediately following another boundary are the BOS occurrences.
+    """
+    if input_ids.ndim != 2:
+        raise ValueError(
+            f"input_ids must have shape (B,n), got {tuple(input_ids.shape)}"
+        )
+    if attention_mask is None:
+        valid = torch.ones_like(input_ids, dtype=torch.bool)
+    else:
+        if attention_mask.shape != input_ids.shape:
+            raise ValueError(
+                "attention_mask must have the same shape as input_ids, got "
+                f"{tuple(attention_mask.shape)} vs {tuple(input_ids.shape)}"
+            )
+        valid = attention_mask.to(device=input_ids.device, dtype=torch.bool)
+
+    if bos_token_id != eos_token_id:
+        is_root = input_ids == int(bos_token_id)
+    else:
+        boundary = input_ids == int(bos_token_id)
+        previous_boundary = torch.cat(
+            [
+                torch.ones(
+                    input_ids.shape[0], 1, dtype=torch.bool, device=input_ids.device
+                ),
+                boundary[:, :-1],
+            ],
+            dim=1,
+        )
+        is_root = boundary & previous_boundary
+    return valid & ~is_root
+
+
 class PushdownAttachmentHead(nn.Module):
     """Bilinear attachment head with an MLP-generated query ``h̃_k`` (Eq. 5).
 
@@ -61,6 +105,33 @@ class PushdownAttachmentHead(nn.Module):
         input_ids: torch.Tensor,
         wte_weight: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        root_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
+    ) -> torch.Tensor:
+        # The surrounding trainer runs under AMP. Bilinear scores and the
+        # separately constructed diagonal must use one stable dtype; otherwise
+        # autocast can produce a bf16 bmm destination and fp32 diagonal source,
+        # which makes the indexed assignment fail on CUDA. The attachment logits
+        # are modest compared with the transformer activations and are consumed
+        # by cross-entropy, so construct them explicitly in fp32.
+        with torch.autocast(device_type=final_hidden.device.type, enabled=False):
+            return self._forward_fp32(
+                final_hidden,
+                input_ids,
+                wte_weight,
+                attention_mask,
+                root_token_id,
+                eos_token_id,
+            )
+
+    def _forward_fp32(
+        self,
+        final_hidden: torch.Tensor,
+        input_ids: torch.Tensor,
+        wte_weight: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        root_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
     ) -> torch.Tensor:
         """Compute attachment logits ``p(r_k = j | x_<k)`` (unnormalized).
 
@@ -72,6 +143,11 @@ class PushdownAttachmentHead(nn.Module):
                 (weight tying; passed in so the head adds no embedding params).
             attention_mask: ``(B, n)`` bool — True for valid (non-pad) tokens.
                 Padded key positions get ``-inf`` so they never win reduce.
+            root_token_id: optional sentence ROOT/SOS ID. When supplied, packed
+                sentences are isolated so a query cannot attach to a key before
+                its own ROOT.
+            eos_token_id: sentence EOS ID. Required only when ROOT and EOS share
+                an ID, so alternating packed boundaries can be disambiguated.
 
         Returns:
             ``logits`` of shape ``(B, n, n)`` fp32, where ``logits[b, k, j]`` is
@@ -109,6 +185,25 @@ class PushdownAttachmentHead(nn.Module):
         if attention_mask is not None:
             am = attention_mask.to(torch.bool).view(B, 1, n)
             logits = logits.masked_fill(~am, float("-inf"))
+        # Packed preprocessing concatenates many independent
+        # [ROOT, words..., EOS] sentences. The reference attachment softmax is
+        # sentence-local, so keys from earlier sentences must not be distractors.
+        if root_token_id is not None:
+            boundary = input_ids == int(root_token_id)
+            if eos_token_id is not None and root_token_id == eos_token_id:
+                previous_boundary = torch.cat(
+                    [
+                        torch.ones(B, 1, dtype=torch.bool, device=input_ids.device),
+                        boundary[:, :-1],
+                    ],
+                    dim=1,
+                )
+                is_root = boundary & previous_boundary
+            else:
+                is_root = boundary
+            sentence_id = torch.cumsum(is_root.to(torch.long), dim=1)
+            same_sentence = sentence_id[:, :, None] == sentence_id[:, None, :]
+            logits = logits.masked_fill(~same_sentence, float("-inf"))
         return logits
 
 

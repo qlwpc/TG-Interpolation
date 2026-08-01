@@ -540,12 +540,11 @@ def _binarize_segments(
 ) -> List[Segment]:
     """Convert each tree segment into ``(leaves, spans, word_boundaries)``.
 
-    When ``binarize=True`` (default, TreeReg), :func:`binarize_tree` the tree first
-    so every internal node is binary and ``split`` is a real bifurcation point.
-    When ``binarize=False`` (Pushdown stack tape), span the RAW tree directly — one
-    span per real internal node, n-ary nodes get a degenerate split — so
-    :func:`compute_depth_matrix` counts only true constituents (binarization would
-    inject artificial ``X|<``/``X|>`` spans whose (l,r) sub-ranges inflate depth).
+    When ``binarize=True`` (the paper-faithful TreeReg/Pushdown setting),
+    :func:`binarize_tree` the tree first so every internal node is binary and
+    ``split`` is a real bifurcation point. ``binarize=False`` is retained for
+    legacy raw-tree ablations: one span is emitted per original internal node and
+    n-ary nodes receive a degenerate split.
     """
     out: List[Segment] = []
     for kind, data in segments:
@@ -639,13 +638,19 @@ def _block_totals_worker(args):
 
 def _toplevel_closes_inline(tree_arr, vocab, BLOCK, block_starts, depth_carry,
                             leaf_carry, bi_lo, bi_hi):
-    """Phase B: record ONLY top-level closes (depth==0) for blocks [bi_lo, bi_hi),
+    """Phase B: record top-level opens/closes for blocks [bi_lo, bi_hi),
     given the true per-block depth_carry / leaf_carry arrays (from phase A's prefix
-    scan). Output is O(#top-level-trees) (~5M for train), NOT O(#closes) (~2.4B).
+    scan). Output is O(#top-level-trees) (~5M for train), NOT O(#NTs) (~2.4B).
 
-    Returns (close_pos, close_leaf) where close_leaf is the GLOBAL cumulative leaf
-    count up to and including each close (ready for the greedy packer).
+    Returns ``(open_pos, open_leaf, close_pos, close_leaf)``. The cumulative leaf
+    values are measured immediately before the opening and at the closing token,
+    respectively, so their difference is the number of terminal leaves inside a
+    top-level tree. Recording openings is required when preprocessing synthesizes
+    per-tree ROOT/EOS boundaries and must discard document-level leaves outside
+    the parses.
     """
+    open_pos: List[np.ndarray] = []
+    open_leaf: List[np.ndarray] = []
     close_pos: List[np.ndarray] = []
     close_leaf: List[np.ndarray] = []
     for k, bi in enumerate(range(bi_lo, bi_hi)):
@@ -658,13 +663,22 @@ def _toplevel_closes_inline(tree_arr, vocab, BLOCK, block_starts, depth_carry,
         leaf_cum = np.cumsum(is_leaf.astype(np.int64)) + l0  # global cum leaves
         delta = is_op.astype(np.int32) - is_cl.astype(np.int32)
         d = np.cumsum(delta) + d0  # true depth after each token
+        opens = np.nonzero(is_op & (d == 1))[0]
         closes = np.nonzero(is_cl & (d == 0))[0]
+        if opens.size:
+            open_pos.append((b0 + opens).astype(np.int64))
+            open_leaf.append(leaf_cum[opens].astype(np.int64))
         if closes.size:
             close_pos.append((b0 + closes).astype(np.int64))
             close_leaf.append(leaf_cum[closes].astype(np.int64))
-    if not close_pos:
-        return None, None
-    return np.concatenate(close_pos), np.concatenate(close_leaf)
+    if not open_pos and not close_pos:
+        return None, None, None, None
+    return (
+        np.concatenate(open_pos) if open_pos else None,
+        np.concatenate(open_leaf) if open_leaf else None,
+        np.concatenate(close_pos) if close_pos else None,
+        np.concatenate(close_leaf) if close_leaf else None,
+    )
 
 
 def _toplevel_closes_worker(args):
@@ -681,13 +695,16 @@ def _toplevel_closes_worker(args):
 
 def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
                      max_len: int = 2048, workers: int = 1,
-                     tree_npy: Optional[str] = None) -> List[Tuple[int, int]]:
+                     tree_npy: Optional[str] = None,
+                     wrap_toplevel_trees: bool = False) -> List[Tuple[int, int]]:
     """Scan the tree-token stream and return chunk spans ``(tree_start, tree_len)``
     with whole-tree integrity.
 
     A chunk is a maximal run of complete top-level parse trees (plus intervening
     leaf tokens like BOS/EOS/whitespace) whose total **terminal-leaf** count is
-    ``<= max_len``. Top-level trees are found with a bracket-depth scan (a tree
+    ``<= max_len``. With ``wrap_toplevel_trees=True``, outside leaves are discarded
+    and two synthesized tokens (ROOT and EOS) are counted for every tree. Top-level
+    trees are found with a bracket-depth scan (a tree
     opens at depth 0 and closes when depth returns to 0). An atomic single tree
     whose leaves exceed ``max_len`` is emitted as its own (oversize) chunk.
 
@@ -742,6 +759,8 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     total_leaves = int(leaf_all.sum()) if leaf_all.size else 0
 
     # --- Phase B: record only top-level closes (parallel), with known carries. ---
+    open_pos_parts: List[np.ndarray] = []
+    open_leaf_parts: List[np.ndarray] = []
     close_pos_parts: List[np.ndarray] = []
     close_leaf_parts: List[np.ndarray] = []
     if workers and workers > 1 and n_blocks >= 2 and tree_npy:
@@ -749,13 +768,21 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
                   depth_carry, leaf_carry, r) for r in ranges]
         with Pool(workers) as pool:
             cl_results = pool.map(_toplevel_closes_worker, argsB)
-        for cp, cl in cl_results:
+        for op, ol, cp, cl in cl_results:
+            if op is not None and op.size:
+                open_pos_parts.append(op)
+                open_leaf_parts.append(ol)
             if cp is not None and cp.size:
                 close_pos_parts.append(cp)
                 close_leaf_parts.append(cl)
     else:
-        cp, cl = _toplevel_closes_inline(tree_arr, vocab, BLOCK, block_starts_arr,
-                                         depth_carry, leaf_carry, 0, n_blocks)
+        op, ol, cp, cl = _toplevel_closes_inline(
+            tree_arr, vocab, BLOCK, block_starts_arr,
+            depth_carry, leaf_carry, 0, n_blocks
+        )
+        if op is not None and op.size:
+            open_pos_parts.append(op)
+            open_leaf_parts.append(ol)
         if cp is not None and cp.size:
             close_pos_parts.append(cp)
             close_leaf_parts.append(cl)
@@ -765,17 +792,32 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
                   else np.zeros(0, np.int64))
     T = len(closes_arr)
     if T == 0:
-        return [(0, n)] if n > 0 else []
-    # Tree starts: 0 for the first, then prev_close+1.
-    tree_starts = np.empty(T, dtype=np.int64)
-    tree_starts[0] = 0
-    tree_starts[1:] = closes_arr[:-1] + 1
+        return [] if wrap_toplevel_trees else ([(0, n)] if n > 0 else [])
     tree_ends = closes_arr + 1  # exclusive end
-    # Leaves in tree k = leaves-at-close[k] - leaves-at-close[k-1] (0 for k=0).
     clc = (np.concatenate(close_leaf_parts) if close_leaf_parts
            else np.zeros(0, np.int64))
-    tree_leaves = clc.copy()
-    tree_leaves[1:] = clc[1:] - clc[:-1]
+    if wrap_toplevel_trees:
+        opens_arr = (np.concatenate(open_pos_parts) if open_pos_parts
+                     else np.zeros(0, np.int64))
+        olc = (np.concatenate(open_leaf_parts) if open_leaf_parts
+               else np.zeros(0, np.int64))
+        if len(opens_arr) != T or len(olc) != T:
+            raise ValueError(
+                "malformed tree stream: top-level opening/closing counts differ "
+                f"({len(opens_arr)} opens, {T} closes)"
+            )
+        if np.any(opens_arr >= closes_arr):
+            raise ValueError("malformed tree stream: top-level close precedes opening")
+        tree_starts = opens_arr
+        # The two synthetic leaves are [ROOT] and [EOS].
+        tree_leaves = (clc - olc) + 2
+    else:
+        # Legacy terminal-preserving mode includes leaves outside/between parses.
+        tree_starts = np.empty(T, dtype=np.int64)
+        tree_starts[0] = 0
+        tree_starts[1:] = closes_arr[:-1] + 1
+        tree_leaves = clc.copy()
+        tree_leaves[1:] = clc[1:] - clc[:-1]
 
     # Pass 2 (vectorized greedy packing): pack trees into chunks of <= max_len
     # leaves. A tree whose leaves exceed max_len is its own (oversize) chunk.
@@ -818,7 +860,7 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     # Trailing leaves after the last tree close (e.g. a final EOS): append as a
     # tail chunk, merged into the last chunk if it fits.
     last_end = int(tree_ends[-1])
-    if last_end < n:
+    if not wrap_toplevel_trees and last_end < n:
         # total_leaves is the count across the whole stream; leaves at the last
         # close is clc[-1]. The tail = everything after.
         tail_leaves = total_leaves - int(clc[-1])
@@ -844,6 +886,9 @@ def parse_chunk_slice(
     binarize: bool = True,
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
+    wrap_toplevel_trees: bool = False,
+    root_token_id: Optional[int] = None,
+    sentence_eos_token_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Parse one chunk's tree-token slice -> terminal leaves (input_ids) + spans.
 
@@ -854,11 +899,26 @@ def parse_chunk_slice(
     * ``sentence_ids``: ``(T,)`` int32 — top-level parse-tree id, or ``-1`` for
       BOS/EOS/whitespace outside a parsed tree.
 
-    ``binarize=True`` (default, TreeReg): binarize the tree so every span's ``split``
-    is a real binary bifurcation (TreeReg CE needs this). ``binarize=False`` (Pushdown
-    stack tape): span the raw tree — one span per real constituent, n-ary nodes
-    degenerate — so the depth matrix counts only true constituents.
+    ``binarize=True`` binarizes the tree so every span's ``split`` is a real
+    bifurcation (required by TreeReg and used by the official Pushdown pipeline).
+    ``binarize=False`` spans the raw tree for legacy ablations.
+
+    ``wrap_toplevel_trees=True`` implements the Pushdown paper's sentence
+    convention exactly: discard document-level leaves outside parses, turn each
+    top-level tree into ``[ROOT] tree-leaves [EOS]``, and add the EOS-to-ROOT
+    attachment span. ``root_token_id`` and ``sentence_eos_token_id`` are then
+    required. This mode is mutually exclusive with the legacy
+    ``add_boundary_root`` option, which only spans boundary tokens already in the
+    source stream.
     """
+    if add_boundary_root and wrap_toplevel_trees:
+        raise ValueError("add_boundary_root and wrap_toplevel_trees are mutually exclusive")
+    if wrap_toplevel_trees and (
+        root_token_id is None or sentence_eos_token_id is None
+    ):
+        raise ValueError(
+            "wrap_toplevel_trees requires root_token_id and sentence_eos_token_id"
+        )
     segments = _binarize_segments(
         parse_block_segments(tree_slice, vocab),
         direction,
@@ -872,6 +932,8 @@ def parse_chunk_slice(
     sentence_id = 0
     for kind, data in segments:
         if kind == "leaves":
+            if wrap_toplevel_trees:
+                continue
             plain = [int(x) for x in data]
             terminals.extend(plain)
             word_boundaries.extend([False] * len(plain))
@@ -879,16 +941,30 @@ def parse_chunk_slice(
         else:
             leaves, tspans, tree_word_boundaries = data
             t0 = len(terminals)
+            if wrap_toplevel_trees:
+                terminals.append(int(root_token_id))
+                word_boundaries.append(False)
+                sentence_ids.append(-1)
+            content_start = len(terminals)
             terminals.extend(int(x) for x in leaves)
             word_boundaries.extend(bool(x) for x in tree_word_boundaries)
             sentence_ids.extend([sentence_id] * len(leaves))
             for (l, sp, r) in tspans:
-                spans.append((t0 + l, t0 + sp, t0 + r))
+                spans.append((content_start + l, content_start + sp, content_start + r))
+            if wrap_toplevel_trees:
+                eos_position = len(terminals)
+                terminals.append(int(sentence_eos_token_id))
+                word_boundaries.append(False)
+                sentence_ids.append(-1)
+                spans.append((t0, eos_position, eos_position))
             sentence_id += 1
     if add_boundary_root:
-        # The paper initializes every sentence with a ROOT token and forces the
-        # sentence-final EOS attachment back to ROOT. This repository's BOS token
-        # occupies that ROOT position in each [BOS ... EOS] block.
+        # The paper initializes every sentence with a ROOT token and forces EOS
+        # to attach to it. Here we can add that span only for explicit
+        # [BOS ... EOS] blocks already present in the terminal stream. A corpus
+        # with one BOS/EOS pair per document rather than per top-level parse is a
+        # terminal-preserving adaptation, not the paper's per-sentence boundary
+        # convention.
         root_start: Optional[int] = None
         for position, token in enumerate(terminals):
             if vocab.bos == vocab.eos:
@@ -925,9 +1001,7 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
     ``tree/*.npy``) as ``{input_ids, tree_spans, tree_span_mask, attention_mask}``.
     The terminal ``input_ids`` are the chunk's tree leaves (bit-identical to
     ``terminal/*.npy``); ``tree_spans`` are the constituent spans over those leaves
-    (binarized for TreeReg — real binary splits; raw for Pushdown — one span per real
-    constituent, since :func:`compute_depth_matrix` uses only ``(l, r)`` and
-    binarization would inject artificial spans that inflate the stack-tape depth).
+    (binarized after unary collapse for paper-faithful TreeReg and Pushdown data).
     The Pushdown depth matrix is computed on the GPU in the model forward (not here).
     Duck-types :class:`MemMapDataset` (``__len__``/``__getitem__`` + an ``offsets``
     property) so the existing :class:`IterableDataset` wrapper and samplers work
@@ -947,6 +1021,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         include_instance_metadata: bool = True,
         binarize: bool = True,
         collapse_unary: bool = False,
+        add_boundary_root: bool = False,
+        wrap_toplevel_trees: bool = False,
+        root_token_id: Optional[int] = None,
         treereg_metadata: bool = False,
         generate_doc_lengths: bool = False,
     ):
@@ -968,6 +1045,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.generate_doc_lengths = generate_doc_lengths
         self.binarize = binarize
         self.collapse_unary = collapse_unary
+        self.add_boundary_root = add_boundary_root
+        self.wrap_toplevel_trees = wrap_toplevel_trees
+        self.root_token_id = root_token_id
         self.treereg_metadata = treereg_metadata
         self.transformer_grammar_type = ""  # set by caller if needed
         # MemMap-compat attributes.
@@ -991,6 +1071,10 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
             self.direction,
             self.binarize,
             collapse_unary=self.collapse_unary,
+            add_boundary_root=self.add_boundary_root,
+            wrap_toplevel_trees=self.wrap_toplevel_trees,
+            root_token_id=self.root_token_id,
+            sentence_eos_token_id=self.eos_token_id,
         )
         input_ids = out["input_ids"]
         spans = out["spans"]
@@ -1014,6 +1098,10 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
                 word_boundaries[crossing] = False
         input_ids = torch.tensor(input_ids, dtype=torch.long)
         item: Dict[str, Any] = {"input_ids": input_ids}
+        if self.wrap_toplevel_trees:
+            # ROOT is an input-only SOS token for each independent sentence; it
+            # must never be an LM prediction target when sentences are packed.
+            item["label_mask"] = input_ids != int(self.root_token_id)
         if len(spans):
             tspans = torch.tensor(spans, dtype=torch.long)
             item["tree_spans"] = tspans
@@ -1057,7 +1145,9 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                  eos_token_id: int = 50256,
                  load_depth: bool = False, include_instance_metadata: bool = True,
                  generate_doc_lengths: bool = False,
-                 require_treereg_metadata: bool = False):
+                 require_treereg_metadata: bool = False,
+                 require_pushdown_root_token_id: Optional[int] = None,
+                 expected_binarize_direction: Optional[str] = None):
         import os
         self.data_dir = data_dir
         if os.path.exists(os.path.join(data_dir, "PREPROCESSING_INCOMPLETE")):
@@ -1065,8 +1155,39 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                 f"{data_dir} is an interrupted preprocessing output and must "
                 "not be loaded; remove it and preprocess again"
             )
+        if require_pushdown_root_token_id is not None:
+            import json
+            manifest_path = os.path.join(data_dir, "preprocessing.json")
+            if not os.path.exists(manifest_path):
+                raise RuntimeError(
+                    f"{data_dir} has no preprocessing.json and cannot be verified "
+                    "as per-tree ROOT/EOS Pushdown data; regenerate it with "
+                    "scripts/precompute_pushdown_unary.py"
+                )
+            with open(manifest_path, encoding="utf-8") as manifest_file:
+                manifest = json.load(manifest_file)
+            required_contract = {
+                "binarize": True,
+                "collapse_unary": True,
+                "wrap_toplevel_trees": True,
+                "root_token_id": int(require_pushdown_root_token_id),
+                "sentence_eos_token_id": int(eos_token_id),
+            }
+            if expected_binarize_direction is not None:
+                required_contract["direction"] = expected_binarize_direction
+            mismatches = {
+                key: (manifest.get(key), expected)
+                for key, expected in required_contract.items()
+                if manifest.get(key) != expected
+            }
+            if mismatches:
+                raise RuntimeError(
+                    f"{data_dir} does not match the configured Pushdown "
+                    f"preprocessing contract: {mismatches}"
+                )
         self.pad_token_id = pad_token_id
         self.eos_token_id = eos_token_id
+        self.pushdown_root_token_id = require_pushdown_root_token_id
         self.generate_doc_lengths = generate_doc_lengths
         self._include_instance_metadata = include_instance_metadata
         self._metadata = {"path": str(data_dir)}
@@ -1144,6 +1265,10 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
             "tree_spans": tspans,
             "tree_span_mask": span_mask,
         }
+        if self.pushdown_root_token_id is not None:
+            item["label_mask"] = attention_mask & (
+                input_ids != int(self.pushdown_root_token_id)
+            )
         if self.word_boundaries is not None and self.sentence_ids is not None:
             item["treereg_word_boundaries"] = torch.tensor(
                 np.asarray(self.word_boundaries[index]), dtype=torch.bool
@@ -1206,6 +1331,9 @@ def preprocess_split(
     binarize: bool = True,
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
+    wrap_toplevel_trees: bool = False,
+    root_token_id: Optional[int] = None,
+    sentence_eos_token_id: Optional[int] = None,
     save_treereg_metadata: bool = False,
     input_dtype: Any = np.int32,
     span_dtype: Any = np.int32,
@@ -1220,15 +1348,15 @@ def preprocess_split(
     For each whole-tree chunk (``<= max_len`` terminal leaves, packed by
     :func:`iter_tree_chunks`): extract terminal leaves (``input_ids`` — bit-identical
     to ``terminal/*.npy``) and constituent spans, and (optionally) compute the stale
-    depth matrix ``S[k,j]`` (int8). When ``binarize=True`` (default, TreeReg) the tree
-    is binarized first so spans carry real binary splits; when ``binarize=False``
-    (Pushdown) the raw tree is spanned — one span per real constituent — so the depth
-    matrix counts only true constituents (binarization would inject artificial
-    spans that inflate the stack-tape depth). ``collapse_unary=True`` removes
-    unary-chain duplicates before span extraction; together with
+    depth matrix ``S[k,j]`` (int8). ``binarize=True`` makes every span binary;
+    ``binarize=False`` is a legacy raw-tree ablation. ``collapse_unary=True``
+    removes unary-chain duplicates before span extraction; together with
     ``binarize=True`` this reproduces the paper/reference preprocessing.
-    ``add_boundary_root=True`` adds a span from each sentence BOS/ROOT through
-    EOS so the final attachment is supervised to ROOT. Saves:
+    ``add_boundary_root=True`` adds a span across each explicit BOS/ROOT-to-EOS
+    block so its final attachment is supervised to ROOT. It does not synthesize
+    missing per-sentence boundary tokens. ``wrap_toplevel_trees=True`` instead
+    emits ``[ROOT] tree-leaves [EOS]`` for every top-level tree and counts those
+    added tokens during chunk packing. Saves:
 
     * ``chunk_index.npy`` ``(n_chunks, 2)`` int64 — tree-stream slice per chunk.
     * ``input_ids.npy`` ``(n_chunks, max_len)`` — terminal leaves, padded.
@@ -1285,13 +1413,22 @@ def preprocess_split(
         raise ValueError("workers must be at least 1")
     if worker_task_multiplier < 1:
         raise ValueError("worker_task_multiplier must be at least 1")
+    if add_boundary_root and wrap_toplevel_trees:
+        raise ValueError("add_boundary_root and wrap_toplevel_trees are mutually exclusive")
+    if wrap_toplevel_trees and (
+        root_token_id is None or sentence_eos_token_id is None
+    ):
+        raise ValueError(
+            "wrap_toplevel_trees requires root_token_id and sentence_eos_token_id"
+        )
 
     vocab = TreeVocab.from_tokenizer_file(tokenizer_path)
     if warm_cache:
         _warm_tree_cache(tree_npy)
     tree_mmap = np.load(tree_npy, mmap_mode="r")
     chunks = iter_tree_chunks(tree_mmap, vocab, direction=direction, max_len=max_len,
-                              workers=scan_workers, tree_npy=tree_npy)
+                              workers=scan_workers, tree_npy=tree_npy,
+                              wrap_toplevel_trees=wrap_toplevel_trees)
     n_chunks = len(chunks)
     print(f"[{out_dir}] {n_chunks} chunks (direction={direction}); "
           f"scan_workers={scan_workers} parse_workers={workers}")
@@ -1329,7 +1466,9 @@ def preprocess_split(
         max_spans = 1
         for (s, l) in sample:
             out = parse_chunk_slice(np.asarray(_tree_for_sample[s : s + l]), vocab,
-                                    direction, binarize, collapse_unary, add_boundary_root)
+                                    direction, binarize, collapse_unary, add_boundary_root,
+                                    wrap_toplevel_trees, root_token_id,
+                                    sentence_eos_token_id)
             if len(out["spans"]) > max_spans:
                 max_spans = len(out["spans"])
         max_spans = max(max_spans + 8, 1)  # headroom
@@ -1411,6 +1550,9 @@ def preprocess_split(
                                direction, max_len, pad_token_id, binarize, collapse_unary,
                                p_input_ids, p_spans, p_span_counts, max_spans,
                                add_boundary_root=add_boundary_root,
+                               wrap_toplevel_trees=wrap_toplevel_trees,
+                               root_token_id=root_token_id,
+                               sentence_eos_token_id=sentence_eos_token_id,
                                p_word_boundaries=(
                                    p_word_boundaries if save_treereg_metadata else None
                                ),
@@ -1439,6 +1581,9 @@ def preprocess_split(
                                pad_token_id, binarize, collapse_unary, p_input_ids, p_spans,
                                p_span_counts, max_spans, (0, n_chunks),
                                add_boundary_root=add_boundary_root,
+                               wrap_toplevel_trees=wrap_toplevel_trees,
+                               root_token_id=root_token_id,
+                               sentence_eos_token_id=sentence_eos_token_id,
                                p_word_boundaries=(
                                    p_word_boundaries if save_treereg_metadata else None
                                ),
@@ -1474,6 +1619,38 @@ def preprocess_split(
             depth.flush()
         saved["depth_matrix"] = p_depth
         print(f"  depth_matrix: {os.path.getsize(p_depth)/1e9:.2f} GB")
+
+    # Persist the preprocessing contract alongside the arrays. Without this,
+    # terminal-preserving legacy Pushdown data and per-tree ROOT/EOS data have
+    # identical filenames and can be accidentally interchanged.
+    import json
+    manifest_path = os.path.join(out_dir, "preprocessing.json")
+    with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+        json.dump(
+            {
+                "format_version": 2,
+                "tree_npy": os.path.abspath(tree_npy),
+                "tokenizer_path": os.path.abspath(tokenizer_path),
+                "direction": direction,
+                "max_len": max_len,
+                "pad_token_id": pad_token_id,
+                "binarize": binarize,
+                "collapse_unary": collapse_unary,
+                "add_boundary_root": add_boundary_root,
+                "wrap_toplevel_trees": wrap_toplevel_trees,
+                "root_token_id": root_token_id,
+                "sentence_eos_token_id": sentence_eos_token_id,
+                "input_dtype": input_dtype.name,
+                "span_dtype": span_dtype.name,
+                "n_chunks": n_chunks,
+                "max_spans": max_spans,
+            },
+            manifest_file,
+            indent=2,
+            sort_keys=True,
+        )
+        manifest_file.write("\n")
+    saved["manifest"] = manifest_path
 
     print(f"[{out_dir}] done. input_ids ({n_chunks},{max_len}), spans ({n_chunks},{max_spans},3), "
           f"depth {'saved' if save_depth_matrix else 'skipped (compute on GPU at train time)'}")
@@ -1589,6 +1766,8 @@ def _parse_worker_initializer(cpu_ids: Sequence[int]) -> None:
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
                            binarize, collapse_unary, p_input_ids, p_spans,
                            p_span_counts, max_spans, rng, add_boundary_root=False,
+                           wrap_toplevel_trees=False, root_token_id=None,
+                           sentence_eos_token_id=None,
                            p_word_boundaries=None, p_sentence_ids=None):
     """Worker: parse chunks [rng[0], rng[1]) and write to the shared memmaps.
 
@@ -1623,7 +1802,8 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
         s, l = int(chunk_index[i, 0]), int(chunk_index[i, 1])
         out = parse_chunk_slice(
             np.asarray(tree[s : s + l]), vocab, direction, binarize,
-            collapse_unary, add_boundary_root
+            collapse_unary, add_boundary_root, wrap_toplevel_trees,
+            root_token_id, sentence_eos_token_id
         )
         ids = out["input_ids"]
         sp = out["spans"]
@@ -1696,8 +1876,7 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(
         description="Parse tree/*.npy into constituent spans + the stale Pushdown depth matrix. "
-                    "Default binarizes (TreeReg); --no_binarize spans the raw tree (Pushdown: "
-                    "the depth matrix must count only real constituents, not binarization artifacts)."
+                    "The default binarizes for TreeReg/Pushdown; --no_binarize is a legacy ablation."
     )
     ap.add_argument("--tree_npy", required=True)
     ap.add_argument("--tokenizer", required=True)
@@ -1735,9 +1914,7 @@ if __name__ == "__main__":
                          "contended mechanical disk. Requires RAM >= tree.npy size.")
     ap.add_argument("--no_binarize", action="store_true",
                     help="span the RAW tree (one span per real constituent) instead of binarizing. "
-                         "Use for the Pushdown stack tape: compute_depth_matrix uses only (l, r) and "
-                         "binarization injects artificial X|</X|> spans whose sub-ranges inflate the "
-                         "tape depth. TreeReg (which needs real binary splits) must NOT set this.")
+                         "Legacy ablation only; official TreeReg and Pushdown preprocessing binarize.")
     ap.add_argument(
         "--collapse_unary",
         action="store_true",
@@ -1747,7 +1924,8 @@ if __name__ == "__main__":
     ap.add_argument(
         "--add_boundary_root",
         action="store_true",
-        help="add BOS/ROOT-to-EOS spans so each final attachment is supervised to ROOT",
+        help="add spans across explicit BOS/ROOT-to-EOS blocks; does not insert "
+             "missing per-sentence boundary tokens",
     )
     ap.add_argument(
         "--treereg_metadata",

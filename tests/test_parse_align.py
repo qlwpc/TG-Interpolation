@@ -6,6 +6,7 @@ import torch
 
 from olmo.data.parse_align import (
     TreeVocab,
+    iter_tree_chunks,
     parse_tree_block,
     binarize_tree,
     tree_spans,
@@ -349,6 +350,55 @@ def test_boundary_root_when_bos_and_eos_share_gpt2_id():
     assert (0, 3, 3) in map(tuple, out["spans"].tolist())
 
 
+def test_pushdown_wraps_every_top_level_tree_with_cls_root_and_eos():
+    v = fake_vocab()
+    first = encode_tree(v, "S", encode_tree(v, "A", 10, 11), 12)
+    second = encode_tree(v, "A", 20, 21)
+    block = [v.bos] + first + [77] + second + [v.eos]
+    out = parse_chunk_slice(
+        block,
+        v,
+        "right",
+        collapse_unary=True,
+        wrap_toplevel_trees=True,
+        root_token_id=50260,
+        sentence_eos_token_id=50256,
+    )
+    assert out["input_ids"].tolist() == [
+        50260, 10, 11, 12, 50256,
+        50260, 20, 21, 50256,
+    ]
+    # Original document-level leaves are dropped and each EOS attaches to ROOT.
+    assert 77 not in out["input_ids"]
+    assert (0, 4, 4) in map(tuple, out["spans"].tolist())
+    assert (5, 8, 8) in map(tuple, out["spans"].tolist())
+    assert out["sentence_ids"].tolist() == [-1, 0, 0, 0, -1, -1, 1, 1, -1]
+
+
+def test_wrapped_chunk_packing_counts_root_and_eos_per_tree():
+    v = fake_vocab()
+    first = encode_tree(v, "A", 10, 11)
+    second = encode_tree(v, "A", 20, 21)
+    stream = np.asarray([v.bos] + first + [77] + second + [v.eos])
+    chunks = iter_tree_chunks(
+        stream, v, "right", max_len=5, wrap_toplevel_trees=True
+    )
+    # Each two-leaf tree becomes ROOT + 2 leaves + EOS = 4 tokens, so they may
+    # not be packed together even though the unwrapped content has only 4 leaves.
+    assert len(chunks) == 2
+    wrapped = [
+        parse_chunk_slice(
+            stream[s:s + length], v, "right", wrap_toplevel_trees=True,
+            root_token_id=50260, sentence_eos_token_id=50256,
+        )["input_ids"].tolist()
+        for s, length in chunks
+    ]
+    assert wrapped == [
+        [50260, 10, 11, 50256],
+        [50260, 20, 21, 50256],
+    ]
+
+
 _TEST_RIGHT = "dataset/bbc-news/parse_aligned/test_right"
 
 
@@ -388,6 +438,47 @@ def test_incomplete_precomputed_dataset_is_rejected(tmp_path):
     (tmp_path / "PREPROCESSING_INCOMPLETE").write_text("in progress\n")
     with pytest.raises(RuntimeError, match="interrupted preprocessing output"):
         PrecomputedParseDataset(str(tmp_path))
+
+
+def test_pushdown_precomputed_contract_rejects_wrong_root(tmp_path):
+    """A legacy/wrong-root array must fail before training can consume it."""
+    import json
+
+    from olmo.data.parse_align import PrecomputedParseDataset
+
+    (tmp_path / "preprocessing.json").write_text(
+        json.dumps({
+            "binarize": True,
+            "collapse_unary": True,
+            "wrap_toplevel_trees": True,
+            "root_token_id": 50257,
+            "sentence_eos_token_id": 50256,
+            "direction": "right",
+        })
+    )
+    with pytest.raises(RuntimeError, match="root_token_id"):
+        PrecomputedParseDataset(
+            str(tmp_path),
+            require_pushdown_root_token_id=50260,
+            expected_binarize_direction="right",
+        )
+
+
+def test_pushdown_precomputed_root_is_not_an_lm_target():
+    from olmo.data.parse_align import PrecomputedParseDataset
+
+    data_dir = "dataset/bbc-news/parse_aligned/dev_pushdown_unary"
+    if not __import__("os").path.exists(f"{data_dir}/input_ids.npy"):
+        pytest.skip("regenerated Pushdown dev data not on disk")
+    item = PrecomputedParseDataset(
+        data_dir,
+        require_pushdown_root_token_id=50260,
+        expected_binarize_direction="right",
+    )[0]
+    roots = item["input_ids"] == 50260
+    assert roots.any()
+    assert not item["label_mask"][roots].any()
+    assert item["label_mask"][item["input_ids"] == 50256].all()
 
 
 def test_worker_cpu_candidates_are_distinct_and_allowed():
