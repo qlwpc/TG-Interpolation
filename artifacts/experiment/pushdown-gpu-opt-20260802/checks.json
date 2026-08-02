@@ -1,0 +1,26 @@
+{
+  "pytest": {
+    "command": "pytest -q tests/test_pushdown*.py tests/test_parse_align.py",
+    "passed": 66,
+    "skipped": 6,
+    "warnings": 1
+  },
+  "targeted_after_diagnostic_switches": {
+    "command": "pytest -q tests/test_pushdown_depth.py tests/test_pushdown_attachment.py",
+    "passed": 30
+  },
+  "exact_commit_snapshot": {
+    "command": "pytest -q tests/test_pushdown*.py tests/test_parse_align.py",
+    "passed": 58,
+    "skipped": 7,
+    "warnings": 2
+  },
+  "oracle_production_rows_checked": 32,
+  "oracle_matches_corrected_reference": true,
+  "depth_gradient_tolerance": {
+    "atol": 0.000002,
+    "rtol": 0.000002
+  },
+  "optimized_one_gpu_nonfinite_gradient_parameter_count": 0,
+  "optimized_four_gpu_completed_steps": 22
+}

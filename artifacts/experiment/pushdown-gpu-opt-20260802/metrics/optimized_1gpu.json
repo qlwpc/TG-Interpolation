@@ -1,0 +1,53 @@
+{
+  "log_path": "logs/pushdown_debug_pushdown-debug_1890.log",
+  "completed_steps": 4,
+  "measurement_first_step": 3,
+  "measured_step_count": 2,
+  "step_median_ms": 608.55,
+  "gpu_train_median_ms": 608.35,
+  "final_tokens_per_second_per_device": 13410.0,
+  "final_batches_per_second_per_device": 1.637,
+  "peak_gpu_memory_mb": 12374.0,
+  "fix2_backward_calls": 48,
+  "fix2_phase_median_ms_per_layer": {
+    "bias": 4.8,
+    "cast": 0.2,
+    "delta": 4.9,
+    "g_attn": 1.5,
+    "mask": 5.0,
+    "scatter": 5.4,
+    "scores": 3.4,
+    "softmax": 2.0
+  },
+  "attachment_forward_median_ms": 4.6,
+  "model_forward_median_ms": 82.85,
+  "lm_and_attachment_loss_median_ms": 9.5,
+  "backward_median_ms": 483.95,
+  "max_nonfinite_gradient_parameter_count": 0,
+  "steps": [
+    {
+      "step": 1,
+      "data_ms": 1.9,
+      "step_total_ms": 4145.7,
+      "gpu_train_ms": 4143.6
+    },
+    {
+      "step": 2,
+      "data_ms": 0.0,
+      "step_total_ms": 609.5,
+      "gpu_train_ms": 609.3
+    },
+    {
+      "step": 3,
+      "data_ms": 0.0,
+      "step_total_ms": 608.4,
+      "gpu_train_ms": 608.2
+    },
+    {
+      "step": 4,
+      "data_ms": 0.0,
+      "step_total_ms": 608.7,
+      "gpu_train_ms": 608.5
+    }
+  ]
+}

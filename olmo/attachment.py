@@ -22,6 +22,7 @@ This module is pure torch (no flex/CUDA), so it tests on CPU.
 
 from __future__ import annotations
 
+import os
 from typing import Optional, Tuple
 
 import torch
@@ -207,7 +208,7 @@ class PushdownAttachmentHead(nn.Module):
         return logits
 
 
-def derive_oracle_reduce_targets(
+def _derive_oracle_reduce_targets_reference(
     spans: torch.Tensor,
     n: int,
     span_mask: Optional[torch.Tensor] = None,
@@ -246,8 +247,8 @@ def derive_oracle_reduce_targets(
     else:
         span_mask = span_mask.to(torch.bool)
 
-    # Move to CPU Python lists for the stack simulation (B and n are small enough
-    # that this is not a bottleneck; it runs once per batch in model_forward).
+    # Independent reference implementation. The production implementation below
+    # is vectorized; keep this literal stack simulation for regression tests.
     spans_cpu = spans.detach().to("cpu", dtype=torch.long)
     mask_cpu = span_mask.detach().to("cpu")
     out = torch.zeros(B, n, dtype=torch.long)
@@ -266,10 +267,14 @@ def derive_oracle_reduce_targets(
 
         stack: list[Tuple[int, int]] = []  # list of (left, right) closed constituents
         for k in range(n):
+            # Algorithm 1 shifts x_k before applying the closes at k. This is
+            # observable for preterminal/single-token spans (k,k): the new leaf
+            # must sit on top of the previous stack, not cause that stack to be
+            # cleared while searching for left endpoint k.
+            stack.append((k, k))
             closes = closes_by_right.get(k)
             if not closes:
                 out[b, k] = k  # shift-only
-                stack.append((k, k))
                 continue
             outer_left = min(closes)  # outermost closing constituent's left
             # Pop until the stack top's left == outer_left (its right is r_k).
@@ -285,6 +290,143 @@ def derive_oracle_reduce_targets(
                 # Malformed/gold-inconsistent spans: fall back to shift-only.
                 out[b, k] = k
             stack.append((outer_left, k))  # new merged constituent
+    return out.to(device)
+
+
+def derive_oracle_reduce_targets(
+    spans: torch.Tensor,
+    n: int,
+    span_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Derive Pushdown oracle reduce targets without host transfers or Python loops.
+
+    For a token ``k`` that closes at least one constituent, let ``l`` be the
+    smallest left endpoint among spans ending at ``k`` (the outermost close).
+    Immediately before that close, the stack item starting at ``l`` ends at the
+    largest earlier right endpoint of a span with the same ``l``; when none
+    exists, it is the shifted leaf ``l`` itself. Therefore the shift-then-reduce
+    stack simulator is
+    equivalent to sorting spans by ``(batch, left, right)``, taking the previous
+    right endpoint within each ``(batch, left)`` group, and selecting the row with
+    minimum ``left`` for each ``(batch, right)`` close event.
+
+    All tensors retain the fixed ``B*M`` shape. Invalid/padded spans receive
+    sentinel keys and sentinel scatter values, avoiding boolean-indexed dynamic
+    outputs and GPU-to-CPU synchronization in the training hot path.
+    """
+    if os.environ.get("OLMO_PUSHDOWN_LEGACY_ORACLE"):
+        return _derive_oracle_reduce_targets_legacy(spans, n, span_mask)
+    if spans.dim() == 2:
+        spans = spans.unsqueeze(0)
+    B, M, _ = spans.shape
+    device = spans.device
+    if span_mask is None:
+        span_mask = spans[..., 0] >= 0
+    else:
+        span_mask = span_mask.to(device=device, dtype=torch.bool)
+
+    l0 = spans[..., 0].to(torch.long)
+    r0 = spans[..., 2].to(torch.long)
+    valid = span_mask & (l0 >= 0) & (r0 >= 0) & (l0 <= r0) & (r0 < n)
+    l = l0.clamp(0, n - 1)
+    r = r0.clamp(0, n - 1)
+    batch = torch.arange(B, device=device, dtype=torch.long)[:, None].expand(B, M)
+
+    flat_l = l.reshape(-1)
+    flat_r = r.reshape(-1)
+    flat_b = batch.reshape(-1)
+    flat_valid = valid.reshape(-1)
+    flat_position = torch.arange(B * M, device=device, dtype=torch.long)
+
+    # Valid keys sort lexicographically by (batch, left, right). Give every
+    # invalid slot a unique key after the valid range so it cannot form a group.
+    sentinel_base = B * n * (n + 1)
+    sort_key = (flat_b * n + flat_l) * (n + 1) + flat_r
+    sort_key = torch.where(flat_valid, sort_key, sentinel_base + flat_position)
+    order = torch.argsort(sort_key)
+    sb = flat_b[order]
+    sl = flat_l[order]
+    sr = flat_r[order]
+    sv = flat_valid[order]
+
+    previous_b = torch.roll(sb, 1)
+    previous_l = torch.roll(sl, 1)
+    previous_r = torch.roll(sr, 1)
+    same_left_group = sv & torch.roll(sv, 1) & (sb == previous_b) & (sl == previous_l)
+    same_left_group[0] = False
+    predecessor = torch.where(same_left_group, previous_r, sl)
+
+    end_index = sb * n + sr
+    outer_left = torch.full((B * n,), n, dtype=torch.long, device=device)
+    outer_left.scatter_reduce_(
+        0,
+        end_index,
+        torch.where(sv, sl, torch.full_like(sl, n)),
+        reduce="amin",
+        include_self=True,
+    )
+    is_outermost = sv & (sl == outer_left[end_index])
+    chosen = torch.full((B * n,), n, dtype=torch.long, device=device)
+    chosen.scatter_reduce_(
+        0,
+        end_index,
+        torch.where(is_outermost, predecessor, torch.full_like(predecessor, n)),
+        reduce="amin",
+        include_self=True,
+    )
+
+    shifts = torch.arange(n, device=device, dtype=torch.long).repeat(B)
+    return torch.where(chosen < n, chosen, shifts).view(B, n)
+
+
+def _derive_oracle_reduce_targets_legacy(
+    spans: torch.Tensor,
+    n: int,
+    span_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Pre-optimization oracle, retained only for matched performance controls.
+
+    This intentionally closes constituents before shifting ``k`` and therefore
+    reproduces the old singleton-span stack-reset bug. Never use it for training
+    except with the explicit diagnostic environment switch above.
+    """
+    if spans.dim() == 2:
+        spans = spans.unsqueeze(0)
+    B, M, _ = spans.shape
+    device = spans.device
+    if span_mask is None:
+        span_mask = spans[..., 0] >= 0
+    else:
+        span_mask = span_mask.to(torch.bool)
+    spans_cpu = spans.detach().to("cpu", dtype=torch.long)
+    mask_cpu = span_mask.detach().to("cpu")
+    out = torch.zeros(B, n, dtype=torch.long)
+    for b in range(B):
+        closes_by_right: dict[int, list[int]] = {}
+        for m in range(M):
+            if not bool(mask_cpu[b, m]):
+                continue
+            left = int(spans_cpu[b, m, 0])
+            right = int(spans_cpu[b, m, 2])
+            if left < 0 or right < 0 or right >= n:
+                continue
+            closes_by_right.setdefault(right, []).append(left)
+        stack: list[Tuple[int, int]] = []
+        for k in range(n):
+            closes = closes_by_right.get(k)
+            if not closes:
+                out[b, k] = k
+                stack.append((k, k))
+                continue
+            outer_left = min(closes)
+            while stack and stack[-1][0] != outer_left:
+                stack.pop()
+            if stack:
+                out[b, k] = stack[-1][1]
+                stack.pop()
+            else:
+                out[b, k] = k
+            stack.append((outer_left, k))
     return out.to(device)
 
 

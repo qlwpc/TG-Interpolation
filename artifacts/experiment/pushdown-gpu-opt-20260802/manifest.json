@@ -1,0 +1,17 @@
+{
+  "run_id": "pushdown-gpu-opt-20260802",
+  "status": "accepted_on_completed_4gpu_contract",
+  "primary_result": "RESULT.md",
+  "comparison": "comparison.json",
+  "data_profile": "data_profile.json",
+  "checks": "checks.json",
+  "metrics_directory": "metrics",
+  "benchmark_config": "../../../train_configs/pushdown_profile_3090.yaml",
+  "slurm_launchers": [
+    "../../../scripts/slurm/profile_pushdown_3090.sbatch",
+    "../../../scripts/slurm/profile_pushdown_4gpu_3090.sbatch",
+    "../../../scripts/slurm/debug_pushdown_3090.sbatch"
+  ],
+  "pending_8gpu_job_ids_at_close": [1874, 1875, 1876, 1877],
+  "failed_initial_8gpu_job_id": 1873
+}

@@ -730,6 +730,15 @@ class Trainer:
     def model_forward(
         self, batch: Dict[str, Any], loss_reduction: str = "mean", compute_z_loss: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, int]:
+        _pushdown_profile = (
+            bool(os.environ.get("OLMO_PUSHDOWN_PHASE_PROFILE"))
+            and self.cfg.model.transformer_grammar_type == "pushdown"
+            and torch.cuda.is_available()
+            and get_global_rank() == 0
+        )
+        if _pushdown_profile:
+            torch.cuda.synchronize()
+            _pd_forward_start = time.perf_counter()
         # shape: (batch_size, seq_len, vocab_size)
         olmo_out = self.dist_model(
             input_ids=batch["input_ids"],
@@ -742,8 +751,13 @@ class Trainer:
                 self.dist_model.training
                 and self.cfg.model.transformer_grammar_type == "pushdown"
                 and batch.get("tree_spans") is not None
+                and not bool(os.environ.get("OLMO_PUSHDOWN_SKIP_ATTACHMENT"))
             ),
         )
+        if _pushdown_profile:
+            torch.cuda.synchronize()
+            _pd_model_ms = (time.perf_counter() - _pd_forward_start) * 1e3
+            _pd_lm_start = time.perf_counter()
         logits = olmo_out.logits
         logits_for_loss = logits[..., :-1, :].contiguous()
         # shape: (batch_size * seq_len, vocab_size)
@@ -831,6 +845,16 @@ class Trainer:
             )
             attachment_loss = compute_attachment_loss(
                 att_logits, oracle, am, reduction=loss_reduction
+            )
+        if _pushdown_profile:
+            torch.cuda.synchronize()
+            _pd_post_ms = (time.perf_counter() - _pd_lm_start) * 1e3
+            print(
+                f"[pushdown_forward] model_including_attachment_ms={_pd_model_ms:.1f} "
+                f"lm_and_attachment_loss_ms={_pd_post_ms:.1f} "
+                f"attachment_loss="
+                f"{attachment_loss.detach().item() if attachment_loss is not None else 'none'}",
+                flush=True,
             )
         return ce_loss, z_loss, logits, treereg_loss, attachment_loss
 
@@ -972,7 +996,39 @@ class Trainer:
                         z_batch_loss += z_loss.detach()
 
                 # Run backward pass.
+                _pushdown_profile = (
+                    bool(os.environ.get("OLMO_PUSHDOWN_PHASE_PROFILE"))
+                    and torch.cuda.is_available()
+                    and get_global_rank() == 0
+                )
+                if _pushdown_profile:
+                    torch.cuda.synchronize()
+                    _pd_backward_start = time.perf_counter()
                 loss.backward()
+                if _pushdown_profile:
+                    torch.cuda.synchronize()
+                    print(
+                        f"[pushdown_backward] total_ms="
+                        f"{(time.perf_counter() - _pd_backward_start) * 1e3:.1f}",
+                        flush=True,
+                    )
+                if (
+                    bool(os.environ.get("OLMO_GRAD_NAN_PROFILE"))
+                    and get_global_rank() == 0
+                ):
+                    nonfinite = []
+                    for name, parameter in self.dist_model.named_parameters():
+                        if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
+                            grad = parameter.grad.detach()
+                            nonfinite.append(
+                                f"{name}:nan={torch.isnan(grad).sum().item()},"
+                                f"inf={torch.isinf(grad).sum().item()}"
+                            )
+                    print(
+                        f"[pushdown_nonfinite_grads] count={len(nonfinite)} "
+                        + " | ".join(nonfinite),
+                        flush=True,
+                    )
 
             # Remove output hooks
             for hook in output_hooks:

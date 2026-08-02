@@ -17,6 +17,7 @@ import torch
 
 from olmo.attachment import (
     PushdownAttachmentHead,
+    _derive_oracle_reduce_targets_reference,
     build_attachment_query_mask,
     compute_attachment_loss,
     derive_oracle_reduce_targets,
@@ -97,6 +98,61 @@ def test_oracle_all_shift():
     spans, mask = _spans_tensor([], n=3)
     oracle = derive_oracle_reduce_targets(spans, 3, mask)
     assert oracle.tolist() == [[0, 1, 2]]
+
+
+def test_oracle_singleton_close_preserves_earlier_stack():
+    """A preterminal (k,k) is reduced after shifting k and must not clear history."""
+    spans, mask = _spans_tensor(
+        [(1, 1, 1), (2, 2, 2), (1, 2, 2), (0, 2, 2)], n=3
+    )
+    # k=1's singleton is shift-only but leaves token 0 below it. At k=2 the
+    # outer (0,2) close therefore reduces onto token 0 rather than falling back
+    # to an all-shift target.
+    oracle = derive_oracle_reduce_targets(spans, 3, mask)
+    assert oracle.tolist() == [[0, 1, 0]]
+
+
+def test_legacy_oracle_switch_reproduces_singleton_stack_reset(monkeypatch):
+    spans, mask = _spans_tensor(
+        [(1, 1, 1), (2, 2, 2), (1, 2, 2), (0, 2, 2)], n=3
+    )
+    monkeypatch.setenv("OLMO_PUSHDOWN_LEGACY_ORACLE", "1")
+    assert derive_oracle_reduce_targets(spans, 3, mask).tolist() == [[0, 1, 2]]
+
+
+def test_oracle_vectorized_matches_stack_reference_randomized():
+    """The on-device sort/scatter formulation must equal the literal stack."""
+    import random
+
+    rng = random.Random(29)
+    batch, n, max_spans = 6, 64, 96
+    spans = torch.full((batch, max_spans, 3), -1, dtype=torch.long)
+    mask = torch.zeros(batch, max_spans, dtype=torch.bool)
+
+    def binary_tree(left, right):
+        if left >= right:
+            return []
+        split = rng.randint(left, right - 1)
+        return (
+            binary_tree(left, split)
+            + binary_tree(split + 1, right)
+            + [(left, split, right)]
+        )
+
+    for b in range(batch):
+        row = []
+        cursor = 0
+        while cursor < n:
+            length = min(rng.randint(1, 12), n - cursor)
+            row.extend(binary_tree(cursor, cursor + length - 1))
+            cursor += length
+        rng.shuffle(row)  # input span order is not part of the contract
+        spans[b, : len(row)] = torch.tensor(row)
+        mask[b, : len(row)] = True
+
+    actual = derive_oracle_reduce_targets(spans, n, mask)
+    expected = _derive_oracle_reduce_targets_reference(spans, n, mask)
+    assert torch.equal(actual, expected)
 
 
 # --------------------------------------------------------------------------- #

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import pytest
 
-from olmo.pushdown import compute_depth_matrix_gpu, PushdownDepthBias
+from olmo.pushdown import compute_depth_matrix_gpu, PushdownDepthBias, _DepthBiasGradP
 from olmo.data.parse_align import compute_depth_matrix
 
 
@@ -47,6 +47,54 @@ def test_pushdown_depth_bias_shape():
     kw = torch.randn(64, 64)
     E = pdb(kw)
     assert E.shape == (4, 17, 16)  # (n_heads, max_depth+1, d_head)
+
+
+def test_depth_bias_manual_grad_reuses_flex_output_exactly():
+    """Output-assisted grad_P matches dense autograd with document masks."""
+    torch.manual_seed(41)
+    batch, heads, n, width, depths = 2, 3, 9, 5, 7
+    inv = width ** -0.5
+    q = torch.randn(batch, heads, n, width)
+    k = torch.randn_like(q)
+    v = torch.randn_like(q)
+    dc = torch.randint(0, depths, (batch, n, n))
+    valid_keys = torch.tensor(
+        [[1, 1, 1, 1, 1, 1, 1, 1, 0], [1, 1, 1, 1, 1, 1, 1, 0, 0]],
+        dtype=torch.bool,
+    )
+    doc_id = torch.tensor(
+        [[0, 0, 0, 0, 1, 1, 1, 1, 1], [0, 0, 0, 1, 1, 1, 1, 2, 2]]
+    )
+    positions = torch.arange(n)
+    grad_mask = (
+        valid_keys[:, None, :]
+        & (positions[:, None] >= positions[None, :]).unsqueeze(0)
+        & (doc_id[:, :, None] == doc_id[:, None, :])
+    )
+    grad_output = torch.randn_like(q)
+
+    p_reference = torch.randn(batch, heads, n, depths, requires_grad=True)
+    scores = torch.einsum("bhni,bhmi->bhnm", q, k) * inv
+    bias = torch.take_along_dim(p_reference, dc.unsqueeze(1), dim=3) * inv
+    post = (scores + bias).masked_fill(~grad_mask[:, None], float("-inf"))
+    flex_lse = torch.logsumexp(post, dim=-1)
+    safe_lse = torch.where(
+        torch.isfinite(flex_lse), flex_lse, torch.zeros_like(flex_lse)
+    )
+    probabilities = torch.exp(post - safe_lse.unsqueeze(-1)).masked_fill(
+        ~grad_mask[:, None], 0.0
+    )
+    flex_out = torch.einsum("bhnm,bhmi->bhni", probabilities, v)
+    (flex_out * grad_output).sum().backward()
+    expected = p_reference.grad.detach().clone()
+
+    p_manual = p_reference.detach().clone().requires_grad_(True)
+    auxiliary = _DepthBiasGradP.apply(
+        q, k, v, p_manual, dc, ~grad_mask, ~grad_mask.any(dim=-1),
+        valid_keys, inv, flex_out.detach(),
+    )
+    (auxiliary * grad_output).sum().backward()
+    assert torch.allclose(p_manual.grad, expected, atol=2e-6, rtol=2e-6)
 
 
 def test_depth_matrix_saturates_before_int8_cast():

@@ -1,0 +1,18 @@
+{
+  "model_parameters": 112505856,
+  "non_embedding_parameters": 73860096,
+  "dataset": "dataset/bbc-news/parse_aligned/train_pushdown_unary",
+  "rows": 5064370,
+  "token_shape": [5064370, 2048],
+  "span_shape": [5064370, 4096, 3],
+  "sampled_rows": 256,
+  "mean_sentences_or_roots_per_row": 88.43,
+  "mean_spans_per_row": 2079.79,
+  "mean_padding_tokens_per_row": 23.17,
+  "terminal_stream_sample": {
+    "mean_sentences_per_row": 91.18,
+    "mean_sentence_tokens": 20.77,
+    "p95_sentence_tokens": 42,
+    "max_sentence_tokens": 115
+  }
+}

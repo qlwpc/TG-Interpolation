@@ -882,16 +882,29 @@ class OLMoBlock(nn.Module):
                 rep = nh // n_kv
                 k = k.repeat_interleave(rep, dim=1, output_size=nh)
                 v = v.repeat_interleave(rep, dim=1, output_size=nh)
-            out = self.flex_attention(q, k, v, score_mod=_depth_score_mod, block_mask=block_mask)
             if _fix2:
+                out = self.flex_attention(
+                    q, k, v, score_mod=_depth_score_mod,
+                    block_mask=block_mask,
+                )
                 # Add the manual grad-P path. Forward: out + 0 == out (unchanged).
                 # Backward: _DepthBiasGradP computes grad_P from grad_out (manual
                 # recompute of pT + scatter_add into 77MB P); flex's own backward
-                # (P was detached) supplies grad_q/grad_k/grad_v. The 1-D valid-key
-                # mask is stashed on the shared cache by OLMo.forward.
+                # (P was detached) supplies grad_q/grad_k/grad_v. The exact dense
+                # FlexAttention support is stashed once on the shared cache by
+                # OLMo.forward and reused by every layer.
                 from olmo.pushdown import _DepthBiasGradP
+                _gi = cache.get("pushdown_grad_invalid") if cache is not None else None
+                _eq = cache.get("pushdown_empty_query") if cache is not None else None
                 _am = cache.get("pushdown_attn_mask") if cache is not None else None
-                out = out + _DepthBiasGradP.apply(q, k, v, P, Dc, _am, inv_sqrt_hs)
+                out = out + _DepthBiasGradP.apply(
+                    q, k, v, P, Dc, _gi, _eq, _am,
+                    inv_sqrt_hs, out.detach(),
+                )
+            else:
+                out = self.flex_attention(
+                    q, k, v, score_mod=_depth_score_mod, block_mask=block_mask
+                )
             return out
         # else: fall through to the SDPA additive-mask path (flex disabled, no
         # block_mask, or generation with a KV cache).
@@ -1761,12 +1774,27 @@ class OLMo(nn.Module):
                 mask_mod=_pushdown_mask_mod, B=batch_size, H=None,
                 Q_LEN=seq_len, KV_LEN=seq_len, device=x.device,
             )
-            # Stash the 1-D valid-key mask on the shared BufferCache for fix #2
-            # (OLMO_PUSHDOWN_FIX2): _pushdown_attention's manual backward needs the
-            # causal+pad mask to zero pT at padded kv positions. Same forward-scoped
-            # pattern as the depth-matrix memoization (set here, read per-block).
-            # Overwritten each forward, so no stale-entry risk across batches.
+            # Retain the 1-D key mask only for the explicit legacy-gradient
+            # diagnostic. Production uses the exact dense support below. Both
+            # entries are overwritten each forward, so there is no stale-batch risk.
             self.__cache["pushdown_attn_mask"] = am
+            # The manual depth-bias gradient must use the exact same support as
+            # FlexAttention. Cache its dense head-independent form ONCE per
+            # forward instead of rebuilding a causal matrix in every layer's
+            # backward. This is only B*n*n bool (16 MiB at B=4,n=2048), shared
+            # by all 12 custom-autograd nodes. In particular, include doc_id:
+            # the old manual backward used causal+pad only and therefore sent
+            # spurious depth gradients through cross-document cells that the
+            # forward FlexAttention kernel had masked out.
+            positions = torch.arange(seq_len, device=x.device)
+            pushdown_grad_mask = (
+                am[:, None, :]
+                & (positions[:, None] >= positions[None, :]).unsqueeze(0)
+            )
+            if doc_id is not None:
+                pushdown_grad_mask &= doc_id[:, :, None] == doc_id[:, None, :]
+            self.__cache["pushdown_empty_query"] = ~pushdown_grad_mask.any(dim=-1)
+            self.__cache["pushdown_grad_invalid"] = ~pushdown_grad_mask
             attention_bias = None
         else:
             # Document masking (eval-only, generate_doc_lengths=True): when doc
@@ -1909,6 +1937,11 @@ class OLMo(nn.Module):
         if (self.config.transformer_grammar_type == "pushdown"
                 and compute_attachment_logits
                 and past_key_values is None):
+            _profile_attachment = bool(os.environ.get("OLMO_PUSHDOWN_PHASE_PROFILE"))
+            if _profile_attachment:
+                _attachment_start = torch.cuda.Event(enable_timing=True)
+                _attachment_end = torch.cuda.Event(enable_timing=True)
+                _attachment_start.record()
             final_hidden = x  # full (B, n, d) pre-ln_f residual
             # Recover the 1-D valid-key bool mask from `attention_mask`. By this
             # point OLMo.forward's else-branch may have reshaped it to a float
@@ -1929,6 +1962,20 @@ class OLMo(nn.Module):
                 root_token_id=self.config.bos_token_id,
                 eos_token_id=self.config.eos_token_id,
             )
+            if _profile_attachment:
+                _attachment_end.record()
+                torch.cuda.synchronize()
+                _profile_rank = (
+                    torch.distributed.get_rank()
+                    if torch.distributed.is_available() and torch.distributed.is_initialized()
+                    else 0
+                )
+                if _profile_rank == 0:
+                    print(
+                        f"[pushdown_attachment_forward] ms="
+                        f"{_attachment_start.elapsed_time(_attachment_end):.1f}",
+                        flush=True,
+                    )
 
         if last_logits_only:
             # shape: (batch_size, 1, d_model)

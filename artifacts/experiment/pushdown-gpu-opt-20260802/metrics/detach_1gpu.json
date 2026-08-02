@@ -1,0 +1,44 @@
+{
+  "log_path": "logs/pushdown_debug_pushdown-debug_1880.log",
+  "completed_steps": 4,
+  "measurement_first_step": 3,
+  "measured_step_count": 2,
+  "step_median_ms": 491.9,
+  "gpu_train_median_ms": 491.75,
+  "final_tokens_per_second_per_device": 16512.0,
+  "final_batches_per_second_per_device": 2.016,
+  "peak_gpu_memory_mb": 12041.0,
+  "fix2_backward_calls": 0,
+  "fix2_phase_median_ms_per_layer": {},
+  "attachment_forward_median_ms": 4.6,
+  "model_forward_median_ms": 84.65,
+  "lm_and_attachment_loss_median_ms": 225.3,
+  "backward_median_ms": 150.3,
+  "max_nonfinite_gradient_parameter_count": 0,
+  "steps": [
+    {
+      "step": 1,
+      "data_ms": 1.4,
+      "step_total_ms": 3944.8,
+      "gpu_train_ms": 3943.2
+    },
+    {
+      "step": 2,
+      "data_ms": 0.0,
+      "step_total_ms": 498.4,
+      "gpu_train_ms": 498.3
+    },
+    {
+      "step": 3,
+      "data_ms": 0.0,
+      "step_total_ms": 495.6,
+      "gpu_train_ms": 495.4
+    },
+    {
+      "step": 4,
+      "data_ms": 0.0,
+      "step_total_ms": 488.2,
+      "gpu_train_ms": 488.1
+    }
+  ]
+}

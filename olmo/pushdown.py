@@ -47,33 +47,41 @@ class _DepthBiasGradP(torch.autograd.Function):
     downstream grad w.r.t. the attention output) and manually computes ``grad_P``
     via the exact attention-bias backward formula:
 
-        pT      = softmax_causal_pad(q@k^T * scale + P.gather(Dc) * scale)
+        pT      = softmax_masked(q@k^T * scale + P.gather(Dc) * scale)
         g_attn  = grad_out @ v^T
-        g_post  = pT * (g_attn - (g_attn * pT).sum(-1, keepdim=True))   # softmax bwd
+        delta   = (grad_out * flex_out).sum(-1, keepdim=True)
+        g_post  = pT * (g_attn - delta)                                  # softmax bwd
         grad_P  = scatter_add(zeros_like(P), Dc, g_post * scale, dim=3)  # gather bwd
 
     (scale = 1/sqrt(hs) = inv_sqrt_hs; the bias is ``P.gather(Dc) * scale``, so the
-    gather-backward multiplies by scale.) Validated vs autograd on CPU: grad_P, grad_q,
-    grad_k, grad_v all match to 1e-7. The manual backward recomputes q@k^T (one bmm,
-    ~0.1 ms) + softmax + a scatter_add into the 77 MB P — a few ms/layer in fp32,
-    NOT the inductor ``zeros_and_scatter`` into 2.4 GB. grad_q/grad_k/grad_v are left
-    to flex's own fused backward (this Function returns None for them).
+    gather-backward multiplies by scale.) ``grad_P`` is validated against dense
+    autograd; grad_q/grad_k/grad_v are left to FlexAttention's own fused backward
+    because this Function returns ``None`` for them.
 
-    The causal+pad mask is required so padded kv positions get pT=0 (else spurious
-    grad_P). ``attn_mask`` is the 1-D bool (B, N) valid-key mask (stashed on the
-    shared BufferCache in OLMo.forward, key "pushdown_attn_mask").
+    ``grad_invalid`` is the inverse of the exact head-independent
+    causal+pad+document support used by FlexAttention, cached once per model
+    forward and shared by every layer.
+    ``empty_query`` identifies padded rows with no legal key; those rows receive a
+    temporary dummy cell for a defined softmax and are zeroed immediately after.
+    ``flex_out`` is the detached real forward output; using it removes the dense
+    ``sum(g_attn*pT)`` softmax-backward reduction.
     """
 
     @staticmethod
-    def forward(ctx, q, k, v, P, Dc, attn_mask, inv_sqrt_hs):
+    def forward(
+        ctx, q, k, v, P, Dc, grad_invalid, empty_query, attn_mask,
+        inv_sqrt_hs, flex_out,
+    ):
         # forward returns zeros (out + 0 == out). Save tensors for the backward.
-        ctx.save_for_backward(q, k, v, P, Dc, attn_mask)
+        ctx.save_for_backward(
+            q, k, v, P, Dc, grad_invalid, empty_query, attn_mask, flex_out
+        )
         ctx.inv_sqrt_hs = float(inv_sqrt_hs)
         return torch.zeros_like(q)  # (B, H, N, hs)
 
     @staticmethod
     def backward(ctx, grad_output):
-        q, k, v, P, Dc, attn_mask = ctx.saved_tensors
+        q, k, v, P, Dc, grad_invalid, empty_query, attn_mask, flex_out = ctx.saved_tensors
         inv = ctx.inv_sqrt_hs  # = scale = 1/sqrt(hs)
         B, H, N, hs = q.shape
         # Run in FP32 (not bf16). Counterintuitively, the scatter_add_ into grad_P is
@@ -84,10 +92,11 @@ class _DepthBiasGradP(torch.autograd.Function):
         # the scatter is the bottleneck and MUST be fp32. autocast disabled for explicit
         # dtypes (also avoids the bf16-P-vs-fp32-softmax dtype crash).
         _profile = bool(os.environ.get("OLMO_PUSHDOWN_FIX2_PROFILE"))
+        _legacy = bool(os.environ.get("OLMO_PUSHDOWN_LEGACY_DEPTH_GRAD"))
         with torch.autocast(device_type=q.device.type, enabled=False):
             if _profile:
                 _t0 = {n: torch.cuda.Event(enable_timing=True) for n in
-                       ["cast", "scores", "bias", "mask", "softmax", "g_attn", "g_post", "scatter"]}
+                       ["cast", "scores", "bias", "mask", "softmax", "g_attn", "delta", "scatter"]}
                 _t1 = {n: torch.cuda.Event(enable_timing=True) for n in _t0}
                 _t0["cast"].record()
             qf, kf, vf = q.float(), k.float(), v.float()
@@ -101,38 +110,67 @@ class _DepthBiasGradP(torch.autograd.Function):
             bias = torch.take_along_dim(Pf, Dc.unsqueeze(1), dim=3) * inv  # (B,H,N,N) fp32
             if _profile:
                 _t1["bias"].record(); _t0["mask"].record()
-            post = scores + bias
-            if attn_mask is not None:
+            post = scores.add_(bias)
+            del bias
+            if _legacy:
                 am = attn_mask.to(torch.bool).view(B, 1, 1, N)
-                causal = torch.tril(torch.ones(N, N, device=post.device, dtype=torch.bool))
-                valid = am & causal.view(1, 1, N, N)
-                post = post.masked_fill(~valid, float("-inf"))
+                causal = torch.tril(
+                    torch.ones(N, N, device=post.device, dtype=torch.bool)
+                )
+                post.masked_fill_(~(am & causal.view(1, 1, N, N)), float("-inf"))
+            else:
+                if grad_invalid is not None:
+                    post.masked_fill_(grad_invalid.view(B, 1, N, N), float("-inf"))
+                if empty_query is not None:
+                    post[..., 0].masked_fill_(empty_query.view(B, 1, N), 0.0)
             if _profile:
                 _t1["mask"].record(); _t0["softmax"].record()
             pT = torch.softmax(post, dim=-1)                              # (B,H,N,N) fp32
+            if not _legacy and empty_query is not None:
+                pT[..., 0].masked_fill_(empty_query.view(B, 1, N), 0.0)
             if _profile:
                 _t1["softmax"].record(); _t0["g_attn"].record()
             g_attn = torch.einsum("bhni,bhmi->bhnm", go, vf)              # grad_out @ v^T
             if _profile:
-                _t1["g_attn"].record(); _t0["g_post"].record()
-            Di = (g_attn * pT).sum(-1, keepdim=True)
-            g_post = pT * (g_attn - Di)                                   # (B,H,N,N) fp32
+                _t1["g_attn"].record(); _t0["delta"].record()
+            if _legacy:
+                delta = (g_attn * pT).sum(-1, keepdim=True)
+                g_post = pT * (g_attn - delta)
+            else:
+                # `go` is fp32, so type promotion casts the bf16 Flex output
+                # without materializing another fp32 copy.
+                delta = (go * flex_out).sum(-1, keepdim=True)
+                g_attn.sub_(delta).mul_(pT)
+                g_post = g_attn                                            # (B,H,N,N) fp32
             if _profile:
-                _t1["g_post"].record(); _t0["scatter"].record()
+                _t1["delta"].record(); _t0["scatter"].record()
             # grad_P[b,h,q,d] = sum_{kv: Dc[b,q,kv]=d} g_post[b,h,q,kv] * inv
             # fp32 scatter_add_ (fast native atomics). The 4D non-contiguous expanded
-            # index is fine here (fp32 path is fast either way; 2D-contiguous was no
-            # faster). This is the bottleneck (~46 ms/block); beating it needs a custom
-            # segmented-sum kernel, not a different PyTorch op.
+            # index is fine here (2D-contiguous was no faster). A fused attention/depth
+            # backward would be needed to avoid the remaining dense recomputation.
             grad_P = torch.zeros(B, H, N, Pf.shape[3], device=Pf.device, dtype=torch.float32)
-            grad_P.scatter_add_(3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv)
+            if _legacy:
+                grad_P.scatter_add_(
+                    3, Dc.unsqueeze(1).expand(B, H, N, N), g_post * inv
+                )
+            else:
+                g_post.mul_(inv)
+                grad_P.scatter_add_(
+                    3, Dc.unsqueeze(1).expand(B, H, N, N), g_post
+                )
             if _profile:
                 _t1["scatter"].record(); torch.cuda.synchronize()
                 parts = ", ".join(f"{n}={_t0[n].elapsed_time(_t1[n]):.1f}ms" for n in _t0)
-                print(f"[fix2_bwd] {parts}", flush=True)
-        # grad_q, grad_k, grad_v, Dc, attn_mask, inv: None (flex's backward handles q/k/v).
+                profile_rank = (
+                    torch.distributed.get_rank()
+                    if torch.distributed.is_available() and torch.distributed.is_initialized()
+                    else 0
+                )
+                if profile_rank == 0:
+                    print(f"[fix2_bwd] {parts}", flush=True)
+        # q/k/v are handled by flex's backward; only P receives a manual grad.
         # grad_P is fp32; autograd casts it to P's dtype for the chain to E/depth_emb.
-        return (None, None, None, grad_P, None, None, None)
+        return (None, None, None, grad_P, None, None, None, None, None, None)
 
 
 def compute_depth_matrix_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
