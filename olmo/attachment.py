@@ -35,6 +35,7 @@ def build_attachment_query_mask(
     attention_mask: Optional[torch.Tensor],
     bos_token_id: int,
     eos_token_id: int,
+    sentence_ids: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Return positions with a Pushdown attachment target.
 
@@ -71,7 +72,18 @@ def build_attachment_query_mask(
             dim=1,
         )
         is_root = boundary & previous_boundary
-    return valid & ~is_root
+    query_mask = valid & ~is_root
+    if sentence_ids is not None:
+        if sentence_ids.shape != input_ids.shape:
+            raise ValueError(
+                "sentence_ids must have the same shape as input_ids, got "
+                f"{tuple(sentence_ids.shape)} vs {tuple(input_ids.shape)}"
+            )
+        # In a preserved primal stream, -1 denotes document BOS/EOS,
+        # outside-tree whitespace, padding, or an incomplete boundary-crossing
+        # tree. These tokens remain valid LM tokens but have no gold attachment.
+        query_mask &= sentence_ids.to(device=input_ids.device) >= 0
+    return query_mask
 
 
 class PushdownAttachmentHead(nn.Module):
@@ -108,6 +120,7 @@ class PushdownAttachmentHead(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         root_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
+        sentence_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # The surrounding trainer runs under AMP. Bilinear scores and the
         # separately constructed diagonal must use one stable dtype; otherwise
@@ -123,6 +136,7 @@ class PushdownAttachmentHead(nn.Module):
                 attention_mask,
                 root_token_id,
                 eos_token_id,
+                sentence_ids,
             )
 
     def _forward_fp32(
@@ -133,6 +147,7 @@ class PushdownAttachmentHead(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         root_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
+        sentence_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute attachment logits ``p(r_k = j | x_<k)`` (unnormalized).
 
@@ -149,6 +164,9 @@ class PushdownAttachmentHead(nn.Module):
                 its own ROOT.
             eos_token_id: sentence EOS ID. Required only when ROOT and EOS share
                 an ID, so alternating packed boundaries can be disambiguated.
+            sentence_ids: optional ``(B,n)`` exact packed-sentence identifiers.
+                When supplied, these delimit terminal-only sentences without
+                requiring ROOT/EOS tokens in ``input_ids``.
 
         Returns:
             ``logits`` of shape ``(B, n, n)`` fp32, where ``logits[b, k, j]`` is
@@ -189,7 +207,17 @@ class PushdownAttachmentHead(nn.Module):
         # Packed preprocessing concatenates many independent
         # [ROOT, words..., EOS] sentences. The reference attachment softmax is
         # sentence-local, so keys from earlier sentences must not be distractors.
-        if root_token_id is not None:
+        if sentence_ids is not None:
+            if sentence_ids.shape != input_ids.shape:
+                raise ValueError(
+                    "sentence_ids must have the same shape as input_ids, got "
+                    f"{tuple(sentence_ids.shape)} vs {tuple(input_ids.shape)}"
+                )
+            sid = sentence_ids.to(device=input_ids.device)
+            same_sentence = sid[:, :, None] == sid[:, None, :]
+            same_sentence &= (sid[:, :, None] >= 0) & (sid[:, None, :] >= 0)
+            logits = logits.masked_fill(~same_sentence, float("-inf"))
+        elif root_token_id is not None:
             boundary = input_ids == int(root_token_id)
             if eos_token_id is not None and root_token_id == eos_token_id:
                 previous_boundary = torch.cat(
@@ -464,13 +492,17 @@ def compute_attachment_loss(
         if reduction == "none":
             return logits.sum(dim=-1) * 0.0
         return logits.sum() * 0.0
-    # F.cross_entropy with reduction='none' ignores the -inf-padded key positions
-    # correctly (they contribute -inf to the denominator only if targeted, which
-    # the clamp prevents). reduction='sum' / count gives a masked mean.
-    ce = F.cross_entropy(flat_logits, flat_target, reduction="none")  # (B*n,)
+    # Select valid rows *before* softmax. Sentence masking intentionally makes
+    # every key -inf for outside-tree queries; running cross-entropy on those
+    # rows would form an undefined softmax and can leak NaN gradients even if
+    # their scalar losses are masked afterward.
+    selected_logits = flat_logits[flat_mask]
+    selected_target = flat_target[flat_mask]
+    ce = F.cross_entropy(selected_logits, selected_target, reduction="none")
     if reduction == "none":
-        return ce.masked_fill(~flat_mask, 0.0).view(B, n)
-    ce = ce[flat_mask]
+        out = logits.new_zeros(B * n)
+        out[flat_mask] = ce
+        return out.view(B, n)
     if reduction == "sum":
         return ce.sum()
     if reduction == "mean":

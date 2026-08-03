@@ -45,6 +45,7 @@ class DataCollator:
         all_tree_span_mask = []
         all_treereg_word_boundaries = []
         all_treereg_sentence_ids = []
+        all_pushdown_sentence_ids = []
         has_treereg_metadata = any(
             isinstance(x, dict)
             and (
@@ -52,6 +53,9 @@ class DataCollator:
                 or "treereg_sentence_ids" in x
             )
             for x in items
+        )
+        has_pushdown_sentence_ids = any(
+            isinstance(x, dict) and "pushdown_sentence_ids" in x for x in items
         )
         max_docs = max((len(x["doc_lens"]) if isinstance(x, dict) and "doc_lens" in x else 0 for x in items))
         max_spans = max((len(x["tree_spans"]) if isinstance(x, dict) and "tree_spans" in x else 0 for x in items))
@@ -194,6 +198,26 @@ class DataCollator:
                     )
                 )
 
+            if has_pushdown_sentence_ids:
+                if not isinstance(x, dict) or "pushdown_sentence_ids" not in x:
+                    raise ValueError(
+                        "Pushdown batch mixes items with and without sentence metadata"
+                    )
+                pushdown_sentence_ids = x["pushdown_sentence_ids"]
+                if not isinstance(pushdown_sentence_ids, torch.Tensor):
+                    pushdown_sentence_ids = torch.tensor(pushdown_sentence_ids)
+                if len(pushdown_sentence_ids) != len(input_ids):
+                    raise ValueError(
+                        "Pushdown sentence ids must align with input_ids"
+                    )
+                all_pushdown_sentence_ids.append(
+                    F.pad(
+                        pushdown_sentence_ids.to(dtype=torch.int32),
+                        pad_shape,
+                        value=-1,
+                    )
+                )
+
             # Instance mask.
             instance_mask = x.get("instance_mask") if isinstance(x, dict) else None
             if instance_mask is not None:
@@ -252,6 +276,8 @@ class DataCollator:
         if all_treereg_word_boundaries:
             out["treereg_word_boundaries"] = torch.stack(all_treereg_word_boundaries)
             out["treereg_sentence_ids"] = torch.stack(all_treereg_sentence_ids)
+        if all_pushdown_sentence_ids:
+            out["pushdown_sentence_ids"] = torch.stack(all_pushdown_sentence_ids)
         if all_metadata:
             out["metadata"] = all_metadata
         if all_gold_summary:

@@ -31,6 +31,16 @@ def test_attachment_query_mask_distinct_bos_eos():
     assert mask.tolist() == [[False, True, True, False, True, True, False]]
 
 
+def test_attachment_query_mask_excludes_primal_tokens_outside_gold_trees():
+    ids = torch.tensor([[50257, 10, 11, 50256, 77, 20, 50258]])
+    attention = ids != 50258
+    sentence_ids = torch.tensor([[-1, 0, 0, -1, -1, 1, -1]])
+    mask = build_attachment_query_mask(
+        ids, attention, 50257, 50256, sentence_ids=sentence_ids
+    )
+    assert mask.tolist() == [[False, True, True, False, False, True, False]]
+
+
 def test_attachment_query_mask_shared_bos_eos():
     ids = torch.tensor([[0, 10, 0, 0, 11, 0, 2]])
     attention = torch.tensor([[1, 1, 1, 1, 1, 1, 0]], dtype=torch.bool)
@@ -196,6 +206,52 @@ def test_attachment_head_masks_keys_from_previous_packed_sentence():
     # while its own ROOT and causal positions 4..6 remain finite.
     assert torch.isneginf(logits[0, 6, :4]).all()
     assert torch.isfinite(logits[0, 6, 4:7]).all()
+
+
+def test_attachment_head_masks_terminal_only_sentences_from_metadata():
+    torch.manual_seed(5)
+    head = PushdownAttachmentHead(d_model=8, vocab_size=32)
+    hidden = torch.randn(1, 6, 8)
+    ids = torch.tensor([[1, 2, 3, 4, 5, 6]])
+    sentence_ids = torch.tensor([[0, 0, 0, 1, 1, 1]])
+    logits = head(
+        hidden,
+        ids,
+        torch.randn(32, 8),
+        torch.ones_like(ids, dtype=torch.bool),
+        sentence_ids=sentence_ids,
+    )
+    assert torch.isneginf(logits[0, 4, :3]).all()
+    assert torch.isfinite(logits[0, 4, 3:5]).all()
+
+
+def test_terminal_metadata_loss_skips_all_inf_outside_rows_without_nan_gradients():
+    torch.manual_seed(6)
+    head = PushdownAttachmentHead(d_model=8, vocab_size=32)
+    hidden = torch.randn(1, 7, 8, requires_grad=True)
+    ids = torch.tensor([[30, 1, 2, 31, 9, 3, 4]])
+    sentence_ids = torch.tensor([[-1, 0, 0, -1, -1, 1, 1]])
+    query_mask = build_attachment_query_mask(
+        ids,
+        torch.ones_like(ids, dtype=torch.bool),
+        bos_token_id=30,
+        eos_token_id=31,
+        sentence_ids=sentence_ids,
+    )
+    logits = head(
+        hidden,
+        ids,
+        torch.randn(32, 8),
+        torch.ones_like(ids, dtype=torch.bool),
+        sentence_ids=sentence_ids,
+    )
+    assert torch.isneginf(logits[0, sentence_ids[0] < 0]).all()
+    oracle = torch.arange(ids.shape[1]).unsqueeze(0)
+    loss = compute_attachment_loss(logits, oracle, query_mask)
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert hidden.grad is not None
+    assert torch.isfinite(hidden.grad).all()
 
 
 def test_attachment_head_diagonal_uses_predicted_token_representation():

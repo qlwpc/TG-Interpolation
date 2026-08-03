@@ -375,6 +375,60 @@ def test_pushdown_wraps_every_top_level_tree_with_cls_root_and_eos():
     assert out["sentence_ids"].tolist() == [-1, 0, 0, 0, -1, -1, 1, 1, -1]
 
 
+def test_pushdown_primal_terminals_preserve_boundaries_and_native_closure():
+    v = fake_vocab()
+    first = encode_tree(v, "S", encode_tree(v, "A", 10, 11), 12)
+    second = encode_tree(v, "A", 20, 21)
+    block = [v.bos] + first + [77] + second + [v.eos]
+    out = parse_chunk_slice(
+        block,
+        v,
+        "right",
+        collapse_unary=True,
+        extract_toplevel_trees=False,
+        drop_singleton_spans=True,
+    )
+    assert out["input_ids"].tolist() == [v.bos, 10, 11, 12, 77, 20, 21, v.eos]
+    assert out["sentence_ids"].tolist() == [-1, 0, 0, 0, -1, 1, 1, -1]
+    spans = set(map(tuple, out["spans"].tolist()))
+    assert (1, 2, 3) in spans
+    assert (5, 5, 6) in spans
+    assert all(left < right for left, _, right in spans)
+
+
+def test_terminal_only_chunk_packing_counts_only_tree_terminals():
+    v = fake_vocab()
+    first = encode_tree(v, "A", 10, 11)
+    second = encode_tree(v, "A", 20, 21)
+    stream = np.asarray([v.bos] + first + [77] + second + [v.eos])
+    chunks = iter_tree_chunks(
+        stream, v, "right", max_len=4, extract_toplevel_trees=True
+    )
+    assert len(chunks) == 1
+    out = parse_chunk_slice(
+        stream[chunks[0][0] : sum(chunks[0])],
+        v,
+        "right",
+        extract_toplevel_trees=True,
+    )
+    assert out["input_ids"].tolist() == [10, 11, 20, 21]
+
+
+def test_primal_chunk_packing_does_not_overfill_with_trailing_eos():
+    v = fake_vocab()
+    tree = encode_tree(v, "A", 10, 11, 12, 13)
+    stream = np.asarray([v.bos] + tree + [v.eos])
+    chunks = iter_tree_chunks(stream, v, "right", max_len=5)
+    parsed = [
+        parse_chunk_slice(stream[start : start + length], v, "right")
+        for start, length in chunks
+    ]
+    assert [len(item["input_ids"]) for item in parsed] == [5, 1]
+    assert np.concatenate([item["input_ids"] for item in parsed]).tolist() == [
+        v.bos, 10, 11, 12, 13, v.eos
+    ]
+
+
 def test_wrapped_chunk_packing_counts_root_and_eos_per_tree():
     v = fake_vocab()
     first = encode_tree(v, "A", 10, 11)
@@ -431,6 +485,34 @@ def test_precomputed_dataset_emits_metadata():
     assert all(isinstance(m, dict) for m in batch["metadata"])
 
 
+def test_collator_pads_pushdown_sentence_ids_with_outside_marker():
+    """Sentence ids must stay aligned with tokens after batch padding."""
+    from olmo.data.collator import DataCollator
+
+    collator = DataCollator(
+        pad_direction="right",
+        pad_token_id=50258,
+        generate_attention_mask=True,
+        shuffle_tree="pushdown",
+    )
+    batch = collator(
+        [
+            {
+                "input_ids": torch.tensor([50257, 10, 11]),
+                "pushdown_sentence_ids": torch.tensor([-1, 0, 0]),
+            },
+            {
+                "input_ids": torch.tensor([50257, 20]),
+                "pushdown_sentence_ids": torch.tensor([-1, 1]),
+            },
+        ]
+    )
+    assert batch["pushdown_sentence_ids"].tolist() == [
+        [-1, 0, 0],
+        [-1, 1, -1],
+    ]
+
+
 def test_incomplete_precomputed_dataset_is_rejected(tmp_path):
     """An interrupted writer must never be consumed as a training dataset."""
     from olmo.data.parse_align import PrecomputedParseDataset
@@ -479,6 +561,24 @@ def test_pushdown_precomputed_root_is_not_an_lm_target():
     assert roots.any()
     assert not item["label_mask"][roots].any()
     assert item["label_mask"][item["input_ids"] == 50256].all()
+
+
+def test_terminal_only_pushdown_precomputed_contract():
+    from olmo.data.parse_align import PrecomputedParseDataset
+
+    data_dir = "dataset/bbc-news/parse_aligned/dev_pushdown_unary_terminals"
+    if not __import__("os").path.exists(f"{data_dir}/input_ids.npy"):
+        pytest.skip("terminal-only Pushdown dev data not on disk")
+    item = PrecomputedParseDataset(
+        data_dir,
+        require_pushdown_root_token_id=50260,
+        expected_binarize_direction="right",
+    )[0]
+    assert "pushdown_sentence_ids" in item
+    assert not (item["input_ids"] == 50260).any()
+    # No synthetic per-sentence EOS is added, but primal document EOS remains.
+    assert (item["input_ids"] == 50256).any()
+    assert not (item["tree_spans"][:, 0] == item["tree_spans"][:, 2]).any()
 
 
 def test_worker_cpu_candidates_are_distinct_and_allowed():

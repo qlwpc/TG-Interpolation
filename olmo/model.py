@@ -1631,6 +1631,7 @@ class OLMo(nn.Module):
         doc_lens: Optional[torch.Tensor] = None,
         max_doc_lens: Optional[Sequence[int]] = None,
         tree_spans: Optional[torch.Tensor] = None,
+        pushdown_sentence_ids: Optional[torch.Tensor] = None,
         compute_attachment_logits: bool = False,
     ) -> OLMoOutput:
         """
@@ -1961,6 +1962,7 @@ class OLMo(nn.Module):
                 am,
                 root_token_id=self.config.bos_token_id,
                 eos_token_id=self.config.eos_token_id,
+                sentence_ids=pushdown_sentence_ids,
             )
             if _profile_attachment:
                 _attachment_end.record()

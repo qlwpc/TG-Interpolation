@@ -8,15 +8,16 @@ script applies the equivalent operations to this repository's tokenized
 
   1. collapse internal unary chains;
   2. left- or right-binarize n-ary nodes;
-  3. wrap every top-level tree as ``[ROOT] leaves [EOS]``;
+  3. emit either only the tree terminals or ``[ROOT] terminals [EOS]``;
   4. save terminal input ids and binary constituent spans;
   5. write ``spans.npy`` directly as int16 after validating every row.
 
 It writes to a new output directory and never removes an existing dataset.
 
-The default ROOT is tokenizer token 50260 (``<|CLS|>``); EOS is 50256
-(``<|endoftext|>``). Document-level boundary leaves outside parsed trees are
-discarded, so every emitted sequence follows the paper's sentence convention.
+Use ``--sentence-format terminals`` to preserve the native primal token stream
+and mark BOS/EOS/whitespace outside complete parses with sentence id ``-1``.
+Use ``--sentence-format root-eos`` to discard outside leaves and emit the
+released-code ``[ROOT] terminals [EOS]`` sentinel format.
 
 Example:
     python scripts/precompute_pushdown_unary.py \
@@ -69,6 +70,12 @@ def main() -> None:
                              "'right'=right-recursive (default, TreeReg/NLTK), 'left'=left-recursive")
     parser.add_argument("--max-len", type=int, default=2048)
     parser.add_argument("--pad-token-id", type=int, default=50258)
+    parser.add_argument(
+        "--sentence-format",
+        choices=("terminals", "root-eos"),
+        default="root-eos",
+        help="emit only parse terminals, or synthesize ROOT/EOS around every tree",
+    )
     parser.add_argument("--root-token-id", type=int, default=50260,
                         help="ROOT token prepended to every top-level tree")
     parser.add_argument("--sentence-eos-token-id", type=int, default=50256,
@@ -128,6 +135,7 @@ def main() -> None:
     run_lock = _acquire_run_lock(
         output_parent,
         f"unary-pushdown split={args.split} direction={args.direction} "
+        f"format={args.sentence_format} "
         f"out={args.out_dir}",
     )
     if os.path.exists(args.out_dir) and os.listdir(args.out_dir):
@@ -156,6 +164,7 @@ def main() -> None:
         flush=True,
     )
 
+    terminal_only = args.sentence_format == "terminals"
     preprocess_split(
         tree_npy=tree_npy,
         tokenizer_path=args.tokenizer,
@@ -172,9 +181,17 @@ def main() -> None:
         binarize=True,
         collapse_unary=True,
         add_boundary_root=False,
-        wrap_toplevel_trees=True,
-        root_token_id=args.root_token_id,
-        sentence_eos_token_id=args.sentence_eos_token_id,
+        wrap_toplevel_trees=not terminal_only,
+        # In terminal mode, retain the exact primal stream (including its native
+        # document BOS/EOS and whitespace). Only synthetic per-tree boundaries
+        # are disabled.
+        extract_toplevel_trees=False,
+        root_token_id=None if terminal_only else args.root_token_id,
+        sentence_eos_token_id=None if terminal_only else args.sentence_eos_token_id,
+        # A preterminal/singleton corresponds to SHIFT, not REDUCE, in Algorithm 1.
+        drop_singleton_spans=terminal_only,
+        # Preserve explicit packed-sentence boundaries without injecting tokens.
+        save_treereg_metadata=terminal_only,
         input_dtype=np.uint16,
         span_dtype=np.int16,
         pin_workers=args.pin_workers,
@@ -182,21 +199,71 @@ def main() -> None:
         min_free_memory_bytes=memory_reserve,
     )
 
+    # ``preprocess_split`` writes generic TreeReg metadata names. Terminal-only
+    # Pushdown uses the same sentence ids but gives them a model-specific name,
+    # so the loader cannot silently confuse the two auxiliary objectives.
+    manifest_path = os.path.join(args.out_dir, "preprocessing.json")
+    with open(manifest_path, encoding="utf-8") as manifest_file:
+        manifest = __import__("json").load(manifest_file)
+    manifest["sentence_format"] = args.sentence_format
+    manifest["preserve_primal_boundaries"] = terminal_only
+    manifest["preserve_native_eos"] = terminal_only
+    manifest["synthesize_sentence_eos"] = not terminal_only
+    manifest["native_eos_token_id"] = args.sentence_eos_token_id
+    if terminal_only:
+        source_sentence_ids = os.path.join(args.out_dir, "treereg_sentence_ids.npy")
+        pushdown_sentence_ids = os.path.join(args.out_dir, "pushdown_sentence_ids.npy")
+        if not os.path.exists(source_sentence_ids):
+            raise AssertionError(f"missing sentence metadata: {source_sentence_ids}")
+        os.replace(source_sentence_ids, pushdown_sentence_ids)
+        manifest["sentence_ids_file"] = "pushdown_sentence_ids.npy"
+    with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+        __import__("json").dump(manifest, manifest_file, indent=2, sort_keys=True)
+        manifest_file.write("\n")
+
     dataset = PrecomputedParseDataset(
         args.out_dir,
         pad_token_id=args.pad_token_id,
         eos_token_id=args.sentence_eos_token_id,
+        require_treereg_metadata=False,
         require_pushdown_root_token_id=args.root_token_id,
         expected_binarize_direction=args.direction,
     )
     first = dataset[0]
-    manifest_path = os.path.join(args.out_dir, "preprocessing.json")
     if not os.path.exists(manifest_path):
         raise AssertionError(f"missing preprocessing manifest: {manifest_path}")
     if dataset.spans.dtype != np.int16:
         raise AssertionError(f"expected int16 spans.npy, got {dataset.spans.dtype}")
+    with open(manifest_path, encoding="utf-8") as manifest_file:
+        manifest = __import__("json").load(manifest_file)
+    expected = {
+        "binarize": True,
+        "collapse_unary": True,
+        "wrap_toplevel_trees": not terminal_only,
+        "extract_toplevel_trees": False,
+        "preserve_primal_boundaries": terminal_only,
+        "preserve_native_eos": terminal_only,
+        "synthesize_sentence_eos": not terminal_only,
+        "root_token_id": None if terminal_only else args.root_token_id,
+        "sentence_eos_token_id": None if terminal_only else args.sentence_eos_token_id,
+        "drop_singleton_spans": terminal_only,
+    }
+    mismatches = {
+        key: (manifest.get(key), value)
+        for key, value in expected.items()
+        if manifest.get(key) != value
+    }
+    if mismatches:
+        raise AssertionError(f"preprocessing manifest mismatch: {mismatches}")
+    if terminal_only:
+        for row_start in range(0, len(dataset), 4096):
+            block = np.asarray(dataset.input_ids[row_start : row_start + 4096])
+            if np.any(block == args.root_token_id):
+                raise AssertionError("terminal-only output contains synthesized ROOT")
+        if dataset.pushdown_sentence_ids is None:
+            raise AssertionError("terminal-only output is missing sentence boundaries")
     print(
-        f"verified {args.out_dir}: chunks={len(dataset)}, "
+        f"verified {args.out_dir}: format={args.sentence_format}, chunks={len(dataset)}, "
         f"span_dtype={dataset.spans.dtype}, first_spans={len(first['tree_spans'])}, "
         f"spans={os.path.join(args.out_dir, 'spans.npy')}"
     )

@@ -696,15 +696,18 @@ def _toplevel_closes_worker(args):
 def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
                      max_len: int = 2048, workers: int = 1,
                      tree_npy: Optional[str] = None,
-                     wrap_toplevel_trees: bool = False) -> List[Tuple[int, int]]:
+                     wrap_toplevel_trees: bool = False,
+                     extract_toplevel_trees: bool = False) -> List[Tuple[int, int]]:
     """Scan the tree-token stream and return chunk spans ``(tree_start, tree_len)``
     with whole-tree integrity.
 
     A chunk is a maximal run of complete top-level parse trees (plus intervening
     leaf tokens like BOS/EOS/whitespace) whose total **terminal-leaf** count is
-    ``<= max_len``. With ``wrap_toplevel_trees=True``, outside leaves are discarded
-    and two synthesized tokens (ROOT and EOS) are counted for every tree. Top-level
-    trees are found with a bracket-depth scan (a tree
+    ``<= max_len``. With ``extract_toplevel_trees=True``, leaves outside parses are
+    discarded and chunks contain only terminals dominated by top-level trees.
+    ``wrap_toplevel_trees=True`` implies extraction and additionally counts two
+    synthesized tokens (ROOT and EOS) for every tree. Top-level trees are found
+    with a bracket-depth scan (a tree
     opens at depth 0 and closes when depth returns to 0). An atomic single tree
     whose leaves exceed ``max_len`` is emitted as its own (oversize) chunk.
 
@@ -791,12 +794,13 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     closes_arr = (np.concatenate(close_pos_parts) if close_pos_parts
                   else np.zeros(0, np.int64))
     T = len(closes_arr)
+    trees_only = extract_toplevel_trees or wrap_toplevel_trees
     if T == 0:
-        return [] if wrap_toplevel_trees else ([(0, n)] if n > 0 else [])
+        return [] if trees_only else ([(0, n)] if n > 0 else [])
     tree_ends = closes_arr + 1  # exclusive end
     clc = (np.concatenate(close_leaf_parts) if close_leaf_parts
            else np.zeros(0, np.int64))
-    if wrap_toplevel_trees:
+    if trees_only:
         opens_arr = (np.concatenate(open_pos_parts) if open_pos_parts
                      else np.zeros(0, np.int64))
         olc = (np.concatenate(open_leaf_parts) if open_leaf_parts
@@ -809,8 +813,10 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
         if np.any(opens_arr >= closes_arr):
             raise ValueError("malformed tree stream: top-level close precedes opening")
         tree_starts = opens_arr
-        # The two synthetic leaves are [ROOT] and [EOS].
-        tree_leaves = (clc - olc) + 2
+        tree_leaves = clc - olc
+        if wrap_toplevel_trees:
+            # The two synthetic leaves are [ROOT] and [EOS].
+            tree_leaves = tree_leaves + 2
     else:
         # Legacy terminal-preserving mode includes leaves outside/between parses.
         tree_starts = np.empty(T, dtype=np.int64)
@@ -860,11 +866,14 @@ def iter_tree_chunks(tree_arr: "np.ndarray", vocab: TreeVocab, direction: str,
     # Trailing leaves after the last tree close (e.g. a final EOS): append as a
     # tail chunk, merged into the last chunk if it fits.
     last_end = int(tree_ends[-1])
-    if not wrap_toplevel_trees and last_end < n:
+    if not trees_only and last_end < n:
         # total_leaves is the count across the whole stream; leaves at the last
         # close is clc[-1]. The tail = everything after.
         tail_leaves = total_leaves - int(clc[-1])
-        if chunks and tail_leaves <= max_len:
+        last_chunk_leaves = (
+            int(csum[et[-1]] - csum[st[-1]]) if chunks else 0
+        )
+        if chunks and last_chunk_leaves + tail_leaves <= max_len:
             s0, l0 = chunks[-1]
             chunks[-1] = (s0, last_end + (n - last_end) - s0)
         else:
@@ -887,8 +896,10 @@ def parse_chunk_slice(
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
     wrap_toplevel_trees: bool = False,
+    extract_toplevel_trees: bool = False,
     root_token_id: Optional[int] = None,
     sentence_eos_token_id: Optional[int] = None,
+    drop_singleton_spans: bool = False,
 ) -> Dict[str, Any]:
     """Parse one chunk's tree-token slice -> terminal leaves (input_ids) + spans.
 
@@ -903,16 +914,17 @@ def parse_chunk_slice(
     bifurcation (required by TreeReg and used by the official Pushdown pipeline).
     ``binarize=False`` spans the raw tree for legacy ablations.
 
-    ``wrap_toplevel_trees=True`` implements the Pushdown paper's sentence
-    convention exactly: discard document-level leaves outside parses, turn each
-    top-level tree into ``[ROOT] tree-leaves [EOS]``, and add the EOS-to-ROOT
-    attachment span. ``root_token_id`` and ``sentence_eos_token_id`` are then
-    required. This mode is mutually exclusive with the legacy
-    ``add_boundary_root`` option, which only spans boundary tokens already in the
-    source stream.
+    ``extract_toplevel_trees=True`` discards BOS/EOS/whitespace leaves outside
+    top-level parses while retaining every tree's terminal sequence and native
+    full-span closure. ``wrap_toplevel_trees=True`` implies extraction and also
+    turns every tree into ``[ROOT] tree-leaves [EOS]`` with an EOS-to-ROOT span.
+    ``drop_singleton_spans=True`` removes preterminal/unary ``(k,k)`` spans, which
+    are SHIFT operations rather than REDUCE operations in Pushdown Algorithm 1.
     """
-    if add_boundary_root and wrap_toplevel_trees:
-        raise ValueError("add_boundary_root and wrap_toplevel_trees are mutually exclusive")
+    if add_boundary_root and (wrap_toplevel_trees or extract_toplevel_trees):
+        raise ValueError(
+            "add_boundary_root is incompatible with top-level-tree extraction"
+        )
     if wrap_toplevel_trees and (
         root_token_id is None or sentence_eos_token_id is None
     ):
@@ -930,9 +942,10 @@ def parse_chunk_slice(
     word_boundaries: List[bool] = []
     sentence_ids: List[int] = []
     sentence_id = 0
+    trees_only = extract_toplevel_trees or wrap_toplevel_trees
     for kind, data in segments:
         if kind == "leaves":
-            if wrap_toplevel_trees:
+            if trees_only:
                 continue
             plain = [int(x) for x in data]
             terminals.extend(plain)
@@ -950,6 +963,8 @@ def parse_chunk_slice(
             word_boundaries.extend(bool(x) for x in tree_word_boundaries)
             sentence_ids.extend([sentence_id] * len(leaves))
             for (l, sp, r) in tspans:
+                if drop_singleton_spans and l == r:
+                    continue
                 spans.append((content_start + l, content_start + sp, content_start + r))
             if wrap_toplevel_trees:
                 eos_position = len(terminals)
@@ -1023,7 +1038,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         collapse_unary: bool = False,
         add_boundary_root: bool = False,
         wrap_toplevel_trees: bool = False,
+        extract_toplevel_trees: bool = False,
         root_token_id: Optional[int] = None,
+        drop_singleton_spans: bool = False,
         treereg_metadata: bool = False,
         generate_doc_lengths: bool = False,
     ):
@@ -1047,7 +1064,9 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
         self.collapse_unary = collapse_unary
         self.add_boundary_root = add_boundary_root
         self.wrap_toplevel_trees = wrap_toplevel_trees
+        self.extract_toplevel_trees = extract_toplevel_trees
         self.root_token_id = root_token_id
+        self.drop_singleton_spans = drop_singleton_spans
         self.treereg_metadata = treereg_metadata
         self.transformer_grammar_type = ""  # set by caller if needed
         # MemMap-compat attributes.
@@ -1073,8 +1092,10 @@ class ParseAlignedDataset(torch.utils.data.Dataset):
             collapse_unary=self.collapse_unary,
             add_boundary_root=self.add_boundary_root,
             wrap_toplevel_trees=self.wrap_toplevel_trees,
+            extract_toplevel_trees=self.extract_toplevel_trees,
             root_token_id=self.root_token_id,
             sentence_eos_token_id=self.eos_token_id,
+            drop_singleton_spans=self.drop_singleton_spans,
         )
         input_ids = out["input_ids"]
         spans = out["spans"]
@@ -1155,6 +1176,7 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                 f"{data_dir} is an interrupted preprocessing output and must "
                 "not be loaded; remove it and preprocess again"
             )
+        terminal_only = False
         if require_pushdown_root_token_id is not None:
             import json
             manifest_path = os.path.join(data_dir, "preprocessing.json")
@@ -1166,13 +1188,28 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                 )
             with open(manifest_path, encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
-            required_contract = {
-                "binarize": True,
-                "collapse_unary": True,
-                "wrap_toplevel_trees": True,
-                "root_token_id": int(require_pushdown_root_token_id),
-                "sentence_eos_token_id": int(eos_token_id),
-            }
+            terminal_only = manifest.get("sentence_format") == "terminals"
+            if terminal_only:
+                required_contract = {
+                    "binarize": True,
+                    "collapse_unary": True,
+                    "extract_toplevel_trees": False,
+                    "wrap_toplevel_trees": False,
+                    "preserve_primal_boundaries": True,
+                    "preserve_native_eos": True,
+                    "synthesize_sentence_eos": False,
+                    "root_token_id": None,
+                    "sentence_eos_token_id": None,
+                    "drop_singleton_spans": True,
+                }
+            else:
+                required_contract = {
+                    "binarize": True,
+                    "collapse_unary": True,
+                    "wrap_toplevel_trees": True,
+                    "root_token_id": int(require_pushdown_root_token_id),
+                    "sentence_eos_token_id": int(eos_token_id),
+                }
             if expected_binarize_direction is not None:
                 required_contract["direction"] = expected_binarize_direction
             mismatches = {
@@ -1187,7 +1224,11 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
                 )
         self.pad_token_id = pad_token_id
         self.eos_token_id = eos_token_id
-        self.pushdown_root_token_id = require_pushdown_root_token_id
+        self.pushdown_root_token_id = (
+            None
+            if require_pushdown_root_token_id is not None and terminal_only
+            else require_pushdown_root_token_id
+        )
         self.generate_doc_lengths = generate_doc_lengths
         self._include_instance_metadata = include_instance_metadata
         self._metadata = {"path": str(data_dir)}
@@ -1219,6 +1260,22 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
         self.sentence_ids = (
             np.load(sentence_ids_path, mmap_mode="r") if have_treereg_metadata else None
         )
+        pushdown_sentence_ids_path = os.path.join(
+            data_dir, "pushdown_sentence_ids.npy"
+        )
+        self.pushdown_sentence_ids = (
+            np.load(pushdown_sentence_ids_path, mmap_mode="r")
+            if os.path.exists(pushdown_sentence_ids_path)
+            else None
+        )
+        if (
+            require_pushdown_root_token_id is not None
+            and terminal_only
+            and self.pushdown_sentence_ids is None
+        ):
+            raise FileNotFoundError(
+                f"terminal-only Pushdown data is missing {pushdown_sentence_ids_path}"
+            )
         # These mmaps are read by RANDOM chunk index across 4.88M chunks. Hint the
         # kernel MADV_RANDOM so it stops readaheading (the default readahead hoards
         # a large fraction of the 189 GB file into page cache -> cgroup OOM under
@@ -1229,6 +1286,8 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
             _madvise_random(self.word_boundaries)
         if self.sentence_ids is not None:
             _madvise_random(self.sentence_ids)
+        if self.pushdown_sentence_ids is not None:
+            _madvise_random(self.pushdown_sentence_ids)
         self.n_chunks = int(self.input_ids.shape[0])
         self.max_len = int(self.input_ids.shape[1])
         self.load_depth = load_depth
@@ -1275,6 +1334,10 @@ class PrecomputedParseDataset(torch.utils.data.Dataset):
             )
             item["treereg_sentence_ids"] = torch.tensor(
                 np.asarray(self.sentence_ids[index]), dtype=torch.int32
+            )
+        if self.pushdown_sentence_ids is not None:
+            item["pushdown_sentence_ids"] = torch.tensor(
+                np.asarray(self.pushdown_sentence_ids[index]), dtype=torch.int32
             )
         if self.depth is not None:
             item["tree_depth_matrix"] = torch.tensor(
@@ -1332,8 +1395,10 @@ def preprocess_split(
     collapse_unary: bool = False,
     add_boundary_root: bool = False,
     wrap_toplevel_trees: bool = False,
+    extract_toplevel_trees: bool = False,
     root_token_id: Optional[int] = None,
     sentence_eos_token_id: Optional[int] = None,
+    drop_singleton_spans: bool = False,
     save_treereg_metadata: bool = False,
     input_dtype: Any = np.int32,
     span_dtype: Any = np.int32,
@@ -1356,7 +1421,8 @@ def preprocess_split(
     block so its final attachment is supervised to ROOT. It does not synthesize
     missing per-sentence boundary tokens. ``wrap_toplevel_trees=True`` instead
     emits ``[ROOT] tree-leaves [EOS]`` for every top-level tree and counts those
-    added tokens during chunk packing. Saves:
+    added tokens during chunk packing. ``extract_toplevel_trees=True`` emits only
+    the original terminals of every top-level tree, without ROOT or EOS. Saves:
 
     * ``chunk_index.npy`` ``(n_chunks, 2)`` int64 — tree-stream slice per chunk.
     * ``input_ids.npy`` ``(n_chunks, max_len)`` — terminal leaves, padded.
@@ -1413,8 +1479,10 @@ def preprocess_split(
         raise ValueError("workers must be at least 1")
     if worker_task_multiplier < 1:
         raise ValueError("worker_task_multiplier must be at least 1")
-    if add_boundary_root and wrap_toplevel_trees:
-        raise ValueError("add_boundary_root and wrap_toplevel_trees are mutually exclusive")
+    if add_boundary_root and (wrap_toplevel_trees or extract_toplevel_trees):
+        raise ValueError(
+            "add_boundary_root is incompatible with top-level-tree extraction"
+        )
     if wrap_toplevel_trees and (
         root_token_id is None or sentence_eos_token_id is None
     ):
@@ -1428,7 +1496,8 @@ def preprocess_split(
     tree_mmap = np.load(tree_npy, mmap_mode="r")
     chunks = iter_tree_chunks(tree_mmap, vocab, direction=direction, max_len=max_len,
                               workers=scan_workers, tree_npy=tree_npy,
-                              wrap_toplevel_trees=wrap_toplevel_trees)
+                              wrap_toplevel_trees=wrap_toplevel_trees,
+                              extract_toplevel_trees=extract_toplevel_trees)
     n_chunks = len(chunks)
     print(f"[{out_dir}] {n_chunks} chunks (direction={direction}); "
           f"scan_workers={scan_workers} parse_workers={workers}")
@@ -1467,8 +1536,9 @@ def preprocess_split(
         for (s, l) in sample:
             out = parse_chunk_slice(np.asarray(_tree_for_sample[s : s + l]), vocab,
                                     direction, binarize, collapse_unary, add_boundary_root,
-                                    wrap_toplevel_trees, root_token_id,
-                                    sentence_eos_token_id)
+                                    wrap_toplevel_trees, extract_toplevel_trees,
+                                    root_token_id, sentence_eos_token_id,
+                                    drop_singleton_spans)
             if len(out["spans"]) > max_spans:
                 max_spans = len(out["spans"])
         max_spans = max(max_spans + 8, 1)  # headroom
@@ -1551,8 +1621,10 @@ def preprocess_split(
                                p_input_ids, p_spans, p_span_counts, max_spans,
                                add_boundary_root=add_boundary_root,
                                wrap_toplevel_trees=wrap_toplevel_trees,
+                               extract_toplevel_trees=extract_toplevel_trees,
                                root_token_id=root_token_id,
                                sentence_eos_token_id=sentence_eos_token_id,
+                               drop_singleton_spans=drop_singleton_spans,
                                p_word_boundaries=(
                                    p_word_boundaries if save_treereg_metadata else None
                                ),
@@ -1582,8 +1654,10 @@ def preprocess_split(
                                p_span_counts, max_spans, (0, n_chunks),
                                add_boundary_root=add_boundary_root,
                                wrap_toplevel_trees=wrap_toplevel_trees,
+                               extract_toplevel_trees=extract_toplevel_trees,
                                root_token_id=root_token_id,
                                sentence_eos_token_id=sentence_eos_token_id,
+                               drop_singleton_spans=drop_singleton_spans,
                                p_word_boundaries=(
                                    p_word_boundaries if save_treereg_metadata else None
                                ),
@@ -1638,8 +1712,13 @@ def preprocess_split(
                 "collapse_unary": collapse_unary,
                 "add_boundary_root": add_boundary_root,
                 "wrap_toplevel_trees": wrap_toplevel_trees,
+                "extract_toplevel_trees": extract_toplevel_trees,
+                "preserve_primal_boundaries": not (
+                    wrap_toplevel_trees or extract_toplevel_trees
+                ),
                 "root_token_id": root_token_id,
                 "sentence_eos_token_id": sentence_eos_token_id,
+                "drop_singleton_spans": drop_singleton_spans,
                 "input_dtype": input_dtype.name,
                 "span_dtype": span_dtype.name,
                 "n_chunks": n_chunks,
@@ -1766,8 +1845,9 @@ def _parse_worker_initializer(cpu_ids: Sequence[int]) -> None:
 def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_token_id,
                            binarize, collapse_unary, p_input_ids, p_spans,
                            p_span_counts, max_spans, rng, add_boundary_root=False,
-                           wrap_toplevel_trees=False, root_token_id=None,
-                           sentence_eos_token_id=None,
+                           wrap_toplevel_trees=False, extract_toplevel_trees=False,
+                           root_token_id=None, sentence_eos_token_id=None,
+                           drop_singleton_spans=False,
                            p_word_boundaries=None, p_sentence_ids=None):
     """Worker: parse chunks [rng[0], rng[1]) and write to the shared memmaps.
 
@@ -1803,7 +1883,8 @@ def _parse_range_to_memmap(tree_src, tokenizer_path, direction, max_len, pad_tok
         out = parse_chunk_slice(
             np.asarray(tree[s : s + l]), vocab, direction, binarize,
             collapse_unary, add_boundary_root, wrap_toplevel_trees,
-            root_token_id, sentence_eos_token_id
+            extract_toplevel_trees, root_token_id, sentence_eos_token_id,
+            drop_singleton_spans
         )
         ids = out["input_ids"]
         sp = out["spans"]

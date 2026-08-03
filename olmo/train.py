@@ -747,6 +747,7 @@ class Trainer:
             doc_lens=batch.get("doc_lens"),
             max_doc_lens=batch.get("max_doc_lens"),
             tree_spans=batch.get("tree_spans"),
+            pushdown_sentence_ids=batch.get("pushdown_sentence_ids"),
             compute_attachment_logits=(
                 self.dist_model.training
                 and self.cfg.model.transformer_grammar_type == "pushdown"
@@ -842,6 +843,9 @@ class Trainer:
                 batch.get("attention_mask"),
                 self.cfg.model.bos_token_id,
                 self.cfg.model.eos_token_id,
+                batch.get("pushdown_sentence_ids")[:, :n]
+                if batch.get("pushdown_sentence_ids") is not None
+                else None,
             )
             attachment_loss = compute_attachment_loss(
                 att_logits, oracle, am, reduction=loss_reduction
