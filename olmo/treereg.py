@@ -67,7 +67,7 @@ def compute_treereg_loss(
     sentence_ids: Optional[torch.Tensor] = None,
     word_boundaries: Optional[torch.Tensor] = None,
     return_sentence_count: bool = False,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, int]]:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """Compute the upstream-faithful TreeReg auxiliary loss.
 
     Args:
@@ -136,123 +136,191 @@ def compute_treereg_loss(
         sentence_ids = sentence_ids.to(device=hidden.device)
         word_boundaries = word_boundaries.to(device=hidden.device, dtype=torch.bool)
 
-    sentence_losses = []
-    for batch_idx in range(batch_size):
-        row_sentence_ids = sentence_ids[batch_idx]
-        ids = torch.unique(row_sentence_ids[row_sentence_ids >= 0]).detach().cpu().tolist()
-        row_spans = spans[batch_idx]
-        row_span_mask = span_mask[batch_idx].bool()
+    # The original faithful port iterated over every sentence, span, and split
+    # candidate in Python.  A production microbatch contains O(10^4) spans, so
+    # that path issued tens of thousands of tiny kernels and synchronized on
+    # every ``.item()``/``.cpu()``.  The code below represents the same ragged
+    # candidate set with flat indices and performs each mathematical phase in a
+    # bounded number of GPU operations.
+    sentence_valid = sentence_ids >= 0
+    sentence_starts = sentence_valid.clone()
+    if seq_len > 1:
+        sentence_starts[:, 1:] &= sentence_ids[:, 1:] != sentence_ids[:, :-1]
+    sentence_count = sentence_starts.sum()
 
-        for sentence_id in ids:
-            positions = torch.nonzero(
-                row_sentence_ids == int(sentence_id), as_tuple=False
-            ).flatten()
-            if positions.numel() == 0:
-                continue
-            start = int(positions[0].item())
-            end = int(positions[-1].item()) + 1
-            if end - start != int(positions.numel()):
-                raise ValueError(
-                    f"sentence id {sentence_id} in batch row {batch_idx} is not contiguous"
-                )
-            sentence_hidden = circuit[batch_idx, start:end]
-            sentence_word_starts = word_boundaries[batch_idx, start:end]
-            if not bool(sentence_word_starts[0].item()):
-                raise ValueError(
-                    f"top-level tree {sentence_id} in batch row {batch_idx} "
-                    "does not begin at a parser word boundary"
-                )
+    token_positions = torch.arange(seq_len, device=hidden.device, dtype=torch.long)
+    token_positions = token_positions.unsqueeze(0).expand(batch_size, -1)
+    sentence_start_positions = torch.where(
+        sentence_starts, token_positions, torch.zeros_like(token_positions)
+    ).cummax(dim=1).values
+    batch_offsets = (
+        torch.arange(batch_size, device=hidden.device, dtype=torch.long) * seq_len
+    ).unsqueeze(1)
+    sentence_keys = sentence_start_positions + batch_offsets
 
-            # Only spans wholly contained in this complete top-level tree can
-            # contribute. Coordinates remain global until the final subtraction.
-            left_global = row_spans[:, 0]
-            right_global = row_spans[:, 2]
-            contained = (
-                row_span_mask
-                & (left_global >= start)
-                & (right_global < end)
-                & (left_global <= right_global)
-            )
-            sentence_spans = row_spans[contained].long() - start
-            span_losses = []
+    spans = spans.to(device=hidden.device, dtype=torch.long)
+    span_mask = span_mask.to(device=hidden.device, dtype=torch.bool)
+    left_all, split_all, right_all = spans.unbind(dim=-1)
+    in_bounds = (
+        span_mask
+        & (left_all >= 0)
+        & (left_all <= split_all)
+        & (split_all < right_all)
+        & (right_all < seq_len)
+    )
 
-            for left, split, right in sentence_spans.detach().cpu().tolist():
-                # Unary/n-ary degenerate spans use split==right. The upstream
-                # target extractor skips them; never clamp them into a label.
-                if split == right:
-                    continue
-                if not (0 <= left <= split < right < len(sentence_hidden)):
-                    raise ValueError(
-                        f"invalid TreeReg span {(left, split, right)} for "
-                        f"top-level tree length {len(sentence_hidden)}"
-                    )
+    # Clamp only for safe metadata gathers. ``in_bounds`` excludes the clamped
+    # entries before they can contribute to the result.
+    safe_left = left_all.clamp(0, seq_len - 1)
+    safe_split = split_all.clamp(0, seq_len - 1)
+    safe_right = right_all.clamp(0, seq_len - 1)
+    left_sentence = sentence_ids.gather(1, safe_left)
+    split_sentence = sentence_ids.gather(1, safe_split)
+    right_sentence = sentence_ids.gather(1, safe_right)
+    contained = (
+        in_bounds
+        & (left_sentence >= 0)
+        & (left_sentence == split_sentence)
+        & (left_sentence == right_sentence)
+    )
 
-                candidates = torch.arange(
-                    left, right, device=hidden.device, dtype=torch.long
-                )
-                candidates = candidates[
-                    sentence_word_starts[candidates + 1]
-                ]
-                # With fewer than two word-level choices the CE is identically
-                # zero and the reference skips this constituent.
-                if candidates.numel() < 2:
-                    continue
-                gold_matches = torch.nonzero(
-                    candidates == split, as_tuple=False
-                ).flatten()
-                # This is an internal BPE-word constituent/split. The upstream
-                # ``tree_to_parse_decisions`` deliberately omits it.
-                if gold_matches.numel() == 0:
-                    continue
+    span_batch_all = torch.arange(
+        batch_size, device=hidden.device, dtype=torch.long
+    ).unsqueeze(1).expand_as(left_all)
+    span_batch = span_batch_all[contained]
+    left = left_all[contained]
+    split = split_all[contained]
+    right = right_all[contained]
+    span_sentence_keys = sentence_keys.gather(1, safe_left)[contained]
 
-                h_q = sentence_hidden[candidates]
-                score = torch.zeros(
-                    candidates.shape, device=hidden.device, dtype=sentence_hidden.dtype
-                )
-                if left > 0:
-                    score = score + _orthogonal_norm(
-                        h_q,
-                        sentence_hidden[left - 1].expand_as(h_q),
-                        eps,
-                    )
-                score = score + _orthogonal_norm(
-                    sentence_hidden[candidates + 1],
-                    h_q,
-                    eps,
-                )
-                score = score + _orthogonal_norm(
-                    sentence_hidden[right].expand_as(h_q),
-                    h_q,
-                    eps,
-                )
-                if right + 1 < len(sentence_hidden):
-                    future = _orthogonal_norm(
-                        sentence_hidden[right + 1].unsqueeze(0),
-                        sentence_hidden[right].unsqueeze(0),
-                        eps,
-                    ).squeeze(0)
-                    score = score + future
+    # Expand each span [left, right] into the possible split positions
+    # q=left,...,right-1, then retain q whose q+1 token begins a parser word.
+    widths = right - left
+    span_index = torch.arange(widths.numel(), device=hidden.device)
+    candidate_span = torch.repeat_interleave(span_index, widths)
+    repeated_offsets = torch.repeat_interleave(
+        widths.cumsum(0) - widths, widths
+    )
+    candidate_position = (
+        left[candidate_span]
+        + torch.arange(candidate_span.numel(), device=hidden.device)
+        - repeated_offsets
+    )
+    candidate_batch = span_batch[candidate_span]
+    word_candidate = word_boundaries[
+        candidate_batch, candidate_position + 1
+    ]
+    candidate_span = candidate_span[word_candidate]
+    candidate_position = candidate_position[word_candidate]
+    candidate_batch = candidate_batch[word_candidate]
 
-                span_losses.append(
-                    F.cross_entropy(
-                        score.unsqueeze(0),
-                        gold_matches[:1].to(dtype=torch.long),
-                        reduction="mean",
-                    )
-                )
+    candidate_count = torch.zeros(
+        widths.numel(), device=hidden.device, dtype=torch.long
+    )
+    candidate_count.scatter_add_(
+        0, candidate_span, torch.ones_like(candidate_span)
+    )
+    candidate_is_gold = candidate_position == split[candidate_span]
+    gold_count = torch.zeros_like(candidate_count)
+    gold_count.scatter_add_(0, candidate_span, candidate_is_gold.long())
+    eligible_span = (candidate_count >= 2) & (gold_count == 1)
 
-            if span_losses:
-                sentence_losses.append(torch.stack(span_losses).mean())
-            else:
-                # The reference includes short/no-decision sentences as zero in
-                # its outer per-sentence macro average.
-                sentence_losses.append(_graph_zero(sentence_hidden))
+    # Avoid scoring unary, one-choice, and internal-BPE decisions. Candidate
+    # groups remain sorted by span, but scatter reductions below do not depend
+    # on that ordering.
+    candidate_keep = eligible_span[candidate_span]
+    candidate_span = candidate_span[candidate_keep]
+    candidate_position = candidate_position[candidate_keep]
+    candidate_batch = candidate_batch[candidate_keep]
+    candidate_is_gold = candidate_is_gold[candidate_keep]
 
-    sentence_count = len(sentence_losses)
+    flat_circuit = circuit.reshape(batch_size * seq_len, -1)
+    flat_candidate = candidate_batch * seq_len + candidate_position
+    h_q = flat_circuit[flat_candidate]
+    score = _orthogonal_norm(
+        flat_circuit[flat_candidate + 1], h_q, eps
+    )
+
+    span_for_candidate = candidate_span
+    candidate_left = left[span_for_candidate]
+    candidate_right = right[span_for_candidate]
+    candidate_span_batch = span_batch[span_for_candidate]
+    span_sentence = left_sentence[contained]
+
+    previous_position = (candidate_left - 1).clamp_min(0)
+    previous_sentence = sentence_ids[candidate_span_batch, previous_position]
+    has_previous = (candidate_left > 0) & (
+        previous_sentence == span_sentence[span_for_candidate]
+    )
+    previous_hidden = flat_circuit[
+        candidate_span_batch * seq_len + previous_position
+    ]
+    score = score + _orthogonal_norm(h_q, previous_hidden, eps) * has_previous
+
+    right_hidden = flat_circuit[
+        candidate_span_batch * seq_len + candidate_right
+    ]
+    score = score + _orthogonal_norm(right_hidden, h_q, eps)
+
+    # This final term is constant across a span's candidates (and therefore
+    # cancels algebraically in CE), but retaining it keeps the computed score
+    # faithful to the upstream expression and the reference implementation.
+    next_right = (right + 1).clamp_max(seq_len - 1)
+    next_right_sentence = sentence_ids[span_batch, next_right]
+    has_future = (right + 1 < seq_len) & (
+        next_right_sentence == span_sentence
+    )
+    span_right_hidden = flat_circuit[span_batch * seq_len + right]
+    future_score = _orthogonal_norm(
+        flat_circuit[span_batch * seq_len + next_right],
+        span_right_hidden,
+        eps,
+    ) * has_future
+    score = score + future_score[span_for_candidate]
+
+    # Cross entropy for each ragged span: logsumexp(scores) - gold_score.
+    # The detached group maximum is only a numerical-stability shift; detaching
+    # avoids retaining the scatter-max backward graph without changing gradients.
+    score_max = torch.full(
+        (widths.numel(),),
+        -torch.inf,
+        device=hidden.device,
+        dtype=score.dtype,
+    )
+    score_max.scatter_reduce_(
+        0, span_for_candidate, score.detach(), reduce="amax", include_self=True
+    )
+    partition = torch.zeros_like(score_max)
+    partition.scatter_add_(
+        0,
+        span_for_candidate,
+        torch.exp(score - score_max[span_for_candidate]),
+    )
+    gold_score = torch.zeros_like(score_max)
+    gold_score.scatter_add_(
+        0, span_for_candidate, score * candidate_is_gold.to(score.dtype)
+    )
+    span_loss = (
+        score_max[eligible_span]
+        + partition[eligible_span].log()
+        - gold_score[eligible_span]
+    )
+
+    # First macro-average decisions within a sentence, then average all complete
+    # top-level sentences. Sentences with no supervised decision contribute zero.
+    eligible_sentence_keys = span_sentence_keys[eligible_span]
+    sentence_loss_sum = torch.zeros(
+        batch_size * seq_len, device=hidden.device, dtype=score.dtype
+    )
+    sentence_loss_sum.scatter_add_(0, eligible_sentence_keys, span_loss)
+    sentence_span_count = torch.zeros_like(sentence_loss_sum)
+    sentence_span_count.scatter_add_(
+        0, eligible_sentence_keys, torch.ones_like(span_loss)
+    )
+    sentence_loss = sentence_loss_sum / sentence_span_count.clamp_min(1)
     loss = (
-        torch.stack(sentence_losses).mean()
-        if sentence_losses
-        else _graph_zero(hidden)
+        sentence_loss.sum() / sentence_count.clamp_min(1).to(score.dtype)
+        + _graph_zero(hidden)
     )
     if return_sentence_count:
         return loss, sentence_count

@@ -6,6 +6,142 @@ import pytest
 from olmo.treereg import compute_treereg_loss, count_treereg_sentences
 
 
+def _reference_treereg_loss(
+    hidden,
+    spans,
+    span_mask,
+    *,
+    sentence_ids,
+    word_boundaries,
+    n_heads_subset=0,
+    d_head=None,
+    eps=1e-8,
+):
+    """Independent slow formulation retained as a vectorization oracle."""
+    circuit = (
+        hidden[..., : n_heads_subset * d_head]
+        if n_heads_subset
+        else hidden
+    ).float()
+    sentence_losses = []
+    for batch_idx in range(hidden.shape[0]):
+        row_sentence_ids = sentence_ids[batch_idx]
+        ids = torch.unique(row_sentence_ids[row_sentence_ids >= 0]).tolist()
+        for sentence_id in ids:
+            positions = torch.nonzero(row_sentence_ids == sentence_id).flatten()
+            start = int(positions[0])
+            end = int(positions[-1]) + 1
+            sentence_hidden = circuit[batch_idx, start:end]
+            sentence_word_starts = word_boundaries[batch_idx, start:end]
+            row_spans = spans[batch_idx]
+            contained = (
+                span_mask[batch_idx]
+                & (row_spans[:, 0] >= start)
+                & (row_spans[:, 2] < end)
+                & (row_spans[:, 0] <= row_spans[:, 2])
+            )
+            span_losses = []
+            for left, split, right in (row_spans[contained] - start).tolist():
+                if split == right:
+                    continue
+                candidates = torch.arange(left, right)
+                candidates = candidates[sentence_word_starts[candidates + 1]]
+                if candidates.numel() < 2:
+                    continue
+                gold = torch.nonzero(candidates == split).flatten()
+                if gold.numel() == 0:
+                    continue
+
+                h_q = sentence_hidden[candidates]
+
+                def orthogonal_norm(vectors, contexts):
+                    context_unit = torch.nn.functional.normalize(
+                        contexts, dim=-1, eps=eps
+                    )
+                    projection = (vectors * context_unit).sum(-1, keepdim=True)
+                    return (vectors - projection * context_unit).norm(dim=-1)
+
+                score = torch.zeros_like(candidates, dtype=sentence_hidden.dtype)
+                if left > 0:
+                    score = score + orthogonal_norm(
+                        h_q, sentence_hidden[left - 1].expand_as(h_q)
+                    )
+                score = score + orthogonal_norm(
+                    sentence_hidden[candidates + 1], h_q
+                )
+                score = score + orthogonal_norm(
+                    sentence_hidden[right].expand_as(h_q), h_q
+                )
+                if right + 1 < len(sentence_hidden):
+                    score = score + orthogonal_norm(
+                        sentence_hidden[right + 1].unsqueeze(0),
+                        sentence_hidden[right].unsqueeze(0),
+                    ).squeeze(0)
+                span_losses.append(
+                    torch.nn.functional.cross_entropy(
+                        score.unsqueeze(0), gold[:1].long()
+                    )
+                )
+            sentence_losses.append(
+                torch.stack(span_losses).mean()
+                if span_losses
+                else sentence_hidden.sum() * 0.0
+            )
+    return (
+        torch.stack(sentence_losses).mean()
+        if sentence_losses
+        else hidden.sum() * 0.0
+    )
+
+
+@pytest.mark.parametrize("seed", [7, 8, 9])
+def test_vectorized_treereg_matches_reference_loss_and_gradient(seed):
+    torch.manual_seed(seed)
+    hidden = torch.randn(2, 12, 16, requires_grad=True)
+    reference_hidden = hidden.detach().clone().requires_grad_(True)
+    sentence_ids = torch.tensor(
+        [
+            [-1, 0, 0, 0, 0, 0, -1, 1, 1, 1, 1, -1],
+            [0, 0, 0, 0, 0, -1, 1, 1, 1, 1, 1, -1],
+        ],
+        dtype=torch.int32,
+    )
+    word_boundaries = sentence_ids >= 0
+    word_boundaries[0, 3] = False
+    word_boundaries[1, 8] = False
+    spans = torch.tensor(
+        [
+            [[1, 3, 5], [1, 2, 4], [7, 8, 10], [7, 9, 9], [-1, -1, -1]],
+            [[0, 1, 4], [1, 2, 4], [6, 8, 10], [7, 9, 10], [-1, -1, -1]],
+        ]
+    )
+    mask = spans[..., 0] >= 0
+    actual = compute_treereg_loss(
+        hidden,
+        spans,
+        mask,
+        n_heads_subset=2,
+        d_head=4,
+        sentence_ids=sentence_ids,
+        word_boundaries=word_boundaries,
+    )
+    expected = _reference_treereg_loss(
+        reference_hidden,
+        spans,
+        mask,
+        n_heads_subset=2,
+        d_head=4,
+        sentence_ids=sentence_ids,
+        word_boundaries=word_boundaries,
+    )
+    actual.backward()
+    expected.backward()
+    assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
+    assert torch.allclose(
+        hidden.grad, reference_hidden.grad, atol=2e-6, rtol=2e-5
+    )
+
+
 def test_treereg_loss_shape_and_finite():
     torch.manual_seed(0)
     B, n, d = 2, 16, 32
@@ -68,10 +204,12 @@ def test_treereg_orthogonal_metric_matches_formula():
     Hn = torch.nn.functional.normalize(circuit, dim=-1)
     proj = torch.bmm(Hn, circuit.transpose(1, 2))
     orth = circuit.unsqueeze(1) - proj.unsqueeze(-1) * Hn.unsqueeze(2)
-    O = orth.norm(dim=-1)
-    assert torch.allclose(O[0, i, j], expected, atol=1e-4)
+    orthogonal_scores = orth.norm(dim=-1)
+    assert torch.allclose(orthogonal_scores[0, i, j], expected, atol=1e-4)
     # A vector's component orthogonal to itself is zero: O[i,i] = 0.
-    assert torch.allclose(O[0, i, i], torch.tensor(0.0), atol=1e-5)
+    assert torch.allclose(
+        orthogonal_scores[0, i, i], torch.tensor(0.0), atol=1e-5
+    )
 
 
 def test_treereg_macro_reduction():

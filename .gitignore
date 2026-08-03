@@ -26,6 +26,7 @@ dataset.tar
 # Generated analysis output / tokenized eval data
 analysis-output/
 analysis/
+/artifacts/
 evaluation/SG/tokenized_qwen3/
 
 # Research paper PDFs (kept locally as references, not tracked)
