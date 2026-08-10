@@ -30,6 +30,14 @@ from ..config import PaddingDirection
 
 log = logging.getLogger(__name__)
 
+# ``setup_logging()`` filters INFO-and-below records from non-zero ranks by
+# default. XSum predictions are experiment output rather than routine progress
+# logging, so give them a dedicated level just above INFO. This preserves the
+# normal rank-0-only log policy while ensuring every rank's generations reach
+# stdout (and includes the global rank for post-hoc parsing).
+XSUM_PREDICTION_LOG_LEVEL = logging.INFO + 1
+logging.addLevelName(XSUM_PREDICTION_LOG_LEVEL, "XSUM_PREDICTION")
+
 # Map from oe-eval metrics to metrics used here
 METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond": "pmi_dc"}
 LOG_2_OF_E = 1.44269504089
@@ -1243,12 +1251,21 @@ class XsumDataset(metaclass=abc.ABCMeta):
         elif self.transformer_grammar_type == "tree_noont":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             input_ids = self.vocab.convert_treenpy_to_noont(input_ids)
+            if loss_tokens is not None:
+                loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
+                loss_tokens = self.vocab.convert_treenpy_to_noont(loss_tokens)
         elif self.transformer_grammar_type == "tree_compress":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             input_ids = self.vocab.convert_treenpy_to_compress(input_ids)
+            if loss_tokens is not None:
+                loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
+                loss_tokens = self.vocab.convert_treenpy_to_compress(loss_tokens)
         elif self.transformer_grammar_type == "tree_triplecnt":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             input_ids = self.vocab.convert_treenpy_to_triplecnt(input_ids)
+            if loss_tokens is not None:
+                loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
+                loss_tokens = self.vocab.convert_treenpy_to_triplecnt(loss_tokens)
         elif self.transformer_grammar_type == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
             if loss_tokens is not None:
@@ -1295,11 +1312,18 @@ class RougeMetric(Metric):
         for b in range(predictions.shape[0]):
             # pred_summary = self.tokenizer.decode(predictions[b].tolist())
             passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
-            log.info(f"<New Passage>: {passage} {self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)}")
-            self.predictions.append(predictions[b])
+            prediction = self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)
+            log.log(
+                XSUM_PREDICTION_LOG_LEVEL,
+                f"[global_rank={get_global_rank()}] <New Passage>: {passage} {prediction}",
+            )
+            # all_gather_object restores CUDA tensors onto the GPU that receives
+            # them. Keeping metric state on CPU prevents a world-size-multiplied
+            # late GPU-memory spike during ROUGE aggregation.
+            self.predictions.append(predictions[b].cpu())
 
         for gold in references:
-            self.references.append(torch.tensor(self.tokenizer.encode(gold, add_special_tokens=False), device=self.device))
+            self.references.append(torch.tensor(self.tokenizer.encode(gold, add_special_tokens=False)))
 
     def reset(self):
         self.predictions = []

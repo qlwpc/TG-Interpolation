@@ -229,6 +229,38 @@ class TestOLMoBlockAttnBias:
         result = OLMoBlock._cast_attn_bias(bias, torch.float32)
         assert result[0, 0, 0, 1] == float("-inf")
 
+    def test_cached_sdpa_fallback_matches_full_attention_with_flash_configured(self):
+        """CPU fallback must use the bottom-right causal rows for a KV cache."""
+        torch.manual_seed(7)
+        cfg = ModelConfig(
+            d_model=8,
+            n_heads=2,
+            n_layers=1,
+            mlp_ratio=2,
+            init_device="cpu",
+            flash_attention=True,
+            flex_attention=False,
+            rope=False,
+            alibi=False,
+            include_bias=False,
+        )
+        block = OLMoBlock(0, cfg, BufferCache())
+        with torch.no_grad():
+            block.attn_out.weight.copy_(torch.eye(cfg.d_model))
+        block.eval()
+
+        qkv = torch.randn(1, 4, cfg.d_model)
+        full, _ = block.attention(qkv, qkv, qkv, use_cache=False)
+        _, prefix_cache = block.attention(
+            qkv[:, :3], qkv[:, :3], qkv[:, :3], use_cache=True
+        )
+        cached, _ = block.attention(
+            qkv[:, 3:], qkv[:, 3:], qkv[:, 3:],
+            layer_past=prefix_cache, use_cache=True,
+        )
+
+        torch.testing.assert_close(cached[:, 0], full[:, -1], rtol=1e-5, atol=1e-6)
+
 
 # ---------------------------------------------------------------------------
 # Config: init_fn coverage

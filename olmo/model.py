@@ -645,6 +645,23 @@ class OLMoBlock(nn.Module):
             # Apply rotary embeddings.
             q, k = self.rotary_emb(q, k)
 
+        # FlashAttention aligns a rectangular causal mask to the bottom-right,
+        # which is the desired behavior for cached decoding. PyTorch SDPA's
+        # ``is_causal=True`` uses an upper-left alignment instead. When the
+        # configuration requests FlashAttention but its kernel is unavailable
+        # (for example on CPU or when flash-attn is not installed), construct the
+        # explicit bottom rows of the square causal bias before falling back.
+        flash_kernel_available = (
+            self.flash_attn_func is not None
+            and q.is_cuda
+            and self.attn_out.weight.is_cuda
+            and block_mask is None
+        )
+        if layer_past is not None and attention_bias is None and not flash_kernel_available:
+            attention_bias = get_causal_attention_bias(
+                self.__cache, key_len, q.device
+            )[:, :, key_len - query_len : key_len, :key_len]
+
         # Pushdown: per-(q,kv) depth bias added to attention scores. The depth
         # matrix S (B, n, n) int8 is computed on the GPU from the spans; the bias
         # q_k . E_l[S[k,j]] is materialized as a full (B, n_h, n, n) additive mask

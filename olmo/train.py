@@ -1628,7 +1628,7 @@ class Trainer:
                                                                            max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
                                                                            beam_size=6).token_ids
                             predictions = predictions[:, 0, :].to(self.device)
-                    elif gt == "pause1_label":
+                    elif gt == "pause1_label":  # TODO: fix this branch and verify the gt circumstance
                         # Deterministic pause insertion; returns real-token ids (BOS
                         # stripped). No NT pollution, no extract_real_tokens needed.
                         batch = move_to_device(batch, self.device)

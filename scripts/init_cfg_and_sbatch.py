@@ -5,9 +5,11 @@ import logging
 import sys
 import os
 import subprocess
+import argparse
+import json
+import re
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime
 
 sys.path.append(os.path.expanduser("~/TG-Interpolation"))
 
@@ -61,7 +63,9 @@ Device_args = {
     "SIST_TITAN" :    {"-c": 2, "--mem-per-cpu": 16384, "--partition": "critical", "-A": "tukw-critical"},
     "SIST_shanghai" : {"-c": 4, "--mem-per-cpu": 32768, "--partition": "ShangHAI", "-A": "tukw-ShangHAI"},
     "SIST_normal":    {},
-    "RTX3090":        {"-c": 1, "--mem-per-cpu": 1, },
+    # This host's normal QOS accounts one Slurm batch task with a 1 MB placeholder
+    # request; torchrun, rather than Slurm, launches the per-GPU worker ranks.
+    "RTX3090":        {"-c": 1, "--mem-per-cpu": 1},
     "A6000" :         {"-c": 1, "--mem-per-cpu": 1, },
     "H800" :          {"-c": 8,},
     "RTX5090":        {"-c": 8, "--partition": "gpu"}
@@ -198,8 +202,17 @@ Evaltasks = {
     "winogrande": [EvaluatorConfig(label="winogrande", type=EvaluatorType.downstream, device_eval_batch_size=5)],
 }
 
-def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:str, run_name:str, load_path:Optional[str]=None, DEBUG=None):
-    timestamp : datetime = datetime.now()
+def generate_sbatch_content(
+    config_path: Path,
+    Device: str,
+    modelname: str,
+    task: str,
+    run_name: str,
+    load_path: Optional[str] = None,
+    DEBUG=None,
+    script_dir: Optional[Path] = None,
+    log_dir: Optional[Path] = None,
+) -> Path:
     sbatch_args = {"-N" : 1, **Device_args[Device]}
     run_args = {"--run_name": "${run_name}", 
                 "--workspace" : "${workspace}"}
@@ -211,11 +224,21 @@ def generate_sbatch_content(config_path:Path, Device:str, modelname:str, task:st
             break
     n_tasks = GPU_tasks[task]
 
-    sbatch_args["-n"] = n_tasks
+    # torchrun launches n_tasks local GPU processes from one batch task on the
+    # standalone RTX3090 host. Other cluster profiles preserve the legacy task
+    # count because their accounting and launch behavior differ.
+    sbatch_args["-n"] = 1 if Device == "RTX3090" else n_tasks
     sbatch_args["-t"] = "120:00:00"
     sbatch_args["--gres"] = f"gpu:{n_tasks}"
+    sbatch_args["--job-name"] = run_name
+    if log_dir is not None:
+        log_dir = log_dir.resolve()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        sbatch_args["--output"] = log_dir / "slurm-%x-%j.out"
     run_args["--nproc-per-node"] = n_tasks
-    run_args["--master_port"] = f"{timestamp.microsecond % 10000 + 10000}"
+    # Derive the rendezvous port from the Slurm job id so concurrently running
+    # four-GPU jobs on the same eight-GPU host do not reuse a generated port.
+    run_args["--master_port"] = "${master_port}"
     run_args["--save_folder"] = "${workspace}/saved_models/${run_name}" if task[:8]=="pretrain" else "${workspace}/saved_models/test_models/${run_name}"
     if load_path is not None:
         run_args["--load_path"] = load_path
@@ -235,6 +258,7 @@ export PYTHONPATH=${{PYTHONPATH}}:${{workspace}}
 nvidia-smi
 cd ${{workspace}}
 run_name={run_name}
+master_port=$((10000 + SLURM_JOB_ID % 50000))
 """
     
     MainContent.add_commands(default_commands)
@@ -248,12 +272,15 @@ date
 
 
     MainContent.add_commands(TORCHRUN(config_path=config_path, **run_args))
-    script_filename = f"{run_name}.sh"
-    script_filename = os.path.join(os.getcwd(), "run_folder", modelname, script_filename)
-    with open(script_filename, 'w+') as f:
+    if script_dir is None:
+        script_dir = Path(os.getcwd()) / "run_folder" / modelname
+    script_dir.mkdir(parents=True, exist_ok=True)
+    script_filename = script_dir / f"{run_name}.sh"
+    with script_filename.open("w+") as f:
         f.write(str(MainContent))
     
     print(f"已生成sbatch脚本: {script_filename}")
+    return script_filename
 
 def generate_config(save_path: Path, args_list: List[str], Device:str, modelname: str, task: str) -> None:
     default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal.yaml")
@@ -304,7 +331,6 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         cfg.model.mix_head_type = mixing[modelname]
 
     cfg.evaluators = Evaltasks[task]
-    cfg.device_eval_batch_size = "${device_train_microbatch_size}"
     cfg.wandb.name = "${run_name}"
     log.info("Configuration:")
     log.info(cfg)
@@ -403,27 +429,118 @@ class TaskInfo:
     
 
 
+def parse_campaign_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate or submit a reproducible multi-seed fine-tuning campaign."
+    )
+    parser.add_argument("--device", default="RTX3090", choices=sorted(Device_args))
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=["terminal", "tgtree", "tree", "tree_noont", "tree_triplecnt", "tree_compress"],
+    )
+    parser.add_argument("--tasks", nargs="+", default=["xsum_finetune", "boolq"])
+    parser.add_argument("--seeds", nargs="+", type=int, default=[6198, 13171, 31723])
+    parser.add_argument(
+        "--campaign-dir",
+        type=Path,
+        default=Path("artifacts/experiment/finetune_multiseed_20260803"),
+    )
+    parser.add_argument("--submit", action="store_true", help="Submit generated jobs with sbatch.")
+    parser.add_argument(
+        "--resubmit",
+        action="store_true",
+        help="Submit a new attempt even when the manifest already has a job id.",
+    )
+    return parser.parse_args()
+
+
+def run_campaign(args: argparse.Namespace) -> None:
+    workspace = Path.cwd().resolve()
+    campaign_dir = args.campaign_dir.resolve()
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = campaign_dir / "jobs.json"
+    if manifest_path.is_file():
+        with manifest_path.open() as f:
+            jobs = json.load(f)
+    else:
+        jobs = []
+    submitted_names = {job["run_name"] for job in jobs if job.get("job_id")}
+
+    for modelname in args.models:
+        if modelname not in Models or modelname not in model_paths:
+            raise OLMoCliError(f"Unknown or unmapped model: {modelname}")
+        load_path = Path(os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])).resolve()
+        if not load_path.is_dir():
+            raise FileNotFoundError(f"Missing checkpoint directory: {load_path}")
+        for task in args.tasks:
+            if task not in train_params or task not in Evaltasks or task not in GPU_tasks:
+                raise OLMoCliError(f"Unknown or incomplete task configuration: {task}")
+            for seed in args.seeds:
+                run_name = f"{modelname}_{task}_seed{seed}"
+                run_dir = campaign_dir / "runs" / run_name
+                run_dir.mkdir(parents=True, exist_ok=True)
+                config_path = run_dir / "config.yaml"
+                generate_config(
+                    config_path,
+                    [clean_opt(f"seed={seed}")],
+                    Device=args.device,
+                    modelname=modelname,
+                    task=task,
+                )
+                script_path = generate_sbatch_content(
+                    config_path=config_path,
+                    Device=args.device,
+                    modelname=modelname,
+                    task=task,
+                    run_name=run_name,
+                    load_path=str(load_path),
+                    script_dir=run_dir,
+                    log_dir=run_dir / "logs",
+                )
+                existing_index = next(
+                    (index for index, job in enumerate(jobs) if job["run_name"] == run_name),
+                    None,
+                )
+                existing_job = jobs[existing_index] if existing_index is not None else None
+                record = {
+                    "run_name": run_name,
+                    "model": modelname,
+                    "task": task,
+                    "seed": seed,
+                    "checkpoint": str(load_path),
+                    "config": str(config_path),
+                    "script": str(script_path),
+                    "output_dir": str(workspace / "saved_models" / "test_models" / run_name),
+                    "job_id": None,
+                    "attempts": list(existing_job.get("attempts", [])) if existing_job else [],
+                }
+                if existing_job and existing_job.get("job_id") and not record["attempts"]:
+                    record["attempts"].append({"job_id": existing_job["job_id"]})
+                if args.submit and (args.resubmit or run_name not in submitted_names):
+                    result = subprocess.run(
+                        ["sbatch", str(script_path)],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    match = re.search(r"Submitted batch job (\d+)", result.stdout)
+                    if match is None:
+                        raise RuntimeError(f"Could not parse sbatch output: {result.stdout!r}")
+                    record["job_id"] = int(match.group(1))
+                    record["attempts"].append({"job_id": record["job_id"]})
+                    print(f"{run_name}: job {record['job_id']}")
+
+                if existing_index is None:
+                    jobs.append(record)
+                elif record["job_id"] is not None:
+                    jobs[existing_index] = record
+
+                with manifest_path.open("w") as f:
+                    json.dump(jobs, f, indent=2)
+                    f.write("\n")
+
+
 if __name__ == "__main__":
     prepare_cli_environment()
-    args_list = []
-    # try:
-    #     save_path, args_list = sys.argv[1], sys.argv[2:]
-    # except IndexError:
-    #     raise OLMoCliError(f"Usage: {sys.argv[0]} [SAVE_PATH] [OPTIONS]")
-    Device = "A6000"
-    modelnames = ["pause1label"]
-    tasks = ["docppl", "SG", "blimp", "boolq", "xsum_finetune"]
-    load_path = True
-    for modelname in modelnames:
-        _load_path = load_path
-        if _load_path is not None and _load_path!=False:
-            _load_path = os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
-            robust_directory_check(_load_path)
-
-        save_dir = os.path.join(os.getcwd(), "run_folder", modelname)
-        os.makedirs(save_dir, exist_ok=True)
-        for pertask in tasks:
-            run_name = f"{modelname}_{pertask}_test"
-            save_path = os.path.join(save_dir, f"config_{run_name}.yaml")
-            generate_config(Path(save_path), [clean_opt(s) for s in args_list], Device=Device, modelname=modelname, task=pertask)
-            generate_sbatch_content(config_path=Path(save_path), Device=Device, modelname=modelname, task=pertask, run_name=run_name, load_path=_load_path)
+    run_campaign(parse_campaign_args())
