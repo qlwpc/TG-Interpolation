@@ -1,9 +1,13 @@
 *.out
 *.npy
 *.pyc
+*.so
+*.o
 *.log
 *.wandb
 __pycache__/
+.pytest_cache/
+.ruff_cache/
 slmmask/
 some_note.md
 some_note_new.md
