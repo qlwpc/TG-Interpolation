@@ -36,7 +36,7 @@
     "parser_input_dim": 128,
     "parser_hidden_dim": 512,
     "parser_num_layers": 4,
-    "parser_max_len":1024,
+    "parser_max_len":2048,
     "parser_nhead":8,
     "parser_chunked": true,
     "ext_vocab_size": -1
