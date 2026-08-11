@@ -43,6 +43,7 @@ class TrainConfig:
     temperature_end: float = 1.0
     temperature_proportion: float = 0.8
     amp: bool = True  # only active on CUDA
+    bf16: bool = True  # bfloat16 autocast (matches terminal.yaml amp_bf16); fp16 uses GradScaler
     max_steps: Optional[int] = None  # cap (for smoke tests)
 
 
@@ -109,7 +110,11 @@ def train(model, data_loader, cfg: TrainConfig, device, logger=None,
     temp_sched = _LinearScheduler(cfg.temperature_start, cfg.temperature_end,
                                   cfg.temperature_proportion, total_steps)
     use_amp = cfg.amp and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    # bf16 does not need loss scaling (same exponent range as fp32); only fp16
+    # AMP uses GradScaler. terminal.yaml uses amp_bf16, so default to bf16.
+    use_bf16 = cfg.bf16
+    amp_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp and not use_bf16)
     metrics = {}
     step = 0
     while step < total_steps:
@@ -122,7 +127,7 @@ def train(model, data_loader, cfg: TrainConfig, device, logger=None,
             coeff = coeff_sched.update(step)
             temperature = temp_sched.update(step)
             with _maybe_no_sync(model):
-                with torch.amp.autocast("cuda", enabled=use_amp):
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                     result = model(**inputs, coeff=coeff, temperature=temperature)
                 # ---- hard-EM two-backward ----
                 WeightedSumFunc.a_ij_require_grad = True
@@ -142,10 +147,14 @@ def train(model, data_loader, cfg: TrainConfig, device, logger=None,
                         if p.requires_grad and p.grad is not None:
                             dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)
                             p.grad /= world_size
-                scaler.unscale_(optimizer)
+                if not use_bf16:
+                    scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_norm)
-                scaler.step(optimizer)
-                scaler.update()
+                if use_bf16:
+                    optimizer.step()
+                else:
+                    scaler.step(optimizer)
+                    scaler.update()
                 sched.step()
                 optimizer.zero_grad()
 

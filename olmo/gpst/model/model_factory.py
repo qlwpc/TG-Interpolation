@@ -44,21 +44,28 @@ def _gpt_config_to_olmo_model_config(gpt_config, init_device: str = "cpu") -> Mo
         n_kv_heads=None,  # plain multi-head attention, like GPT2
         n_layers=gpt_config.n_layer,
         mlp_ratio=gpt_config.n_inner or (4 * gpt_config.n_embd) // gpt_config.n_embd,
-        activation_type=ActivationType.gelu,
+        # Aligned with train_configs/terminal.yaml (OLMo-300M baseline):
+        # swiglu + RMSNorm + flash-attn + weight tying, so the only structural
+        # difference vs the baseline is GPST's composition model + learned wpe.
+        # RoPE stays off — GPST feeds tree-ordered position_ids that RoPE
+        # (which derives positions internally) cannot honour.
+        activation_type=ActivationType.swiglu,
         block_type=BlockType.sequential,
         rope=False,
         alibi=False,
-        flash_attention=False,
+        flash_attention=True,
         flex_attention=False,
         attention_dropout=getattr(gpt_config, "attn_pdrop", 0.1),
         residual_dropout=getattr(gpt_config, "resid_pdrop", 0.1),
         embedding_dropout=getattr(gpt_config, "embd_pdrop", 0.1),
         attention_layer_norm=False,
-        layer_norm_type=LayerNormType.default,
+        layer_norm_type=LayerNormType.rms,
+        layer_norm_eps=1e-6,
+        bias_for_layer_norm=True,
         max_sequence_length=getattr(gpt_config, "n_positions", 1024),
         vocab_size=gpt_config.vocab_size,
         include_bias=getattr(gpt_config, "bias", True),
-        weight_tying=False,
+        weight_tying=True,
         init_fn=InitFnType.normal,
         init_std=gpt_config.initializer_range if hasattr(gpt_config, "initializer_range") else 0.02,
         init_device=init_device,

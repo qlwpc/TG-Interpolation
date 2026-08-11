@@ -121,7 +121,14 @@ def main():
         assert args.corpus_path, "--corpus_path required for --unsupervised"
         loader_ds = LazyLoader(args.corpus_path, is_array=True)
         ds = GPT2Dataset(loader_ds, num_samples=args.num_samples, max_seq_len=args.max_seq_len)
-        collator = DefaultCollator(enable_group=True, external_vocab_path=None)
+        # cap sentence segments at the parser's RoPE cache length so
+        # abnormally long sentences (rare outliers in BBC) can't crash the
+        # parser with an out-of-range position index.
+        from transformers import AutoConfig  # noqa: E402
+        r2d2_cfg = AutoConfig.from_pretrained(args.r2d2_config_path)
+        parser_max_len = getattr(r2d2_cfg, "parser_max_len", 1024)
+        collator = DefaultCollator(enable_group=True, external_vocab_path=None,
+                                   max_seg_len=parser_max_len)
         collate_fn = collator.generative_r2d2_collate_fn_ext
     else:
         from olmo.gpst.reader.dataset_gold import GoldTreeDataset, GoldTreeCollator

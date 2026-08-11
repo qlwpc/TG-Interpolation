@@ -13,7 +13,7 @@ export PYTHONPATH="${PYTHONPATH}:${HOME}/TG-Interpolation}"
 
 TREE_NPY="${1:-dataset/bbc-news/tree/train.npy}"
 TOKENIZER="${2:-dataset/bbc-news/TG_GPT2_tokenizer.json}"
-OUTPUT_DIR="${3:-saved_models/gpst-small-sup}"
+OUTPUT_DIR="${3:-saved_models/gpst-bbc-sup}"
 NUM_SAMPLES="${4:-1000000}"
 BACKBONE="${5:-olmo}"
 

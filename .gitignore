@@ -27,6 +27,10 @@ run_folder/
 dataset/
 dataset.tar
 
+# GPST lazy corpora (multi-GB generated data, not tracked)
+corpus/
+logs/
+
 # Generated analysis output / tokenized eval data
 analysis-output/
 analysis/

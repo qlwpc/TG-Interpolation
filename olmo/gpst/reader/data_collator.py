@@ -31,8 +31,12 @@ def sent_collator(input_list):
             "attention_mask": torch.tensor(masks, dtype=torch.long)}
 
 class DefaultCollator:
-    def __init__(self, enable_group=True, external_vocab_path=None):
+    def __init__(self, enable_group=True, external_vocab_path=None,
+                 max_seg_len: int | None = None):
         # enable_group is deprecated
+        self.max_seg_len = max_seg_len  # cap per-sentence segment length
+        # (matches TransformerParser's parser_max_len RoPE cache; segments
+        # longer than this would index out of range in the parser)
 
         if external_vocab_path is not None:
             self.span_tokenizer = load_span_tokenizer(external_vocab_path)
@@ -68,6 +72,8 @@ class DefaultCollator:
             for segment_id, split_idx in enumerate(splits):
                 if split_idx > prev_idx:
                     ids_segment = item['text'][prev_idx: split_idx]
+                    if self.max_seg_len is not None:
+                        ids_segment = ids_segment[:self.max_seg_len]
                     if self.span_tokenizer is not None:
                         results = self.span_tokenizer.tokenize(ids_segment)
                         span_idx = np.zeros((len(results),))
@@ -88,7 +94,7 @@ class DefaultCollator:
                     # print(segment_id)
                     segment_ids[prev_idx: split_idx].fill(segment_id + 1)
                     group_ids.append(sent_id)
-                    max_sent_len = max(max_sent_len, split_idx - prev_idx)
+                    max_sent_len = max(max_sent_len, len(ids_segment))
                 prev_idx = split_idx
 
         # print(chunk_mask)
@@ -144,6 +150,8 @@ class DefaultCollator:
             for segment_id, split_idx in enumerate(splits):
                 if split_idx > prev_idx:
                     ids_segment = item['text'][prev_idx: split_idx]
+                    if self.max_seg_len is not None:
+                        ids_segment = ids_segment[:self.max_seg_len]
                     if self.span_tokenizer is not None:
                         span_idx = tokenizer_session.tokenize(ids_segment)
                         span_indices.append(span_idx)
@@ -152,7 +160,7 @@ class DefaultCollator:
                     # chunk_mask[prev_idx: split_idx, prev_idx: split_idx].fill(1)
                     segment_ids[prev_idx: split_idx].fill(segment_id + 1)
                     group_ids.append(sent_id)
-                    max_sent_len = max(max_sent_len, split_idx - prev_idx)
+                    max_sent_len = max(max_sent_len, len(ids_segment))
                 prev_idx = split_idx
 
         # print(chunk_mask)
