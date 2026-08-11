@@ -40,6 +40,12 @@ from torch.utils.data import DataLoader  # noqa: E402
 from olmo.gpst.model.model_factory import create_model  # noqa: E402
 from olmo.gpst.trainer.trainer import train, TrainConfig  # noqa: E402
 
+# GPST feeds cat_input of length L+1 (BOS prepended) = 2049, which is not a
+# multiple of 8. Both flash-attn and torch SDPA's flash backend pad via
+# index_select and assert (srcIndex < srcSelectDimSize) on such lengths.
+# memory-efficient backend handles arbitrary seq len with no padding.
+torch.backends.cuda.enable_flash_sdp(False)
+
 
 def initialize_distributed(local_rank: int, device_type: str) -> bool:
     """Initialize the process group created by ``torchrun``.
