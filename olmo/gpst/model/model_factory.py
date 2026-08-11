@@ -45,15 +45,19 @@ def _gpt_config_to_olmo_model_config(gpt_config, init_device: str = "cpu") -> Mo
         n_layers=gpt_config.n_layer,
         mlp_ratio=gpt_config.n_inner or (4 * gpt_config.n_embd) // gpt_config.n_embd,
         # Aligned with train_configs/terminal.yaml (OLMo-300M baseline):
-        # swiglu + RMSNorm + flash-attn + weight tying, so the only structural
-        # difference vs the baseline is GPST's composition model + learned wpe.
+        # swiglu + RMSNorm + weight tying, so the only structural difference
+        # vs the baseline is GPST's composition model + learned wpe.
         # RoPE stays off — GPST feeds tree-ordered position_ids that RoPE
         # (which derives positions internally) cannot honour.
+        # flash-attn stays OFF: GPST feeds cat_input of length L+1 (BOS
+        # prepended), which is not a multiple of 8 — flash-attn's internal
+        # index_select asserts on non-multiple-of-8 seq len. torch SDPA
+        # dispatches to a flash-class kernel on CUDA for any length.
         activation_type=ActivationType.swiglu,
         block_type=BlockType.sequential,
         rope=False,
         alibi=False,
-        flash_attention=True,
+        flash_attention=False,
         flex_attention=False,
         attention_dropout=getattr(gpt_config, "attn_pdrop", 0.1),
         residual_dropout=getattr(gpt_config, "resid_pdrop", 0.1),
