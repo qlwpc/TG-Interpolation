@@ -42,7 +42,7 @@ model:
   init_std: 0.02
   init_cutoff_factor: 3
   transformer_grammar_type: treereg
-  treereg_layer: 6          # middle layer (paper heuristic)
+  treereg_layer: 9          # 3/4 depth: paper uses layer 12 of 16
   treereg_n_heads: 3        # ~25% of 12 heads
   treereg_every_k: 10       # apply L_TR every 10 LM steps
   treereg_alpha: 1.0        # L_LM + alpha * L_TR

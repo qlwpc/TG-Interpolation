@@ -56,6 +56,29 @@ from .initialization import init_normal
 from .torch_util import ensure_finite_, get_cumulative_document_lengths, move_to_device
 from .data.tg_mask import SentencepieceVocab, TG_attention_bias
 
+
+def _flex_attention_kernel_options() -> Optional[Dict[str, int]]:
+    """Return an optional low-stage FlexAttention override.
+
+    PyTorch 2.7's default Ampere configs can exceed the shared-memory limit of
+    SM86/SM89 GPUs for non-standard head dimensions. Keep the library default
+    unless the execution environment explicitly requests a pipeline depth.
+    """
+    raw = os.environ.get("OLMO_FLEX_ATTENTION_NUM_STAGES")
+    if raw is None:
+        return None
+    try:
+        stages = int(raw)
+    except ValueError as exc:
+        raise OLMoConfigurationError(
+            "OLMO_FLEX_ATTENTION_NUM_STAGES must be a positive integer"
+        ) from exc
+    if stages < 1:
+        raise OLMoConfigurationError(
+            "OLMO_FLEX_ATTENTION_NUM_STAGES must be a positive integer"
+        )
+    return {"fwd_num_stages": stages, "bwd_num_stages": stages}
+
 if sys.version_info.minor > 8:
     from collections.abc import MutableMapping
 elif sys.version_info.minor == 8:
@@ -497,6 +520,7 @@ class OLMoBlock(nn.Module):
 
         if config.flex_attention:
             self.flex_attention = torch.compile(flex_attention)
+            self.flex_attention_kernel_options = _flex_attention_kernel_options()
 
     def reset_parameters(self):
         if self.k_norm is not None:
@@ -584,7 +608,13 @@ class OLMoBlock(nn.Module):
             )
             return r.transpose(1, 2)
         elif block_mask is not None:
-            return self.flex_attention(q, k, v, block_mask=block_mask)
+            return self.flex_attention(
+                q,
+                k,
+                v,
+                block_mask=block_mask,
+                kernel_options=self.flex_attention_kernel_options,
+            )
         else:
             # torch's sdpa doesn't support GQA, so we're doing this
             assert k.size(1) == v.size(1)
@@ -903,6 +933,7 @@ class OLMoBlock(nn.Module):
                 out = self.flex_attention(
                     q, k, v, score_mod=_depth_score_mod,
                     block_mask=block_mask,
+                    kernel_options=self.flex_attention_kernel_options,
                 )
                 # Add the manual grad-P path. Forward: out + 0 == out (unchanged).
                 # Backward: _DepthBiasGradP computes grad_P from grad_out (manual
@@ -920,7 +951,12 @@ class OLMoBlock(nn.Module):
                 )
             else:
                 out = self.flex_attention(
-                    q, k, v, score_mod=_depth_score_mod, block_mask=block_mask
+                    q,
+                    k,
+                    v,
+                    score_mod=_depth_score_mod,
+                    block_mask=block_mask,
+                    kernel_options=self.flex_attention_kernel_options,
                 )
             return out
         # else: fall through to the SDPA additive-mask path (flex disabled, no

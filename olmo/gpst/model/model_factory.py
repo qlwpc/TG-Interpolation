@@ -66,7 +66,11 @@ def _gpt_config_to_olmo_model_config(gpt_config, init_device: str = "cpu") -> Mo
         layer_norm_type=LayerNormType.rms,
         layer_norm_eps=1e-6,
         bias_for_layer_norm=True,
-        max_sequence_length=getattr(gpt_config, "n_positions", 1024),
+        # n_positions + 1: C++ prepare_generation emits position_ids with the
+        # BOS prepended — layout {group, max_seq_len + 1} with values 0..L
+        # (BOS=0, tokens 1..L). The OLMoStack wpe indexes by these ids, so the
+        # embedding table must cover L+1 entries (else 2048 overruns at L=2048).
+        max_sequence_length=getattr(gpt_config, "n_positions", 1024) + 1,
         vocab_size=gpt_config.vocab_size,
         include_bias=getattr(gpt_config, "bias", True),
         weight_tying=True,

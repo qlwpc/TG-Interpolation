@@ -43,7 +43,7 @@ from .config import (
     BeamSearchType
 )
 from .data import IterableDataset
-from .eval import Evaluator
+from .eval import Evaluator, resolve_structure_mode
 from .eval.downstream import BLiMP_TASK_LIST
 from .exceptions import OLMoConfigurationError
 from .model import OLMo
@@ -1139,8 +1139,6 @@ class Trainer:
         evaluator.update_metrics(
             batch, ce_loss, logits
         )  # batch includes all keys that the downstream evaluation needs
-
-        barrier()
     
     def TG_doc_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
         # before move to the right device, make per sent batch attention bias
@@ -1235,7 +1233,26 @@ class Trainer:
             from contextlib import nullcontext
             return nullcontext()
 
-    def SG_eval_step(self, batch: List[Dict[str, Any]], evaluator: Evaluator) -> None:
+    def SG_eval_step(
+        self,
+        batch: List[Dict[str, Any]],
+        evaluator: Evaluator,
+        eval_cfg=None,
+        structure_mode: Optional[str] = None,
+    ) -> None:
+        # The main eval loop passes the exact config, which is important when a
+        # run contains more than one SG evaluator. Keep the fallback for older
+        # direct-call smoke utilities.
+        if eval_cfg is None:
+            eval_cfg = next(
+                e
+                for e in self.cfg.evaluators
+                if e.label == "syntactic_generalization"
+            )
+        if structure_mode is None:
+            structure_mode = resolve_structure_mode(
+                eval_cfg, self.cfg.model.transformer_grammar_type
+            )
         score_dict = {}
         task_name = batch[0]["task"]
         dataset = evaluator.eval_loader.dataset
@@ -1252,7 +1269,10 @@ class Trainer:
                     # depth bias vanishes, treereg loss is train-only), so they belong
                     # here, not in word_sync_beam_search (which inserts TG NT tokens the
                     # model never learned).
-                    if self.cfg.model.transformer_grammar_type == "pushdown":
+                    if (
+                        self.cfg.model.transformer_grammar_type == "pushdown"
+                        and structure_mode != "terminal"
+                    ):
                         # pushdown is inference-dependent on tree_spans (its trained
                         # depth-bias path degenerates without it). The SG batch has no
                         # parse, so run a span-tracking beam search that marginalizes
@@ -1266,14 +1286,14 @@ class Trainer:
                         with self._summon_params_ctx():
                             score = self.dist_model.module.pushdown_beam_search(
                                 eval_input_ids=sent_d["input_ids"][0],
-                                beam_size=20, max_reduce=None,
+                                beam_size=getattr(eval_cfg, "pushdown_beam_size", 20),
+                                max_reduce=getattr(eval_cfg, "pushdown_max_reduce", None),
                                 bos_id=dataset.vocab.bos,
                                 tag=tag,
                                 use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
                             )
                         score_dict[sent["condition_name"]] = score
-                    elif self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type == "treereg":
-                        print(sent["input_ids"])
+                    elif self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type in {"treereg", "pushdown"}:
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits, _, _ = self.model_forward(sent, loss_reduction="none")
                         # Align tag mask with ce_loss positions.
@@ -1289,7 +1309,6 @@ class Trainer:
                         # below and still means "near-zero probability").
                         per_tok_ce = torch.clamp(ce_loss[0], max=1.0e4)
                         score_dict[sent["condition_name"]] = torch.sum(per_tok_ce * tag_tensor).item()
-                        print(ce_loss[0])
                     else:
                         term_len = sent["input_ids"].shape[1]
                         nc = max(int(sg_nc_ratio * term_len), 5)
@@ -1376,7 +1395,9 @@ class Trainer:
                          cont_str_len, cont_byte_len), 0.0
                     )
 
-    def BLiMP_beam_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
+    def BLiMP_beam_eval_step(
+        self, batch: Dict[str, Any], evaluator: Evaluator, eval_cfg
+    ) -> None:
         """Beam-search BLiMP: score each sentence's terminal sequence via
         ``OLMo.word_sync_beam_search`` (parse-marginalized log-likelihood) and
         scatter the per-sentence ``logsumexp(beam logprob)`` into ``BLiMPMetric``
@@ -1391,7 +1412,6 @@ class Trainer:
         """
         dataset = evaluator.eval_loader.dataset
         vocab = dataset.vocab
-        eval_cfg = next(e for e in self.cfg.evaluators if e.label == "BLiMP")
         beam_size = eval_cfg.beam_size
         nc_ratio = eval_cfg.beam_nc_ratio
         pc = eval_cfg.beam_pc
@@ -1480,7 +1500,6 @@ class Trainer:
                             evaluator, batch, idx, eval_input_ids, beams, vocab, pair_per_task
                         )
         evaluator.eval_metric.update_beam(batch, torch.stack(ll_list))
-        barrier()
 
     def pushdown_icl_eval_step(
         self, batch: Dict[str, Any], evaluator: Evaluator, eval_config=None
@@ -1537,7 +1556,6 @@ class Trainer:
                            for k, v in batch.items()}
                     evaluator.update_metrics(
                         row, torch.zeros(1, device=self.device), out.logits)
-        barrier()
 
     def _get_hf_tokenizer(self):
         """Lazy-init a HF tokenizers.Tokenizer for decoding beam trees to strings.
@@ -1748,6 +1766,9 @@ class Trainer:
         eval_metrics = {}
         self.generate_TG_attention_bias = get_TG_generate_bias_func(self.cfg)
         for evaluator, eval_config in zip(self.evaluators, self.cfg.evaluators):
+            structure_mode = resolve_structure_mode(
+                eval_config, self.cfg.model.transformer_grammar_type
+            )
             log.info(f"Running evaluation for '{evaluator.label}'...")
             # Reset metrics.
             evaluator.reset_metrics()
@@ -1776,9 +1797,11 @@ class Trainer:
                 if evaluator.type == EvaluatorType.tg_doc:
                     self.TG_doc_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "syntactic_generalization":
-                    self.SG_eval_step(eval_batch, evaluator)
-                elif evaluator.label == "BLiMP" and getattr(eval_config, "beam_search", False):
-                    self.BLiMP_beam_eval_step(eval_batch, evaluator)
+                    self.SG_eval_step(
+                        eval_batch, evaluator, eval_config, structure_mode
+                    )
+                elif evaluator.label == "BLiMP" and structure_mode == "beam":
+                    self.BLiMP_beam_eval_step(eval_batch, evaluator, eval_config)
                 elif (evaluator.type == EvaluatorType.downstream
                       and evaluator.label != "BLiMP"
                       and self.cfg.model.transformer_grammar_type == "pushdown"):

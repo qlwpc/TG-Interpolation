@@ -22,12 +22,63 @@ __all__ = [
     "build_downstream_evaluator",
     "build_evaluator",
     "build_evaluators",
+    "resolve_structure_mode",
 ]
 
 beam_search_tasks = {
     "syntactic_generalization",
     "xsum"
 }
+
+STRUCTURE_MODES = {"auto", "terminal", "gold", "beam"}
+
+
+def resolve_structure_mode(
+    eval_cfg: EvaluatorConfig,
+    transformer_grammar_type: str,
+) -> str:
+    """Resolve one evaluator's syntax protocol, including legacy configs.
+
+    ``structure_mode`` is the canonical switch. The older ``beam_search`` flag
+    remains supported only when ``structure_mode`` is left at ``auto``; making
+    both explicit with conflicting values is almost certainly a configuration
+    error and must not silently select a branch.
+    """
+    mode = getattr(eval_cfg, "structure_mode", "auto")
+    if mode not in STRUCTURE_MODES:
+        expected = ", ".join(sorted(STRUCTURE_MODES))
+        raise OLMoConfigurationError(
+            f"Unknown evaluator structure_mode={mode!r}; expected one of {expected}"
+        )
+
+    legacy_beam = bool(getattr(eval_cfg, "beam_search", False))
+    if legacy_beam:
+        if mode not in {"auto", "beam"}:
+            raise OLMoConfigurationError(
+                "Evaluator sets beam_search=true but "
+                f"structure_mode={mode!r}; remove beam_search or use "
+                "structure_mode='beam'"
+            )
+        mode = "beam"
+
+    # Preserve the historical Pushdown SG default while allowing an explicit
+    # terminal run for the requested protocol comparison.
+    if (
+        mode == "auto"
+        and eval_cfg.label == "syntactic_generalization"
+        and transformer_grammar_type == "pushdown"
+    ):
+        mode = "beam"
+
+    if mode == "gold" and eval_cfg.label != "BLiMP":
+        raise OLMoConfigurationError(
+            "structure_mode='gold' is currently supported only for BLiMP"
+        )
+    if mode == "beam" and eval_cfg.label not in beam_search_tasks | {"BLiMP"}:
+        raise OLMoConfigurationError(
+            f"structure_mode='beam' is not supported for evaluator {eval_cfg.label!r}"
+        )
+    return mode
 
 def build_downstream_evaluator(
     train_config: TrainConfig,
@@ -37,11 +88,18 @@ def build_downstream_evaluator(
     is_unit_test=False,
 ) -> Evaluator:
     task_kwargs = {}
-    task_class = label_to_task_map[eval_cfg.label]
-    if isinstance(task_class, tuple):
-        task_class, task_kwargs = task_class
+    task_spec = label_to_task_map[eval_cfg.label]
+    if isinstance(task_spec, tuple):
+        task_class, default_task_kwargs = task_spec
+        # Registry defaults are shared process-wide. Evaluator-specific options
+        # (force_terminal, pushdown_gold, pair_per_task, etc.) must never mutate
+        # that shared dictionary or leak into the next evaluator with the same
+        # label.
+        task_kwargs = dict(default_task_kwargs)
         if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label=="BLiMP":
             task_kwargs["device_eval_batch_size"] = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
+    else:
+        task_class = task_spec
     task_kwargs["model_ctx_len"] = train_config.model.max_sequence_length
     task_kwargs["vocab_path"] = train_config.tokenizer.vocabulary
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
@@ -51,10 +109,26 @@ def build_downstream_evaluator(
         task_kwargs["samples_per_sent"] = eval_cfg.samples_per_sent
     if eval_cfg.tree_eval_type is not None:
         task_kwargs["tree_eval_type"] = eval_cfg.tree_eval_type
-    # Beam-search BLiMP: always load the terminal-only data (the model generates
-    # its own NT structure during word_sync_beam_search).
-    if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "beam_search", False):
-        task_kwargs["force_terminal"] = True
+    structure_mode = resolve_structure_mode(
+        eval_cfg, train_config.model.transformer_grammar_type
+    )
+    if eval_cfg.label == "BLiMP":
+        # Terminal and beam protocols both consume one terminal sequence per
+        # sentence. Beam search supplies its own latent structure.
+        if structure_mode in {"terminal", "beam"}:
+            task_kwargs["force_terminal"] = True
+        # Pushdown gold300 consumes the supplied tree_300 parses, converted to
+        # terminal tokens and terminal-coordinate spans by the dataset.
+        if structure_mode == "gold":
+            if train_config.model.transformer_grammar_type == "pushdown":
+                task_kwargs["pushdown_gold"] = True
+                task_kwargs["parse_binarize_direction"] = (
+                    train_config.model.parse_binarize_direction
+                )
+            elif train_config.model.transformer_grammar_type == "treereg":
+                # TreeReg trees affect only the training loss. Avoid evaluating
+                # 300 identical forward distributions per sentence.
+                task_kwargs["force_terminal"] = True
     # BLiMP subset: reduce pairs/task (and the compute() denominator) for a
     # meaningful partial-run accuracy. None => 1000 (full BLiMP).
     if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "pair_per_task", None) is not None:
@@ -99,6 +173,20 @@ def build_downstream_evaluator(
                 for s in doc_sents:
                     starts.append(starts[-1] + int(s) * int(sent_size))
                 group_starts = torch.LongTensor(starts)
+        elif eval_cfg.label == "BLiMP" and ds_eval_dataset.SENT_SIZE > 1:
+            # Gold-K BLiMP batches and BLiMPMetric rows are sentence groups of
+            # exactly SENT_SIZE parses. A plain contiguous N/world_size split
+            # can cut a group (e.g. gold300 on 3 ranks), causing a batch to span
+            # two metric rows. Partition whole sentences instead.
+            sent_size = int(ds_eval_dataset.SENT_SIZE)
+            if len(ds_eval_dataset) % sent_size != 0:
+                raise OLMoConfigurationError(
+                    f"BLiMP dataset length {len(ds_eval_dataset)} is not divisible "
+                    f"by SENT_SIZE={sent_size}"
+                )
+            group_starts = torch.arange(
+                0, len(ds_eval_dataset) + 1, sent_size, dtype=torch.long
+            )
         ds_eval_sampler = DistributedEvalSampler(
             ds_eval_dataset,
             num_replicas=get_world_size(),
@@ -108,7 +196,9 @@ def build_downstream_evaluator(
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
     if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl \
-        or (eval_cfg.label == "BLiMP" and getattr(eval_cfg, "beam_search", False)):
+        or (eval_cfg.label == "BLiMP" and (
+            structure_mode == "beam"
+        )):
         eval_batch_size = 1
     
     ds_eval_dataloader = DataLoader(
@@ -198,10 +288,14 @@ def build_downstream_evaluator(
                             save_per_example_path=save_path)
 
     if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
-        assert(ds_eval_dataset.SENT_SIZE % eval_batch_size == 0 or
-               ds_eval_dataset.TASK_SIZE % eval_batch_size == 0,
-               f"SENT_SIZE={ds_eval_dataset.SENT_SIZE} and TASK_SIZE={ds_eval_dataset.TASK_SIZE} "
-               f"not divisible by eval_batch_size={eval_batch_size}")
+        assert (
+            ds_eval_dataset.SENT_SIZE % eval_batch_size == 0
+            or ds_eval_dataset.TASK_SIZE % eval_batch_size == 0
+        ), (
+            f"SENT_SIZE={ds_eval_dataset.SENT_SIZE} and "
+            f"TASK_SIZE={ds_eval_dataset.TASK_SIZE} not divisible by "
+            f"eval_batch_size={eval_batch_size}"
+        )
 
     evaluator = Evaluator(
         label=eval_cfg.label,

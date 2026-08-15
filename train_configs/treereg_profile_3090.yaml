@@ -38,7 +38,7 @@ model:
   init_std: 0.02
   init_cutoff_factor: 3
   transformer_grammar_type: treereg
-  treereg_layer: 6
+  treereg_layer: 9          # 3/4 depth: paper uses layer 12 of 16
   treereg_n_heads: 3
   treereg_every_k: 10
   treereg_alpha: 1.0

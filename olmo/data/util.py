@@ -612,20 +612,21 @@ class DistributedEvalSampler(Sampler):
             # sentence and SENT_SIZE boundaries), so the per-sentence 300-sync in
             # TG_doc_eval_step and the metric's row scatter stay aligned.
             gs = self.group_starts
-            indices = []
-            for g in range(self._group_start, self._group_end):
-                indices.extend(range(int(gs[g]), int(gs[g + 1])))
-            return iter(indices)
+            # Groups are adjacent ranges covering the dataset, so their union
+            # is one range. Avoid materializing millions of Python integers for
+            # large gold-K evaluations.
+            return iter(
+                range(int(gs[self._group_start]), int(gs[self._group_end]))
+            )
         elif self.contiguous:
             base = n // self.num_replicas
             rem = n % self.num_replicas
             # first `rem` ranks get base+1
             start = self.rank * base + min(self.rank, rem)
             end = start + self.num_samples
-            indices = list(range(start, end))
+            return iter(range(start, end))
         else:
-            indices = list(range(self.rank, n, self.num_replicas))
-        return iter(indices)
+            return iter(range(self.rank, n, self.num_replicas))
 
     def __len__(self):
         return self.num_samples

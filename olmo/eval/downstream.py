@@ -26,6 +26,7 @@ from ..data.util import (
     pause_trailing_trim,
 )
 from ..data.collator import DataCollator
+from ..data.parse_align import TreeVocab, parse_chunk_slice
 from ..config import PaddingDirection
 
 log = logging.getLogger(__name__)
@@ -470,8 +471,9 @@ class DecomposedICLMetric(ICLMetric):
                 label_dict[d] = set()
             label_dict[d].add(label_id.item())
 
-        # Save per-example scores for post-hoc analysis
-        if self.save_per_example_path:
+        # Every rank has the same gathered state after ``super().compute()``.
+        # Only rank 0 may publish the shared output file.
+        if self.save_per_example_path and get_global_rank() == 0:
             self._save_per_example(loglikelihood_dict_full, loglikelihood_dict_term,
                                    label_dict)
 
@@ -522,7 +524,13 @@ class DecomposedICLMetric(ICLMetric):
 
     def _save_per_example(self, loglikelihood_dict_full, loglikelihood_dict_term,
                           label_dict):
-        """Save per-example full and term scores to JSON for post-hoc analysis."""
+        """Atomically save full/terminal scores from global rank 0 only."""
+        # Keep the guard inside the writer as well as at its normal call site so
+        # future/direct callers cannot accidentally reintroduce a multi-rank
+        # write race.
+        if get_global_rank() != 0:
+            return
+
         import json as _json
         per_example = []
         for doc_id in loglikelihood_dict_full:
@@ -539,8 +547,22 @@ class DecomposedICLMetric(ICLMetric):
                     "full_score": float(full_choices.get(cont_id, float("-inf"))),
                     "term_score": float(term_choices.get(cont_id, float("-inf"))),
                 })
-        with open(self.save_per_example_path, "w") as f:
-            _json.dump(per_example, f)
+        output_path = os.fspath(self.save_per_example_path)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        # os.replace() is atomic when source and destination are in the same
+        # directory, so readers never observe a partially written JSON file.
+        tmp_path = f"{output_path}.tmp.rank0.{os.getpid()}"
+        try:
+            with open(tmp_path, "w") as f:
+                _json.dump(per_example, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, output_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
 
 class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
@@ -1375,9 +1397,15 @@ class TGPerplexityDocumentLevelMetric(Metric):
         self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
     def reset(self):
-        # No local counters needed: update() scatters by global batch["sent_id"],
-        # which is robust to unequal per-rank update counts (multi-GPU docppl).
-        pass
+        # ``compute()`` replaces this rank-local state with the globally
+        # all-reduced tensor. A later evaluation in the same Trainer must start
+        # from zeros; otherwise slots owned by other ranks retain their previous
+        # global values and are summed again at the next all-reduce.
+        self.loglikelihoods.zero_()
+        # Retained for compatibility with older code that inspected these
+        # counters, although update() now scatters by global sample index.
+        self.cur_sent = 0
+        self.cur_batch = 0
 
     def update(self, batch: Dict[str, Any], ce_loss:torch.Tensor, lm_logits: Optional[torch.Tensor] = None, dc_lm_logits=None):
         # Scatter by GLOBAL flat index so multi-rank docppl writes disjoint slots:
@@ -2244,17 +2272,31 @@ class BLiMPMetric(Metric):
         else:
             loglikelihoods = -self.loglikelihoods
         
-        for task_id, task in enumerate(self.task_list):
-            id_bias = task_id * self.pair_per_task * 2
-            cnt_dict[task] = 0
-            for pair_id in range(self.pair_per_task):
-                p_good = loglikelihoods[id_bias + pair_id * 2]
-                p_bad = loglikelihoods[id_bias + pair_id * 2 + 1]
-                if p_good==p_bad or (not (p_good>p_bad) and not (p_bad>p_good)):
-                    log.warning(f"BLiMP tie at index {id_bias + pair_id * 2}, prob is {p_good}")
-
-                if p_good > p_bad:
-                    cnt_dict[task] += 1
+        expected = len(self.task_list) * self.pair_per_task * 2
+        if loglikelihoods.numel() != expected:
+            raise RuntimeError(
+                f"BLiMP score tensor has {loglikelihoods.numel()} sentences; "
+                f"expected {expected}"
+            )
+        pairs = loglikelihoods.reshape(
+            len(self.task_list), self.pair_per_task, 2
+        )
+        good = pairs[..., 0]
+        bad = pairs[..., 1]
+        good_wins = good > bad
+        bad_wins = bad > good
+        unresolved = ~(good_wins | bad_wins)  # ties and NaNs
+        unresolved_count = int(unresolved.sum().item())
+        if unresolved_count:
+            log.warning(
+                "BLiMP contains %d tied or non-finite minimal pairs",
+                unresolved_count,
+            )
+        task_counts = good_wins.sum(dim=1).to(device="cpu").tolist()
+        cnt_dict = {
+            task: int(task_counts[task_id])
+            for task_id, task in enumerate(self.task_list)
+        }
 
         acc_dict = {}
         total_cnt = 0
@@ -2293,6 +2335,8 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         pause_token_id: int = None,
         tree_eval_type: str = "default",
         force_terminal: bool = False,
+        pushdown_gold: bool = False,
+        parse_binarize_direction: str = "right",
     ):
 
         super().__init__()
@@ -2308,10 +2352,19 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.pause_token_id = pause_token_id
         self.tree_eval_type = tree_eval_type
         self.force_terminal = force_terminal
+        self.pushdown_gold = pushdown_gold
+        self.parse_binarize_direction = parse_binarize_direction
+        if force_terminal and pushdown_gold:
+            raise ValueError("force_terminal and pushdown_gold are mutually exclusive")
+        self._tree_vocab = (
+            TreeVocab.from_tokenizer_file(vocab_path) if pushdown_gold else None
+        )
 
         self.is_qwen3 = "qwen3" in (vocab_path or "").lower()
 
-        if force_terminal:
+        if pushdown_gold:
+            self.SENT_SIZE = samples_per_sent
+        elif force_terminal:
             # Beam-search path: always load the terminal-only data and score one
             # sequence per sentence (the model generates its own NT structure
             # during word_sync_beam_search; feeding a fixed tree/tg sequence would
@@ -2334,7 +2387,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self.length = len(self.task_list) * self.TASK_SIZE
 
         self.samples: List[Dict[str, Any]] = []
-        if force_terminal:
+        if pushdown_gold:
+            self.dataset_name = "tree_300"
+        elif force_terminal:
             self.dataset_name = "terminal"
         elif transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.dataset_name = "terminal"
@@ -2412,16 +2467,39 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             data_idx = sample_idx
 
         input_ids = self.dataset[task_idx, data_idx].copy()
-        if self.ispause:
+        tree_spans = None
+        if self.pushdown_gold:
+            # The fixed-width tree_300 rows are right padded. Parse the real tree
+            # using exactly the unary-collapse + CNF convention used to train the
+            # terminal-only Pushdown checkpoint, then expose only its terminal
+            # leaves to the LM. The parser's whitespace tokenization is retained;
+            # this is intentionally the gold300 protocol, distinct from BLiMP's
+            # primal terminal tokenization.
+            assert self._tree_vocab is not None
+            input_ids = input_ids[input_ids != self._tree_vocab.pad]
+            parsed = parse_chunk_slice(
+                input_ids,
+                self._tree_vocab,
+                self.parse_binarize_direction,
+                binarize=True,
+                collapse_unary=True,
+                drop_singleton_spans=True,
+            )
+            input_ids = parsed["input_ids"]
+            tree_spans = parsed["spans"]
+        elif self.ispause:
             if self.is_qwen3:
                 input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
             input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.transformer_grammar_type)
         else:
             input_ids = self._convert_sequence(input_ids)
-        return {
+        sample = {
             "sent_id" : index,
             "input_ids": torch.LongTensor(input_ids),
         }
+        if tree_spans is not None:
+            sample["tree_spans"] = torch.as_tensor(tree_spans, dtype=torch.long)
+        return sample
 
     def __len__(self):
         return self.length
@@ -2434,6 +2512,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         input_ids = []
         all_attention_bias = []
         all_label_mask = []
+        all_tree_spans = []
         # pad according to max_lengths
         max_len = 0
         for sample in data:
@@ -2448,6 +2527,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
                 attention_bias, label_mask = self.generate_TG_attention_bias(cur_input_id)
             sent_ids.append(sample["sent_id"])
             input_ids.append(cur_input_id)
+
+            if "tree_spans" in sample:
+                all_tree_spans.append(sample["tree_spans"])
 
             if attention_bias is not None:
                 if not isinstance(attention_bias, torch.Tensor):
@@ -2470,6 +2552,24 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             batch["attention_bias"] = torch.stack(all_attention_bias)
         if all_label_mask:
             batch["label_mask"] = torch.stack(all_label_mask)
+        if all_tree_spans:
+            max_spans = max(spans.shape[0] for spans in all_tree_spans)
+            padded_spans = []
+            span_masks = []
+            for spans in all_tree_spans:
+                n_spans = spans.shape[0]
+                padded_spans.append(
+                    F.pad(spans, (0, 0, 0, max_spans - n_spans), value=-1)
+                )
+                span_masks.append(
+                    F.pad(
+                        torch.ones(n_spans, dtype=torch.bool),
+                        (0, max_spans - n_spans),
+                        value=False,
+                    )
+                )
+            batch["tree_spans"] = torch.stack(padded_spans)
+            batch["tree_span_mask"] = torch.stack(span_masks)
         return batch
 
     def token_encode(self, string: str) -> List[int]:

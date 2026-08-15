@@ -820,8 +820,23 @@ class EvaluatorConfig(BaseConfig):
     subset_num_batches: Optional[int] = None
     samples_per_sent: Optional[int] = None
     tree_eval_type: Optional[str] = None
-    # Enable beam-search scoring for this evaluator (else teacher-forcing).
-    # Currently honored only for label=="BLiMP": when True, each sentence is
+    # Explicit structure protocol for syntactic evaluation.
+    #
+    # * ``auto`` preserves the model-specific default (Pushdown uses beam search
+    #   for SG; the legacy BLiMP behavior is selected by ``beam_search``).
+    # * ``terminal`` scores terminal tokens with an ordinary teacher-forced
+    #   causal forward and supplies no parse / stack tape.
+    # * ``gold`` is currently meaningful for Pushdown BLiMP: load each of the
+    #   300 supplied constituency parses, convert it to terminal tokens plus
+    #   terminal-coordinate spans, and marginalize the resulting likelihoods.
+    # * ``beam`` infers Pushdown parses with incremental beam search.
+    #
+    # TreeReg consumes trees only in its training-time auxiliary loss, so its
+    # inference logits are parse-independent; all three modes reduce exactly to
+    # terminal scoring for a TreeReg checkpoint.
+    structure_mode: str = "auto"
+    # Backward-compatible beam-search switch. Prefer ``structure_mode: beam`` in
+    # new configs. When True for BLiMP, each sentence is
     # scored via OLMo.word_sync_beam_search (parse-marginalized log-likelihood)
     # instead of teacher-forced cross-entropy.
     beam_search: bool = False
