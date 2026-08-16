@@ -38,6 +38,8 @@ log = logging.getLogger(__name__)
 # stdout (and includes the global rank for post-hoc parsing).
 XSUM_PREDICTION_LOG_LEVEL = logging.INFO + 1
 logging.addLevelName(XSUM_PREDICTION_LOG_LEVEL, "XSUM_PREDICTION")
+SG_SCORE_LOG_LEVEL = logging.INFO + 2
+logging.addLevelName(SG_SCORE_LOG_LEVEL, "SG_SCORE")
 
 # Map from oe-eval metrics to metrics used here
 METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond": "pmi_dc"}
@@ -1813,7 +1815,14 @@ class SyntacticGeneralizationMetric(Metric):
         '''
         input: task, condition probability variables, then eval with formula
         '''
-        log.info(f"task is {task} score is {score_dict}")
+        # Default logging suppresses INFO records from nonzero ranks. Use a
+        # dedicated level above INFO so every rank's disjoint SG task subset
+        # is visible without enabling all-rank noise. It must differ from the
+        # XSum level because Python logging assigns one name per numeric level.
+        log.log(
+            SG_SCORE_LOG_LEVEL,
+            f"[global_rank={get_global_rank()}] task is {task} score is {score_dict}",
+        )
         formula = formula_dict[task][0]
         keys = re.findall(r"%([\w|-]+)%", formula)
         keys = set(keys)

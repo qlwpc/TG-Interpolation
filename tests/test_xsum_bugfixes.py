@@ -6,6 +6,8 @@ import torch
 
 from olmo.eval.downstream import (
     RougeMetric,
+    SG_SCORE_LOG_LEVEL,
+    SyntacticGeneralizationMetric,
     XSUM_PREDICTION_LOG_LEVEL,
     XsumDataset,
 )
@@ -81,6 +83,27 @@ def test_rouge_metric_keeps_gather_state_on_cpu_and_logs_every_rank():
     level, message = log_call.call_args.args
     assert level == XSUM_PREDICTION_LOG_LEVEL
     assert "[global_rank=3] <New Passage>:" in message
+
+
+def test_sg_metric_logs_each_rank_with_rank_tag():
+    metric = SyntacticGeneralizationMetric()
+    scores = {
+        "sub_no-matrix": 2.0,
+        "no-sub_no-matrix": 1.0,
+        "sub_matrix": 1.0,
+        "no-sub_matrix": 2.0,
+    }
+
+    with patch("olmo.eval.downstream.get_global_rank", return_value=2), patch(
+        "olmo.eval.downstream.log.log"
+    ) as log_call:
+        metric.update("subordination", scores)
+
+    assert SG_SCORE_LOG_LEVEL > 20
+    assert SG_SCORE_LOG_LEVEL != XSUM_PREDICTION_LOG_LEVEL
+    level, message = log_call.call_args.args
+    assert level == SG_SCORE_LOG_LEVEL
+    assert "[global_rank=2] task is subordination" in message
 
 
 def test_generated_xsum_config_preserves_eval_batch_size_one(tmp_path):
