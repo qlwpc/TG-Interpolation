@@ -550,6 +550,7 @@ class Checkpointer(metaclass=ABCMeta):
         *,
         local_cache: Optional[PathOrStr] = None,
         load_optimizer_state: bool = True,
+        load_trainer_state: bool = True,
     ) -> Dict[str, Any]:
         """
         Restores a checkpoint to the model and optimizer. Returns the remaining trainer state.
@@ -817,12 +818,17 @@ class FullCheckpointer(Checkpointer):
                 "`FullCheckpointer.restore_checkpoint` only supported for FSDP and DDP distributed strategies!"
             )
 
-        # Load other state.
-        try:
-            trainer_state = load_state_dict(load_path, "train.pt", local_cache=local_cache)
-        except FileNotFoundError:
-            # for backwards compatibility
-            trainer_state = load_state_dict(load_path, "other.pt", local_cache=local_cache)
+        # Evaluation and transfer-learning runs commonly reset trainer state and
+        # intentionally keep model-only checkpoints. Do not require train.pt in
+        # that case. The caller will ignore this empty state dictionary.
+        if load_trainer_state:
+            try:
+                trainer_state = load_state_dict(load_path, "train.pt", local_cache=local_cache)
+            except FileNotFoundError:
+                # for backwards compatibility
+                trainer_state = load_state_dict(load_path, "other.pt", local_cache=local_cache)
+        else:
+            trainer_state = {}
         barrier()
         return trainer_state
 
