@@ -12,8 +12,10 @@ The fix (Part A of the beam-search BLiMP plan): every metric sets
 the top of ``compute()``:
   - tensor-scatter metrics (BLiMPMetric, TGPerplexityDocumentLevelMetric):
     ``_all_reduce_tensor`` (SUM over disjoint sent_id slots).
-  - list-append metrics (ICLMetric, SyntacticGeneralizationMetric, ...):
-    ``_gather_list`` (all_gather_object + concat).
+  - general list-append metrics (ICLMetric, ...): ``_gather_list``
+    (all_gather_object + concat).
+  - SG: one fixed-size all-reduce over per-suite correct/sample counts, so CUDA
+    tensors from different source devices are never object-gathered together.
 
 This test runs two gloo processes (world_size=2) on CPU, gives rank 0 and rank 1
 *unequal* update counts (3 vs 2), and asserts ``compute()`` returns promptly
@@ -38,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from olmo.eval.downstream import (  # noqa: E402
     BLiMPMetric,
     ICLMetric,
+    SyntacticGeneralizationMetric,
     _all_reduce_tensor,
     _gather_list,
     BLiMP_TASK_LIST,
@@ -117,7 +120,34 @@ def _worker(rank: int, world_size: int, out_dir: str):
     # After _gather_list in compute(), every rank sees the full 5-item list.
     results["icl_total_items"] = len(icl.loglikelihoods)
 
-    # --- (3) TGPerplexityDocumentLevelMetric: global sent_id scatter ---
+    # --- (3) SG metric: fixed-size correct/count reduction ---
+    # Both ranks contribute to the same suite with unequal update counts. Rank
+    # 0 contributes three correct results and rank 1 contributes two incorrect
+    # results, so the global Gross_Syntactic_Expectation accuracy is 3/5.
+    sg = SyntacticGeneralizationMetric()
+    sg.to(torch.device("cpu"))
+    correct_scores = {
+        "sub_no-matrix": 2.0,
+        "no-sub_no-matrix": 1.0,
+        "sub_matrix": 1.0,
+        "no-sub_matrix": 2.0,
+    }
+    incorrect_scores = {
+        "sub_no-matrix": 1.0,
+        "no-sub_no-matrix": 2.0,
+        "sub_matrix": 2.0,
+        "no-sub_matrix": 1.0,
+    }
+    for _ in range(my_n):
+        sg.update("subordination", correct_scores if rank == 0 else incorrect_scores)
+    sg_result = sg.compute()
+    results["sg_gross_accuracy"] = sg_result["Gross_Syntactic_Expectation"]
+    results["sg_avg_accuracy"] = sg_result["avg"]
+    # compute() must leave the rank-local tensor list untouched; gathering it
+    # would reintroduce mixed cuda:N devices under NCCL.
+    results["sg_state_stays_local"] = len(sg.Gross_Syntactic_Expectation) == my_n
+
+    # --- (4) TGPerplexityDocumentLevelMetric: global sent_id scatter ---
     # Multi-rank docppl: each rank processes whole documents, so its sent_ids
     # index DISTINCT rows of the [n_sent, SENT_SIZE] tensor. update() scatters by
     # batch["sent_id"] (1-based -> row = sid//SENT_SIZE - 1); compute() SUM
@@ -153,7 +183,7 @@ def _worker(rank: int, world_size: int, out_dir: str):
     # so use row3 col0 (indices 900..1199, owned by nobody).
     results["docppl_unwritten_zero"] = float(doc_metric.loglikelihoods[3, 0].item()) == 0.0
 
-    # --- (4) helper unit checks ---
+    # --- (5) helper unit checks ---
     t = torch.arange(4, dtype=torch.float32) * (rank + 1)
     t_red = _all_reduce_tensor(t)
     # rank0 = [0,1,2,3], rank1 = [0,2,4,6] -> SUM = [0,3,6,9]
@@ -216,6 +246,9 @@ def main():
         ok = ok and r.get("blimp_slot0_ok")
         ok = ok and r.get("blimp_slot3_ok")
         ok = ok and r.get("icl_finite")
+        ok = ok and abs(r.get("sg_gross_accuracy", -1.0) - 0.6) < 1e-8
+        ok = ok and abs(r.get("sg_avg_accuracy", -1.0) - 0.1) < 1e-8
+        ok = ok and r.get("sg_state_stays_local")
         ok = ok and r.get("all_reduce_sum_ok")
         ok = ok and r.get("gather_count") == 4
         ok = ok and r.get("gather_has_both")

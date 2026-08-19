@@ -28,7 +28,8 @@ import torch
 from olmo.data.parse_align import (
     TreeVocab,
     binarize_tree,
-    parse_tree_block,
+    collapse_unary_tree,
+    parse_block_segments,
     tree_spans,
 )
 
@@ -48,7 +49,10 @@ def tree_to_merge_orders(tree, direction: str = "right") -> Tuple[List[int], Lis
     time is ``split`` (0-based, between leaves ``split`` and ``split+1``).
     Emitted post-order (children before parents) so merges happen bottom-up.
     """
-    bin_tree = binarize_tree(tree, direction=direction)
+    # The released GPST preprocessing collapses unary chains before
+    # binarization.  Leaving unary nodes in place creates more internal nodes
+    # than gaps and therefore cannot be represented by an L-1 merge trajectory.
+    bin_tree = binarize_tree(collapse_unary_tree(tree), direction=direction)
     leaves, spans = tree_spans(bin_tree)
     # spans are already post-order (tree_spans emits children before parents).
     merge_orders = [split for (_l, split, _r) in spans if _l != _r]
@@ -68,10 +72,9 @@ class GoldTreeDataset(torch.utils.data.Dataset):
     Each ``__getitem__`` returns ``{"text": np.ndarray(leaves),
     "sentence_splits": [...], "merge_orders": np.ndarray}``.
 
-    The tree-stream corpus packs sentences separated by BOS/EOS; each
-    ``[BOS ... EOS]`` block is one sample. ``text`` is the block's terminal
-    leaves; ``sentence_splits`` marks the end of each sentence within the block
-    (one sentence per block here, so ``sentence_splits == [len(leaves)]``).
+    The tree-stream corpus packs whole documents between BOS/EOS and may contain
+    many top-level trees.  Each top-level tree is indexed as one supervised
+    sample; ``sentence_splits == [len(leaves)]``.
     """
 
     def __init__(self, tree_npy: str, tokenizer_path: str,
@@ -81,47 +84,60 @@ class GoldTreeDataset(torch.utils.data.Dataset):
         self.vocab = _build_tree_vocab(tokenizer_path)
         self.max_seq_len = max_seq_len
         self.direction = direction
-        self._block_index = self._index_blocks()
-        self.num_samples = num_samples or len(self._block_index)
+        self._tree_index = self._index_trees()
+        self.num_samples = min(num_samples, len(self._tree_index)) \
+            if num_samples is not None else len(self._tree_index)
 
-    def _index_blocks(self) -> List[Tuple[int, int]]:
-        """Find (start, end) of each [BOS ... EOS] block in the tree stream."""
-        bos = self.vocab.bos
-        eos = self.vocab.eos
+    def _index_trees(self) -> List[Tuple[int, int]]:
+        """Find every complete top-level parse tree in the stream.
+
+        A BOS/EOS block is a document and normally contains many top-level
+        sentence trees.  The old implementation indexed documents and then
+        accidentally returned the prefix before the first tree (usually BOS).
+        Supervised GPST examples are sentence trees, so index roots directly.
+        """
         arr = self.tree_arr
-        blocks = []
+        trees: List[Tuple[int, int]] = []
         i = 0
         n = len(arr)
         while i < n:
-            if int(arr[i]) == bos:
+            if self.vocab.is_opening(int(arr[i])):
                 start = i
+                depth = 1
                 j = i + 1
-                while j < n and int(arr[j]) != eos:
+                while j < n and depth:
+                    tok = int(arr[j])
+                    if self.vocab.is_opening(tok):
+                        depth += 1
+                    elif self.vocab.is_closing(tok):
+                        depth -= 1
                     j += 1
-                end = j
-                blocks.append((start, end + 1))
-                i = end + 1
+                if depth == 0:
+                    trees.append((start, j))
+                i = j
             else:
                 i += 1
-        return blocks
+        return trees
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        idx = idx % len(self._block_index)
-        start, end = self._block_index[idx]
+        idx = idx % len(self._tree_index)
+        start, end = self._tree_index[idx]
         block = self.tree_arr[start:end].astype(np.int64).tolist()
-        leaves_ids, tree, _ = parse_tree_block(block, self.vocab)
-        if tree is None or len(leaves_ids) < 2:
-            leaves_ids = leaves_ids or [0]
-            merge_orders = [0]
-            leaves_ids = leaves_ids + leaves_ids[:1]
-        else:
-            _, merge_orders = tree_to_merge_orders(tree, direction=self.direction)
+        segments = parse_block_segments(block, self.vocab)
+        trees = [data for kind, data in segments if kind == "tree"]
+        if len(trees) != 1:
+            raise ValueError(f"expected one tree at [{start}:{end}], found {len(trees)}")
+        leaves_ids, merge_orders = tree_to_merge_orders(trees[0], direction=self.direction)
+        if not leaves_ids:
+            raise ValueError(f"gold tree at [{start}:{end}] has no terminal leaves")
         if len(leaves_ids) > self.max_seq_len:
-            leaves_ids = leaves_ids[:self.max_seq_len]
-            merge_orders = merge_orders[:self.max_seq_len - 1]
+            raise ValueError(
+                f"gold tree has {len(leaves_ids)} leaves, exceeding max_seq_len="
+                f"{self.max_seq_len}; truncating would invalidate its parse"
+            )
         return {
             "text": np.array(leaves_ids, dtype=np.int32),
             "sentence_splits": [len(leaves_ids)],
@@ -138,15 +154,73 @@ class GoldTreeCollator:
         self._base = DefaultCollator(enable_group=True, external_vocab_path=external_vocab_path)
 
     def __call__(self, input_list):
-        merge_orders = [item["merge_orders"] for item in input_list]
+        # In the ungrouped case TableManager consumes one local row per segment.
+        # In the grouped case its C++ API instead consumes one GLOBAL gap
+        # permutation per item and maps those gaps back to the flattened
+        # segments.  Supplying segment rows in grouped mode causes an unchecked
+        # C++ out-of-bounds read, so construct and validate that representation
+        # here.
+        item_orders_list = []
+        segment_counts = []
+        for item in input_list:
+            item_orders = item["merge_orders"]
+            if isinstance(item_orders, np.ndarray) and item_orders.ndim == 1:
+                item_orders = [item_orders]
+            expected_segments = 0
+            previous = 0
+            for split in list(item["sentence_splits"]) + [len(item["text"])]:
+                if split > previous:
+                    expected_segments += 1
+                    previous = split
+            if len(item_orders) != expected_segments:
+                raise ValueError(
+                    f"got {len(item_orders)} merge-order rows for "
+                    f"{expected_segments} non-empty segments"
+                )
+            item_orders_list.append(item_orders)
+            segment_counts.append(expected_segments)
         # strip merge_orders before delegating (base collator ignores unknown keys)
-        base_items = [{"text": item["text"], "sentence_splits": item["sentence_splits"]}
+        # Copy sentence_splits because DefaultCollator appends the final length.
+        base_items = [{"text": item["text"], "sentence_splits": list(item["sentence_splits"])}
                       for item in input_list]
         batch = self._base.generative_r2d2_collate_fn_ext(base_items)
-        max_len = max(len(mo) for mo in merge_orders)
-        N = len(merge_orders)
-        padded = np.full((N, max_len), -1, dtype=np.int64)
-        for i, mo in enumerate(merge_orders):
-            padded[i, :len(mo)] = mo
+        grouped = any(count > 1 for count in segment_counts)
+        if grouped:
+            text_lengths = [len(item["text"]) for item in input_list]
+            if len(set(text_lengths)) != 1:
+                raise ValueError(
+                    "grouped gold-tree batches require equal total token lengths; "
+                    "batch candidates from one sentence together"
+                )
+            width = text_lengths[0] - 1
+            padded = np.empty((len(input_list), width), dtype=np.int64)
+            for item_idx, (item, segment_orders) in enumerate(zip(input_list, item_orders_list)):
+                global_orders = []
+                boundaries = []
+                offset = 0
+                splits = list(item["sentence_splits"])
+                if not splits or splits[-1] != len(item["text"]):
+                    splits.append(len(item["text"]))
+                for segment_idx, (end, local_orders) in enumerate(zip(splits, segment_orders)):
+                    segment_len = end - offset
+                    if len(local_orders) != max(segment_len - 1, 0):
+                        raise ValueError(
+                            f"segment length {segment_len} requires {segment_len - 1} merges, "
+                            f"got {len(local_orders)}"
+                        )
+                    global_orders.extend(offset + int(order) for order in local_orders)
+                    if segment_idx + 1 < len(splits):
+                        boundaries.append(end - 1)
+                    offset = end
+                global_orders.extend(boundaries)
+                if sorted(global_orders) != list(range(width)):
+                    raise ValueError("grouped merge orders are not a global gap permutation")
+                padded[item_idx] = global_orders
+        else:
+            merge_orders = [orders[0] for orders in item_orders_list]
+            max_len = max((len(mo) for mo in merge_orders), default=0)
+            padded = np.full((len(merge_orders), max_len), -1, dtype=np.int64)
+            for i, mo in enumerate(merge_orders):
+                padded[i, :len(mo)] = mo
         batch["merge_orders"] = torch.tensor(padded, dtype=torch.long)
         return batch

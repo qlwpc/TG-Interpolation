@@ -12,6 +12,10 @@ class R2D2GenOutput:
     hidden_states: Optional[torch.FloatTensor] = None,
     cls_hidden_states: Optional[torch.FloatTensor] = None,
     tgt_ids: Optional[torch.LongTensor] = None,
+    # Explicit teacher-forcing targets.  ``tgt_ids`` is retained for backward
+    # compatibility and contains terminal-token targets.
+    token_targets: Optional[torch.LongTensor] = None,
+    action_targets: Optional[torch.LongTensor] = None,
     pred: Optional[torch.FloatTensor] = None,
     splits: Optional[torch.LongTensor] = None,
     gpt_loss: Optional[torch.FloatTensor] = None,

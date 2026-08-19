@@ -309,14 +309,21 @@ class InsideOutsideModule(R2D2Base):
                 external_vocab_ids=None,
                 coeff=1.0,
                 temperature=1.0,
-                merge_orders=None):
+                merge_orders=None,
+                force_gold_tree=False):
         # Supervised mode: when gold merge_orders are supplied, use them as the
         # induction (split_indices) instead of the parser's prediction. The
         # parser still runs to produce split_scores for the supervised parser
         # NLL (L_p); its predictions are simply not used to induce the tree.
-        predicted_orders, split_scores = self.parser(
-            chunk_input_ids, chunk_masks, atom_spans=atom_spans, noise_coeff=coeff
-        )
+        if force_gold_tree and merge_orders is not None and not self.training:
+            # The parser distribution is not part of p(x, y_gold), and its
+            # output is unused by strict eval.  Avoid an unnecessary parser pass
+            # over every one of the 300 prescribed candidates.
+            predicted_orders = split_scores = None
+        else:
+            predicted_orders, split_scores = self.parser(
+                chunk_input_ids, chunk_masks, atom_spans=atom_spans, noise_coeff=coeff
+            )
         split_indices = predicted_orders if merge_orders is None else merge_orders
         split_indices = split_indices.to('cpu', non_blocking=True)
 
@@ -340,7 +347,15 @@ class InsideOutsideModule(R2D2Base):
         inside_cache = self.create_tensor_cache(seq_lens_np)
         inside_cache.scatter(input_cache_ids, [self.e_ij_id], [flatten_r2d2_emb])
 
-        tables = CPPChartTableManager(seq_lens_np, self.window_size, split_indices.data.numpy(),
+        # With a gold merge trajectory, a wider pruning window still leaves
+        # alternative splits in the chart.  ``prepare_generation`` then chooses
+        # the composition-score-best alternative, so merely passing
+        # ``merge_orders`` does not actually teacher-force the prescribed tree.
+        # A window of one leaves exactly the trajectory's split at each step.
+        # Keep the training/default behaviour unless strict gold scoring is
+        # explicitly requested by the evaluator.
+        chart_window_size = 1 if force_gold_tree and merge_orders is not None else self.window_size
+        tables = CPPChartTableManager(seq_lens_np, chart_window_size, split_indices.data.numpy(),
                                       inside_cache.placeholder_num, inside_cache.detach_offset, group_ids=group_ids,
                                       span_ids=span_ids)
         target_cache_ids, span_ids, cache_ids, detach_cache_ids = \

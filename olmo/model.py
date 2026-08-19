@@ -1686,6 +1686,8 @@ class OLMo(nn.Module):
         tree_spans: Optional[torch.Tensor] = None,
         pushdown_sentence_ids: Optional[torch.Tensor] = None,
         compute_attachment_logits: bool = False,
+        logits_range: Optional[Tuple[int, int]] = None,
+        attachment_query_range: Optional[Tuple[int, int]] = None,
     ) -> OLMoOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -2016,6 +2018,7 @@ class OLMo(nn.Module):
                 root_token_id=self.config.bos_token_id,
                 eos_token_id=self.config.eos_token_id,
                 sentence_ids=pushdown_sentence_ids,
+                query_range=attachment_query_range,
             )
             if _profile_attachment:
                 _attachment_end.record()
@@ -2035,6 +2038,12 @@ class OLMo(nn.Module):
         if last_logits_only:
             # shape: (batch_size, 1, d_model)
             x = x[:, -1, :].unsqueeze(1)
+
+        if logits_range is not None:
+            start, end = map(int, logits_range)
+            if not 0 <= start <= end <= x.shape[1]:
+                raise ValueError(f"invalid logits_range={logits_range} for length {x.shape[1]}")
+            x = x[:, start:end]
 
         # Apply final layer norm.
         # shape: (batch_size, seq_len or 1, d_model)
@@ -2491,7 +2500,14 @@ class OLMo(nn.Module):
             # Load state dict directly to target device.
             state_dict_path = resource_path(checkpoint_dir, "model.pt")
             state_dict = torch.load(state_dict_path, map_location="cpu")
-            model.load_state_dict(model._make_state_dict_compatible(state_dict)[0])
+            load_result = model.load_state_dict(model._make_state_dict_compatible(state_dict)[0])
+            # Keep backward-compatible loading for older checkpoints, but expose
+            # the fact that their train-only attachment head was absent so formal
+            # joint-PPL callers can reject random initialization.
+            model._pushdown_attachment_weights_loaded = not any(
+                key.startswith("pushdown_attachment_head.")
+                for key in load_result.missing_keys
+            )
             model = model.to(torch.device(device))
         else:
             train_config = TrainConfig.load(config_path)

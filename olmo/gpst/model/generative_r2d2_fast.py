@@ -5,9 +5,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from olmo.gpst.utils.model_loader import load_model
-from datetime import datetime
 from olmo.gpst.model.modeling_outputs import R2D2GenOutput
-from concurrent.futures import ThreadPoolExecutor
 
 
 class FastGenerativeR2D2(nn.Module):
@@ -88,7 +86,8 @@ class FastGenerativeR2D2(nn.Module):
 
     def forward(self, chunk_input_ids= None, chunk_masks=None, input_ids=None, masks=None, eos_labels=None, group_ids=None,
                 atom_spans=None, span_ids=None, external_vocab_ids=None,
-                coeff=1.0, temperature=1.0, past_key_values=None, merge_orders=None):
+                coeff=1.0, temperature=1.0, past_key_values=None, merge_orders=None,
+                force_gold_tree=False, score_token_range=None, score_action_range=None):
         batch_size = max(group_ids) + 1
         r2d2_input_ids = torch.where(chunk_input_ids == -100, 0, chunk_input_ids)
         input_embeddings = self.embeddings(r2d2_input_ids)
@@ -99,7 +98,8 @@ class FastGenerativeR2D2(nn.Module):
         ctx, outside_tgt, ldr_repr, position_ids, tgt_ids, token_indices, ext_ids, split_targets, l_height = \
             self.r2d2(r2d2_input_ids, chunk_masks, input_ids, masks, r2d2_embeddings, group_ids,
                       max_input_len, atom_spans=atom_spans, coeff=coeff, temperature=temperature, span_ids=span_ids,
-                      eos_labels=eos_labels, external_vocab_ids=external_vocab_ids, merge_orders=merge_orders)
+                      eos_labels=eos_labels, external_vocab_ids=external_vocab_ids, merge_orders=merge_orders,
+                      force_gold_tree=force_gold_tree)
 
 
         if self.training:
@@ -115,6 +115,7 @@ class FastGenerativeR2D2(nn.Module):
         gpt_loss = action_loss = 0
         past_kv = None
         hidden_states = None
+        action_tgt = None
 
         if self.enable_gpt:
             if past_key_values is not None:
@@ -133,9 +134,14 @@ class FastGenerativeR2D2(nn.Module):
             # cat_input = self.layer_norm(cat_input)
             # cat_input = self.norm(cat_input)
             outputs = self.action_layers(inputs_embeds=cat_input, position_ids=position_ids, past_key_values=action_past_kv)  # (B, L, dim)
-            action_logits = self.action_mlp(outputs.last_hidden_state)  # (B, L, 2)
             action_tgt = torch.where(tgt_ids == self.r2d2.reduce_id, 1, 0)  # REDUCE: 1, SHIFT:0
             action_tgt = torch.where(tgt_ids != -1, action_tgt, -1)
+            action_hidden = outputs.last_hidden_state
+            if score_action_range is not None:
+                action_start, action_end = score_action_range
+                action_hidden = action_hidden[:, action_start:action_end]
+                action_tgt = action_tgt[:, action_start:action_end]
+            action_logits = self.action_mlp(action_hidden)  # (B, L, 2)
             # print(action_tgt)
 
             next_token_indices = (tgt_ids != self.r2d2.reduce_id).int().argsort(dim=-1, descending=True, stable=True)  # (B, L)
@@ -150,11 +156,16 @@ class FastGenerativeR2D2(nn.Module):
             token_outputs = self.generation_layers(inputs_embeds=token_outputs, past_key_values=gen_past_kv)
 
             hidden_states = token_outputs.last_hidden_state
+            token_targets = chunk_input_ids
+            if score_token_range is not None:
+                token_start, token_end = score_token_range
+                hidden_states = hidden_states[:, token_start:token_end]
+                token_targets = token_targets[:, token_start:token_end]
             logits = self.classifier(self.dense(hidden_states))  # (group_size, L + 1, vocab)
             # predict token loss + action loss
             # print("chunk_input_ids: ", chunk_input_ids)
             if self.training:
-                gpt_loss = F.cross_entropy(logits.permute(0, 2, 1), chunk_input_ids, ignore_index=-100)
+                gpt_loss = F.cross_entropy(logits.permute(0, 2, 1), token_targets, ignore_index=-100)
                 action_loss = F.cross_entropy(action_logits.permute(0, 2, 1), action_tgt, ignore_index=-1)
             past_kv = (outputs.past_key_values, token_outputs.past_key_values)
 
@@ -166,6 +177,8 @@ class FastGenerativeR2D2(nn.Module):
                              action_logits=action_logits,
                              hidden_states=hidden_states,
                              tgt_ids=chunk_input_ids,
+                             token_targets=token_targets if self.enable_gpt else chunk_input_ids,
+                             action_targets=action_tgt,
                              gpt_loss=gpt_loss,
                              action_loss=action_loss,
                              inside_outside_loss=insideoutside_loss,
@@ -178,7 +191,6 @@ class FastGenerativeR2D2_discriminant_glue(FastGenerativeR2D2):
 
     def _append_eos_label(self, eos_labels, chunk_input_ids, chunk_masks, next_token_indices, max_input_len):
         chunk_masks = (chunk_masks.sum(dim=1) > 0).to(int)
-        seq_lens = chunk_masks.sum(dim=1)  # (N)
         temp_ids = torch.zeros((chunk_input_ids.shape[0], chunk_input_ids.shape[1] + 1), dtype=chunk_input_ids.dtype, device=chunk_input_ids.device)
         temp_ids.fill_(-100)
         temp_ids[:, :-1] = chunk_input_ids

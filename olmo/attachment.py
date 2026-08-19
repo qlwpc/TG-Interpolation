@@ -23,7 +23,7 @@ This module is pure torch (no flex/CUDA), so it tests on CPU.
 from __future__ import annotations
 
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -121,6 +121,7 @@ class PushdownAttachmentHead(nn.Module):
         root_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
         sentence_ids: Optional[torch.Tensor] = None,
+        query_range: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         # The surrounding trainer runs under AMP. Bilinear scores and the
         # separately constructed diagonal must use one stable dtype; otherwise
@@ -137,6 +138,7 @@ class PushdownAttachmentHead(nn.Module):
                 root_token_id,
                 eos_token_id,
                 sentence_ids,
+                query_range,
             )
 
     def _forward_fp32(
@@ -148,6 +150,7 @@ class PushdownAttachmentHead(nn.Module):
         root_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
         sentence_ids: Optional[torch.Tensor] = None,
+        query_range: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         """Compute attachment logits ``p(r_k = j | x_<k)`` (unnormalized).
 
@@ -175,13 +178,19 @@ class PushdownAttachmentHead(nn.Module):
             ``j == k`` is the shift-only self-score and is kept finite.
         """
         B, n, d = final_hidden.shape
+        if query_range is None:
+            query_start, query_end = 0, n
+        else:
+            query_start, query_end = map(int, query_range)
+            if not 0 <= query_start <= query_end <= n:
+                raise ValueError(f"invalid attachment query_range={query_range} for length {n}")
         h = final_hidden.float()                                   # (B,n,d) keys h_j^L
         emb = F.embedding(input_ids, wte_weight).float()          # (B,n,d) emb(x_k)
         # h_{k-1}^L: shift h right by one along time; position 0 gets a zero vector
         # (no "previous" hidden state for the first token).
         h_prev = F.pad(h[:, :-1, :], (0, 0, 1, 0))                # (B,n,d)
         h_tilde = self.mlp(torch.cat([emb, h_prev], dim=-1))      # (B,n,d) query
-        Wh_tilde = self.W(h_tilde)                                # (B,n,d)
+        Wh_tilde = self.W(h_tilde[:, query_start:query_end])      # (B,q,d)
         # logits[b,k,j] = (W h̃_k) · h_j  ==  (h_j)^T W h̃_k  (Eq. 5, j != k branch).
         logits = torch.bmm(Wh_tilde, h.transpose(1, 2))           # (B,n,n)
         # Eq. 5 has a distinct shift-only branch on the diagonal:
@@ -189,17 +198,17 @@ class PushdownAttachmentHead(nn.Module):
         # not h_k^T W h̃_k.  Compute it separately and scatter it over the
         # reduce-key matrix, matching the reference implementation's
         # ``next_word_key``/``logit_self`` insertion.
-        self_logits = (Wh_tilde * h_tilde).sum(dim=-1)            # (B,n)
-        diag = torch.arange(n, device=logits.device)
-        logits[:, diag, diag] = self_logits
+        query_tilde = h_tilde[:, query_start:query_end]
+        self_logits = (Wh_tilde * query_tilde).sum(dim=-1)        # (B,q)
+        row = torch.arange(query_end - query_start, device=logits.device)
+        col = torch.arange(query_start, query_end, device=logits.device)
+        logits[:, row, col] = self_logits
         # Causal mask: query k can only attend to keys j <= k. The diagonal is
         # KEPT (it is the shift-only self-score (h̃_k)^T W h̃_k, which the paper
         # folds into the same softmax). Strict upper triangle -> -inf.
-        causal = torch.triu(
-            torch.full((n, n), float("-inf"), device=logits.device, dtype=logits.dtype),
-            diagonal=1,
-        )
-        logits = logits + causal
+        key_positions = torch.arange(n, device=logits.device)
+        query_positions = torch.arange(query_start, query_end, device=logits.device)
+        logits = logits.masked_fill(key_positions[None, None, :] > query_positions[None, :, None], float("-inf"))
         # Pad mask: invalid key positions (j) must never be a reduce target.
         if attention_mask is not None:
             am = attention_mask.to(torch.bool).view(B, 1, n)
@@ -214,8 +223,9 @@ class PushdownAttachmentHead(nn.Module):
                     f"{tuple(sentence_ids.shape)} vs {tuple(input_ids.shape)}"
                 )
             sid = sentence_ids.to(device=input_ids.device)
-            same_sentence = sid[:, :, None] == sid[:, None, :]
-            same_sentence &= (sid[:, :, None] >= 0) & (sid[:, None, :] >= 0)
+            query_sid = sid[:, query_start:query_end]
+            same_sentence = query_sid[:, :, None] == sid[:, None, :]
+            same_sentence &= (query_sid[:, :, None] >= 0) & (sid[:, None, :] >= 0)
             logits = logits.masked_fill(~same_sentence, float("-inf"))
         elif root_token_id is not None:
             boundary = input_ids == int(root_token_id)
@@ -231,9 +241,78 @@ class PushdownAttachmentHead(nn.Module):
             else:
                 is_root = boundary
             sentence_id = torch.cumsum(is_root.to(torch.long), dim=1)
-            same_sentence = sentence_id[:, :, None] == sentence_id[:, None, :]
+            same_sentence = sentence_id[:, query_start:query_end, None] == sentence_id[:, None, :]
             logits = logits.masked_fill(~same_sentence, float("-inf"))
         return logits
+
+
+def derive_gold_attachment_actions(
+    spans: torch.Tensor,
+    sentence_ids: torch.Tensor,
+    span_mask: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, List[List[List[int]]]]:
+    """Derive gold attachment targets and the stack-legal action sets.
+
+    This deliberately uses the literal stack transition used by Pushdown beam
+    inference.  A query may choose shift-only (its own index) or attach to any
+    currently open constituent, enumerated from stack top downward.  Positions
+    outside a parsed tree receive target ``-1`` and an empty legal set.
+    """
+    if spans.ndim == 2:
+        spans = spans.unsqueeze(0)
+    if sentence_ids.ndim == 1:
+        sentence_ids = sentence_ids.unsqueeze(0)
+    if spans.shape[0] != sentence_ids.shape[0]:
+        raise ValueError("spans and sentence_ids must have the same batch size")
+    B, n = sentence_ids.shape
+    if span_mask is None:
+        span_mask = spans[..., 0] >= 0
+    targets = torch.full((B, n), -1, dtype=torch.long, device=sentence_ids.device)
+    all_legal: List[List[List[int]]] = []
+    spans_cpu = spans.detach().to(device="cpu", dtype=torch.long)
+    mask_cpu = span_mask.detach().to(device="cpu", dtype=torch.bool)
+    sid_cpu = sentence_ids.detach().to(device="cpu", dtype=torch.long)
+    for b in range(B):
+        closes: dict[Tuple[int, int], List[int]] = {}
+        for row in range(spans.shape[1]):
+            if not bool(mask_cpu[b, row]):
+                continue
+            left, _, right = map(int, spans_cpu[b, row].tolist())
+            if 0 <= left <= right < n and int(sid_cpu[b, left]) >= 0 and int(sid_cpu[b, left]) == int(sid_cpu[b, right]):
+                closes.setdefault((int(sid_cpu[b, right]), right), []).append(left)
+        legal_row: List[List[int]] = []
+        stack: List[Tuple[int, int]] = []
+        active_sid = -1
+        for k in range(n):
+            sid = int(sid_cpu[b, k])
+            if sid < 0:
+                stack = []
+                active_sid = -1
+                legal_row.append([])
+                continue
+            if sid != active_sid:
+                stack = []
+                active_sid = sid
+            legal = [k] + [right for _, right in reversed(stack)]
+            legal_row.append(legal)
+            stack.append((k, k))
+            closing = closes.get((sid, k), [])
+            if not closing:
+                targets[b, k] = k
+                continue
+            outer_left = min(closing)
+            while stack and stack[-1][0] != outer_left:
+                stack.pop()
+            if not stack:
+                raise ValueError(f"malformed gold spans: no stack item begins at {outer_left} for query {k}")
+            target = stack[-1][1]
+            if target not in legal:
+                raise ValueError(f"gold attachment target {target} is not legal at query {k}")
+            targets[b, k] = target
+            stack.pop()
+            stack.append((outer_left, k))
+        all_legal.append(legal_row)
+    return targets, all_legal
 
 
 def _derive_oracle_reduce_targets_reference(

@@ -1,0 +1,106 @@
+"""Gold-tree document-PPL regression tests (no beam search)."""
+
+from __future__ import annotations
+
+import os
+
+import numpy as np
+import pytest
+import torch
+
+import olmo.gpst  # noqa: F401
+from olmo.gpst.eval.document_ppl import (
+    GoldTree300Corpus,
+    _candidate_signature,
+    aggregate_candidate_nll,
+)
+from olmo.gpst.reader.dataset_gold import GoldTreeCollator, tree_to_merge_orders
+
+
+def test_unary_chains_are_collapsed_before_merge_conversion():
+    tree = ("S", [("A", [("B", [10])]), ("C", [("D", [20, 30])])])
+    leaves, orders = tree_to_merge_orders(tree)
+    assert leaves == [10, 20, 30]
+    assert len(orders) == len(leaves) - 1
+
+
+def test_collator_flattens_one_merge_row_per_segment():
+    item = {
+        "text": np.array([10, 20, 30, 40, 50], dtype=np.int32),
+        "sentence_splits": [3, 5],
+        "merge_orders": [
+            np.array([0, 1], dtype=np.int32),
+            np.array([0], dtype=np.int32),
+        ],
+    }
+    batch = GoldTreeCollator()([item])
+    assert batch["merge_orders"].shape == (1, 4)
+    # local gaps 0,1 and 3, followed by the ignored inter-segment boundary 2
+    assert batch["merge_orders"].tolist() == [[0, 1, 3, 2]]
+    # The collator must not mutate reusable dataset records.
+    assert item["sentence_splits"] == [3, 5]
+
+
+def test_candidate_aggregation_matches_olmo_legacy_and_uniform_mixture():
+    nll = torch.zeros(300, dtype=torch.float64)
+    assert aggregate_candidate_nll(nll, normalize_mixture=False) == pytest.approx(
+        np.log(300)
+    )
+    assert aggregate_candidate_nll(nll, normalize_mixture=True) == pytest.approx(0.0)
+
+
+def test_force_gold_tree_emits_prescribed_action_sequences():
+    from olmo.gpst.model.model_factory import create_model
+
+    model = create_model(
+        "r2d2-gen-fast",
+        "olmo/gpst/data/en_config/r2d2_256_4_1.json",
+        "olmo/gpst/data/gpt2-small/config.json",
+        backbone="olmo",
+    ).eval()
+    items = [
+        {
+            "text": np.array([10, 20, 30, 40], dtype=np.int32),
+            "sentence_splits": [4],
+            "merge_orders": [np.array([0, 1, 2], dtype=np.int32)],
+        },
+        {
+            "text": np.array([10, 20, 30, 40], dtype=np.int32),
+            "sentence_splits": [4],
+            "merge_orders": [np.array([2, 1, 0], dtype=np.int32)],
+        },
+    ]
+    batch = GoldTreeCollator()(items)
+    with torch.no_grad():
+        output = model(
+            **batch,
+            force_gold_tree=True,
+            score_token_range=(0, 4),
+            score_action_range=(0, 7),
+        )
+    # SHIFT=0, REDUCE=1.  These are the exact post-order traversals of the
+    # left- and right-recursive prescribed trees, respectively.
+    assert output.action_targets.tolist() == [
+        [0, 0, 1, 0, 1, 0, 1],
+        [0, 0, 0, 0, 1, 1, 1],
+    ]
+    assert output.logits.shape[:2] == output.token_targets.shape == (2, 4)
+    assert output.action_logits.shape[:2] == output.action_targets.shape == (2, 7)
+
+
+def test_real_tree300_first_sentence_all_candidates_convert():
+    paths = (
+        "dataset/testppl_tree/tree_300.npy",
+        "dataset/testppl_tree/tree_sent_index.npy",
+        "dataset/testppl_tree/tree_doc_index.npy",
+        "dataset/bbc-news/TG_GPT2_tokenizer.json",
+    )
+    if not all(os.path.exists(path) for path in paths):
+        pytest.skip("tree_300 evaluation corpus not present")
+    corpus = GoldTree300Corpus(*paths, max_sentences=1)
+    candidates = corpus.sentence_candidates(0)
+    assert len(candidates) == 300
+    assert all(sum(len(seg.tokens) for seg in candidate) == 11 for candidate in candidates)
+    # Labels and unary chains disappear in GPST's unlabeled binary y; the 300
+    # serialized parses map to five distinct merge trajectories in this record.
+    assert len({_candidate_signature(candidate) for candidate in candidates}) == 5

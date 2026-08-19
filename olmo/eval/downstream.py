@@ -61,7 +61,8 @@ def _all_reduce_tensor(t: torch.Tensor) -> torch.Tensor:
     slots by ``sent_id``/position (``BLiMPMetric``, ``TGPerplexityDocumentLevelMetric``).
     Each rank writes only its own partition; unwritten slots stay 0, so a SUM
     all-reduce reconstructs the global tensor regardless of how many ``update()``
-    calls each rank made.
+    calls each rank made. It is also used for fixed-size additive sufficient
+    statistics, such as SG's per-suite correct and sample counts.
 
     This is the count-insensitive replacement for torchmetrics'
     ``sync_on_compute=True`` + ``dist_reduce_fx="sum"``, which deadlocks when
@@ -81,7 +82,7 @@ def _gather_list(lst: list) -> list:
 
     For metrics whose state is a list appended per ``update()`` (``ICLMetric``,
     ``BeamSearchICLMetric``, ``DecomposedICLMetric``, ``RougeMetric``,
-    ``TGPerplexitySentenceLevelMetric``, ``SyntacticGeneralizationMetric``).
+    ``TGPerplexitySentenceLevelMetric``).
 
     List gather is **count-insensitive**: each rank contributes however many
     items it appended, and the concatenation is the global list regardless of
@@ -1321,8 +1322,8 @@ class XsumDataset(metaclass=abc.ABCMeta):
 class RougeMetric(Metric):
     def __init__(self, 
                  metric_type:str = "rouge",
-                 vocab_path:str = None,
-                 tokenizer:Tokenizer = None
+        vocab_path:str = None,
+        tokenizer:Tokenizer = None
         ) -> None:
         # sync_on_compute=False: compute() gathers list state via _gather_list
         # (count-insensitive), avoiding the unequal-count deadlock.
@@ -1795,15 +1796,19 @@ class SyntacticGeneralizationMetric(Metric):
             metric_type="syntactic_generation",
             tree_eval_type="default",
         ) -> None:
-        # sync_on_compute=False: compute() gathers list state via _gather_list
-        # (count-insensitive), avoiding the unequal-count deadlock.
+        # sync_on_compute=False: compute() explicitly all-reduces fixed-size
+        # correct/count statistics, avoiding both unequal-count deadlocks and
+        # object-gathered tensors that retain different CUDA devices.
         super().__init__(sync_on_compute=False)
 
         self.metric_type = metric_type
         self.tree_eval_type = tree_eval_type
         self.map_task_dict = {}
         for key in test_suite_dict:
-            self.add_state(key, default=[], dist_reduce_fx="cat")
+            # Synchronization is performed explicitly in compute() by reducing
+            # fixed-size sufficient statistics. Keeping these as rank-local
+            # lists avoids object-gathering CUDA tensors from different devices.
+            self.add_state(key, default=[], dist_reduce_fx=None)
             for task in test_suite_dict[key]:
                 self.map_task_dict[task] = key
 
@@ -1852,20 +1857,26 @@ class SyntacticGeneralizationMetric(Metric):
         getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
 
     def compute(self) -> Dict[str, float]:
-        # Gather per-rank list state across ranks (count-insensitive). Each
-        # test-suite list is appended per update(); list gather tolerates
-        # unequal per-rank update counts under DistributedEvalSampler.
-        for key in test_suite_dict:
-            setattr(self, key, _gather_list(getattr(self, key)))
+        # Reduce only additive sufficient statistics. all_gather_object would
+        # preserve each serialized CUDA tensor's source device, producing a
+        # mixed-device list (cuda:0, cuda:1, ...) that fails in sum(). A fixed
+        # [num_suites, 2] tensor stays on the current rank's metric device and
+        # also tolerates unequal update counts across ranks.
+        suite_names = list(test_suite_dict)
+        stats = torch.zeros((len(suite_names), 2), dtype=torch.long, device=self.device)
+        for idx, key in enumerate(suite_names):
+            values = getattr(self, key)
+            if values:
+                stats[idx, 0] = torch.stack(values).to(dtype=torch.long).sum()
+                stats[idx, 1] = len(values)
+        stats = _all_reduce_tensor(stats)
+
         acc_dict = {}
         avg_acc = 0.0
-        for key in test_suite_dict:
-            acc = sum(getattr(self, key))
-            if isinstance(acc, torch.Tensor):
-                acc = acc.item()
-            acc_dict[key] = acc
-            if acc_dict[key]>0:
-                acc_dict[key] /= len(getattr(self, key))
+        for idx, key in enumerate(suite_names):
+            correct = int(stats[idx, 0].item())
+            count = int(stats[idx, 1].item())
+            acc_dict[key] = correct / count if count else 0.0
             # nn-nv-rpl is excluded from test_suite_dict (see SGDataset.task_list),
             # so every key here contributes to the average.
             avg_acc += acc_dict[key]
