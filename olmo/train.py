@@ -1314,7 +1314,7 @@ class Trainer:
                     else:
                         term_len = sent["input_ids"].shape[1]
                         nc = max(int(sg_nc_ratio * term_len), 5)
-                        max_len = max(3 * term_len, 10)
+                        max_len = max(6 * term_len, 10)
                         with self._summon_params_ctx():
                             surprisal = self.dist_model.module.word_sync_beam_search(
                                 vocab=evaluator.eval_loader.dataset.vocab,
