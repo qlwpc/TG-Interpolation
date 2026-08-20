@@ -1,0 +1,703 @@
+{
+  "claim_type": "computed",
+  "data_dir": "/home/wangpch/TG-Interpolation/dataset/bbc-news/parse_aligned/train_treereg",
+  "elapsed_seconds": 43.44222545623779,
+  "max_len": 2048,
+  "requested_workers": 16,
+  "sampling": {
+    "design": "stratified_contiguous_blocks",
+    "population_chunks": 4947089,
+    "ranges": [
+      [
+        76814,
+        77127
+      ],
+      [
+        131527,
+        131840
+      ],
+      [
+        172459,
+        172772
+      ],
+      [
+        253926,
+        254239
+      ],
+      [
+        337147,
+        337460
+      ],
+      [
+        420982,
+        421295
+      ],
+      [
+        479883,
+        480196
+      ],
+      [
+        545402,
+        545715
+      ],
+      [
+        619037,
+        619350
+      ],
+      [
+        760534,
+        760847
+      ],
+      [
+        777799,
+        778112
+      ],
+      [
+        851656,
+        851969
+      ],
+      [
+        969152,
+        969465
+      ],
+      [
+        1053170,
+        1053483
+      ],
+      [
+        1107471,
+        1107784
+      ],
+      [
+        1216790,
+        1217103
+      ],
+      [
+        1257055,
+        1257368
+      ],
+      [
+        1327045,
+        1327358
+      ],
+      [
+        1395067,
+        1395380
+      ],
+      [
+        1491685,
+        1491998
+      ],
+      [
+        1547722,
+        1548035
+      ],
+      [
+        1653421,
+        1653734
+      ],
+      [
+        1763961,
+        1764274
+      ],
+      [
+        1818654,
+        1818967
+      ],
+      [
+        1869890,
+        1870203
+      ],
+      [
+        1938994,
+        1939307
+      ],
+      [
+        2053148,
+        2053461
+      ],
+      [
+        2139024,
+        2139337
+      ],
+      [
+        2211624,
+        2211937
+      ],
+      [
+        2269962,
+        2270275
+      ],
+      [
+        2348035,
+        2348348
+      ],
+      [
+        2396565,
+        2396878
+      ],
+      [
+        2491292,
+        2491604
+      ],
+      [
+        2590756,
+        2591068
+      ],
+      [
+        2689586,
+        2689898
+      ],
+      [
+        2740947,
+        2741259
+      ],
+      [
+        2785662,
+        2785974
+      ],
+      [
+        2923090,
+        2923402
+      ],
+      [
+        2996588,
+        2996900
+      ],
+      [
+        3046150,
+        3046462
+      ],
+      [
+        3167701,
+        3168013
+      ],
+      [
+        3216185,
+        3216497
+      ],
+      [
+        3289614,
+        3289926
+      ],
+      [
+        3324459,
+        3324771
+      ],
+      [
+        3409226,
+        3409538
+      ],
+      [
+        3538895,
+        3539207
+      ],
+      [
+        3622135,
+        3622447
+      ],
+      [
+        3644996,
+        3645308
+      ],
+      [
+        3781344,
+        3781656
+      ],
+      [
+        3860543,
+        3860855
+      ],
+      [
+        3911874,
+        3912186
+      ],
+      [
+        3961538,
+        3961850
+      ],
+      [
+        4072290,
+        4072602
+      ],
+      [
+        4097014,
+        4097326
+      ],
+      [
+        4188145,
+        4188457
+      ],
+      [
+        4305686,
+        4305998
+      ],
+      [
+        4392220,
+        4392532
+      ],
+      [
+        4462117,
+        4462429
+      ],
+      [
+        4492946,
+        4493258
+      ],
+      [
+        4572287,
+        4572599
+      ],
+      [
+        4639105,
+        4639417
+      ],
+      [
+        4779773,
+        4780085
+      ],
+      [
+        4840961,
+        4841273
+      ],
+      [
+        4920478,
+        4920790
+      ]
+    ],
+    "sample_blocks": 64,
+    "sample_chunks": 20000,
+    "seed": 6198
+  },
+  "schema_version": 1,
+  "statistics": {
+    "affected_chunks": 7164,
+    "changed_left_right_spans": 0,
+    "changed_spans": 12326,
+    "changed_split_spans": 12326,
+    "chunks": 20000,
+    "corrupted_intended_decisions": 6121,
+    "count_mismatch_chunks": 0,
+    "dropped_intended_decisions": 1017,
+    "examples": [
+      {
+        "chunk": 777800,
+        "new": [
+          1528,
+          1528,
+          1535
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1528,
+          1533,
+          1535
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1549
+      },
+      {
+        "chunk": 777802,
+        "new": [
+          34,
+          34,
+          38
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          34,
+          36,
+          38
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 30
+      },
+      {
+        "chunk": 777804,
+        "new": [
+          787,
+          787,
+          793
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          787,
+          789,
+          793
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 772
+      },
+      {
+        "chunk": 777804,
+        "new": [
+          782,
+          782,
+          793
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          782,
+          789,
+          793
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 777
+      },
+      {
+        "chunk": 777804,
+        "new": [
+          874,
+          874,
+          878
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          874,
+          877,
+          878
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 865
+      },
+      {
+        "chunk": 777804,
+        "new": [
+          1603,
+          1603,
+          1605
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1603,
+          1605,
+          1605
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1604
+      },
+      {
+        "chunk": 777804,
+        "new": [
+          1896,
+          1896,
+          1901
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1896,
+          1899,
+          1901
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1893
+      },
+      {
+        "chunk": 777807,
+        "new": [
+          1672,
+          1672,
+          1679
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1672,
+          1676,
+          1679
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1615
+      },
+      {
+        "chunk": 777810,
+        "new": [
+          1859,
+          1859,
+          1862
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1859,
+          1862,
+          1862
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1798
+      },
+      {
+        "chunk": 777811,
+        "new": [
+          973,
+          973,
+          979
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          973,
+          976,
+          979
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 936
+      },
+      {
+        "chunk": 777811,
+        "new": [
+          971,
+          971,
+          979
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          971,
+          979,
+          979
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 938
+      },
+      {
+        "chunk": 777813,
+        "new": [
+          147,
+          147,
+          150
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          147,
+          149,
+          150
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 133
+      },
+      {
+        "chunk": 777813,
+        "new": [
+          138,
+          138,
+          151
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          138,
+          141,
+          151
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 143
+      },
+      {
+        "chunk": 777813,
+        "new": [
+          337,
+          337,
+          340
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          337,
+          339,
+          340
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 290
+      },
+      {
+        "chunk": 777820,
+        "new": [
+          1302,
+          1302,
+          1322
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1302,
+          1307,
+          1322
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1299
+      },
+      {
+        "chunk": 777820,
+        "new": [
+          1472,
+          1472,
+          1477
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1472,
+          1477,
+          1477
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1460
+      },
+      {
+        "chunk": 777820,
+        "new": [
+          1662,
+          1662,
+          1668
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1662,
+          1667,
+          1668
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1654
+      },
+      {
+        "chunk": 777820,
+        "new": [
+          1754,
+          1754,
+          1766
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1754,
+          1757,
+          1766
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1748
+      },
+      {
+        "chunk": 777821,
+        "new": [
+          119,
+          119,
+          128
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          119,
+          126,
+          128
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 133
+      },
+      {
+        "chunk": 777826,
+        "new": [
+          1057,
+          1057,
+          1060
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1057,
+          1059,
+          1060
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1079
+      }
+    ],
+    "new_tree_reg_decisions": 21428270,
+    "non_singleton_spans": 36127657,
+    "old_only_decisions": 0,
+    "old_tree_reg_decisions": 21427253,
+    "rates": {
+      "affected_chunk_rate": 0.3582,
+      "changed_non_singleton_span_rate": 0.0003411790584703569,
+      "changed_span_rate": 0.0003012650541482751,
+      "corrupted_tree_reg_decision_rate": 0.0002856506848196331,
+      "dropped_intended_decision_rate": 4.746066761339109e-05,
+      "tree_reg_affected_chunk_rate": 0.2196,
+      "wrong_gold_decision_rate": 0.00023819001720624204
+    },
+    "split_shift_abs_sum": 78850,
+    "split_shift_histogram": {
+      "1": 11,
+      "10": 271,
+      "11": 256,
+      "12": 234,
+      "121": 1,
+      "13": 165,
+      "14": 199,
+      "15": 145,
+      "16": 138,
+      "17": 97,
+      "18": 86,
+      "19": 80,
+      "2": 2776,
+      "20": 75,
+      "21": 61,
+      "22": 40,
+      "23": 54,
+      "24": 31,
+      "25": 50,
+      "26": 31,
+      "27": 22,
+      "28": 24,
+      "29": 20,
+      "3": 2371,
+      "30": 21,
+      "31": 15,
+      "32": 18,
+      "33": 16,
+      "34": 11,
+      "35": 2,
+      "36": 9,
+      "37": 6,
+      "38": 11,
+      "39": 4,
+      "4": 1901,
+      "40": 5,
+      "41": 3,
+      "42": 5,
+      "43": 4,
+      "44": 4,
+      "45": 1,
+      "46": 5,
+      "47": 2,
+      "48": 1,
+      "49": 3,
+      "5": 1059,
+      "50": 1,
+      "51": 1,
+      "53": 1,
+      "54": 1,
+      "55": 1,
+      "56": 1,
+      "57": 4,
+      "58": 2,
+      "6": 659,
+      "60": 2,
+      "61": 2,
+      "63": 1,
+      "69": 1,
+      "7": 509,
+      "71": 1,
+      "72": 2,
+      "74": 1,
+      "75": 3,
+      "79": 2,
+      "8": 433,
+      "80": 1,
+      "9": 352,
+      "94": 1
+    },
+    "split_shift_max": 121,
+    "split_shift_min": 1,
+    "split_shift_sum": 78850,
+    "total_spans": 40914138,
+    "tree_reg_affected_chunks": 4392,
+    "wrong_gold_decisions": 5104
+  },
+  "tokenizer": "/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json",
+  "tree": "/home/wangpch/TG-Interpolation/dataset/bbc-news/tree/train.npy",
+  "validation": {
+    "all_changes_are_split_only": true,
+    "left_right_unchanged": true,
+    "span_counts_match": true
+  }
+}

@@ -30,6 +30,13 @@ def test_tree_to_merge_orders_binary():
     assert mo == [0, 1], mo
 
 
+def test_tree_to_merge_orders_repeated_interned_leaf_is_permutation():
+    tree = ("S", [82, ("B", [1, 82])])
+    leaves, mo = tree_to_merge_orders(tree, direction="right")
+    assert leaves == [82, 1, 82]
+    assert sorted(mo) == list(range(len(leaves) - 1))
+
+
 def test_tree_to_merge_orders_nary():
     """An n-ary tree binarizes; merge_orders must have len == leaves-1 and
     reconstruct the same leaf coverage via the merge-trajectory builder."""

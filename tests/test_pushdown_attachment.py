@@ -110,6 +110,15 @@ def test_oracle_all_shift():
     assert oracle.tolist() == [[0, 1, 2]]
 
 
+def test_oracle_targets_ignore_split_coordinate():
+    fixed = torch.tensor([[[1, 1, 4], [0, 0, 4]]], dtype=torch.long)
+    corrupted = torch.tensor([[[1, 3, 4], [0, 4, 4]]], dtype=torch.long)
+    assert torch.equal(
+        derive_oracle_reduce_targets(fixed, 5),
+        derive_oracle_reduce_targets(corrupted, 5),
+    )
+
+
 def test_oracle_singleton_close_preserves_earlier_stack():
     """A preterminal (k,k) is reduced after shifting k and must not clear history."""
     spans, mask = _spans_tensor(

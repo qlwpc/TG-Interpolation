@@ -1,0 +1,724 @@
+{
+  "claim_type": "computed",
+  "data_dir": "/home/wangpch/TG-Interpolation/dataset/bbc-news/parse_aligned/train_treereg",
+  "elapsed_seconds": 43.77485394477844,
+  "max_len": 2048,
+  "requested_workers": 16,
+  "sampling": {
+    "design": "stratified_contiguous_blocks",
+    "population_chunks": 4947089,
+    "ranges": [
+      [
+        68966,
+        69279
+      ],
+      [
+        102913,
+        103226
+      ],
+      [
+        157287,
+        157600
+      ],
+      [
+        239323,
+        239636
+      ],
+      [
+        377274,
+        377587
+      ],
+      [
+        416446,
+        416759
+      ],
+      [
+        518182,
+        518495
+      ],
+      [
+        596440,
+        596753
+      ],
+      [
+        680145,
+        680458
+      ],
+      [
+        703132,
+        703445
+      ],
+      [
+        779224,
+        779537
+      ],
+      [
+        870431,
+        870744
+      ],
+      [
+        956744,
+        957057
+      ],
+      [
+        1058276,
+        1058589
+      ],
+      [
+        1090923,
+        1091236
+      ],
+      [
+        1161926,
+        1162239
+      ],
+      [
+        1274285,
+        1274598
+      ],
+      [
+        1324128,
+        1324441
+      ],
+      [
+        1401763,
+        1402076
+      ],
+      [
+        1475211,
+        1475524
+      ],
+      [
+        1588406,
+        1588719
+      ],
+      [
+        1671208,
+        1671521
+      ],
+      [
+        1729459,
+        1729772
+      ],
+      [
+        1799442,
+        1799755
+      ],
+      [
+        1865567,
+        1865880
+      ],
+      [
+        1978593,
+        1978906
+      ],
+      [
+        2012403,
+        2012716
+      ],
+      [
+        2120139,
+        2120452
+      ],
+      [
+        2226514,
+        2226827
+      ],
+      [
+        2313927,
+        2314240
+      ],
+      [
+        2342321,
+        2342634
+      ],
+      [
+        2414465,
+        2414778
+      ],
+      [
+        2534062,
+        2534374
+      ],
+      [
+        2627592,
+        2627904
+      ],
+      [
+        2685638,
+        2685950
+      ],
+      [
+        2781611,
+        2781923
+      ],
+      [
+        2839771,
+        2840083
+      ],
+      [
+        2883940,
+        2884252
+      ],
+      [
+        2963124,
+        2963436
+      ],
+      [
+        3085423,
+        3085735
+      ],
+      [
+        3104624,
+        3104936
+      ],
+      [
+        3176199,
+        3176511
+      ],
+      [
+        3314187,
+        3314499
+      ],
+      [
+        3352074,
+        3352386
+      ],
+      [
+        3451680,
+        3451992
+      ],
+      [
+        3519786,
+        3520098
+      ],
+      [
+        3600141,
+        3600453
+      ],
+      [
+        3688926,
+        3689238
+      ],
+      [
+        3753853,
+        3754165
+      ],
+      [
+        3856609,
+        3856921
+      ],
+      [
+        3884933,
+        3885245
+      ],
+      [
+        4018937,
+        4019249
+      ],
+      [
+        4059044,
+        4059356
+      ],
+      [
+        4112066,
+        4112378
+      ],
+      [
+        4250564,
+        4250876
+      ],
+      [
+        4298120,
+        4298432
+      ],
+      [
+        4405661,
+        4405973
+      ],
+      [
+        4472036,
+        4472348
+      ],
+      [
+        4496458,
+        4496770
+      ],
+      [
+        4580618,
+        4580930
+      ],
+      [
+        4679484,
+        4679796
+      ],
+      [
+        4737368,
+        4737680
+      ],
+      [
+        4866573,
+        4866885
+      ],
+      [
+        4933485,
+        4933797
+      ]
+    ],
+    "sample_blocks": 64,
+    "sample_chunks": 20000,
+    "seed": 20260820
+  },
+  "schema_version": 1,
+  "statistics": {
+    "affected_chunks": 7078,
+    "changed_left_right_spans": 0,
+    "changed_spans": 11548,
+    "changed_split_spans": 11548,
+    "chunks": 20000,
+    "corrupted_intended_decisions": 5756,
+    "count_mismatch_chunks": 0,
+    "dropped_intended_decisions": 938,
+    "examples": [
+      {
+        "chunk": 102913,
+        "new": [
+          365,
+          365,
+          370
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          365,
+          369,
+          370
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 315
+      },
+      {
+        "chunk": 102913,
+        "new": [
+          600,
+          600,
+          604
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          600,
+          602,
+          604
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 508
+      },
+      {
+        "chunk": 102913,
+        "new": [
+          807,
+          807,
+          811
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          807,
+          809,
+          811
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 700
+      },
+      {
+        "chunk": 102913,
+        "new": [
+          1570,
+          1570,
+          1573
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1570,
+          1572,
+          1573
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1389
+      },
+      {
+        "chunk": 102914,
+        "new": [
+          576,
+          576,
+          589
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          576,
+          582,
+          589
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 603
+      },
+      {
+        "chunk": 102914,
+        "new": [
+          1051,
+          1051,
+          1072
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1051,
+          1059,
+          1072
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1110
+      },
+      {
+        "chunk": 102915,
+        "new": [
+          1629,
+          1629,
+          1635
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1629,
+          1634,
+          1635
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1621
+      },
+      {
+        "chunk": 102918,
+        "new": [
+          951,
+          951,
+          987
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          951,
+          962,
+          987
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1013
+      },
+      {
+        "chunk": 102919,
+        "new": [
+          234,
+          234,
+          270
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          234,
+          248,
+          270
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 279
+      },
+      {
+        "chunk": 102919,
+        "new": [
+          1074,
+          1074,
+          1077
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1074,
+          1077,
+          1077
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1061
+      },
+      {
+        "chunk": 102921,
+        "new": [
+          968,
+          968,
+          978
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          968,
+          971,
+          978
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 923
+      },
+      {
+        "chunk": 102923,
+        "new": [
+          809,
+          809,
+          838
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          809,
+          837,
+          838
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 867
+      },
+      {
+        "chunk": 102925,
+        "new": [
+          1577,
+          1577,
+          1580
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1577,
+          1580,
+          1580
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1551
+      },
+      {
+        "chunk": 102926,
+        "new": [
+          600,
+          600,
+          605
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          600,
+          604,
+          605
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 604
+      },
+      {
+        "chunk": 102928,
+        "new": [
+          1610,
+          1610,
+          1617
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1610,
+          1612,
+          1617
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1588
+      },
+      {
+        "chunk": 102929,
+        "new": [
+          228,
+          228,
+          230
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          228,
+          230,
+          230
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 211
+      },
+      {
+        "chunk": 102929,
+        "new": [
+          226,
+          226,
+          230
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          226,
+          230,
+          230
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 213
+      },
+      {
+        "chunk": 102929,
+        "new": [
+          224,
+          224,
+          230
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          224,
+          230,
+          230
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 215
+      },
+      {
+        "chunk": 102932,
+        "new": [
+          58,
+          58,
+          61
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          58,
+          61,
+          61
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 53
+      },
+      {
+        "chunk": 102932,
+        "new": [
+          417,
+          417,
+          430
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          417,
+          428,
+          430
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 426
+      }
+    ],
+    "new_tree_reg_decisions": 21433250,
+    "non_singleton_spans": 36111525,
+    "old_only_decisions": 0,
+    "old_tree_reg_decisions": 21432312,
+    "rates": {
+      "affected_chunk_rate": 0.3539,
+      "changed_non_singleton_span_rate": 0.00031978710397857746,
+      "changed_span_rate": 0.0002823179141742295,
+      "corrupted_tree_reg_decision_rate": 0.0002685546988907422,
+      "dropped_intended_decision_rate": 4.376377824175055e-05,
+      "tree_reg_affected_chunk_rate": 0.2183,
+      "wrong_gold_decision_rate": 0.00022479092064899163
+    },
+    "split_shift_abs_sum": 80038,
+    "split_shift_histogram": {
+      "1": 1,
+      "10": 259,
+      "101": 1,
+      "103": 2,
+      "104": 1,
+      "106": 1,
+      "109": 2,
+      "11": 255,
+      "113": 2,
+      "12": 220,
+      "13": 188,
+      "14": 181,
+      "15": 133,
+      "16": 125,
+      "17": 106,
+      "18": 91,
+      "19": 81,
+      "2": 2621,
+      "20": 66,
+      "21": 55,
+      "22": 55,
+      "23": 41,
+      "24": 37,
+      "25": 42,
+      "26": 35,
+      "27": 24,
+      "277": 1,
+      "28": 26,
+      "29": 25,
+      "3": 2118,
+      "30": 26,
+      "31": 19,
+      "32": 13,
+      "33": 17,
+      "34": 10,
+      "35": 9,
+      "36": 20,
+      "37": 5,
+      "38": 7,
+      "39": 10,
+      "4": 1733,
+      "40": 4,
+      "41": 11,
+      "42": 3,
+      "43": 4,
+      "44": 6,
+      "45": 6,
+      "46": 3,
+      "47": 6,
+      "48": 2,
+      "49": 4,
+      "5": 1101,
+      "50": 7,
+      "51": 1,
+      "52": 2,
+      "53": 1,
+      "55": 1,
+      "56": 1,
+      "57": 1,
+      "58": 1,
+      "6": 576,
+      "60": 4,
+      "62": 5,
+      "63": 1,
+      "65": 1,
+      "66": 2,
+      "67": 2,
+      "68": 1,
+      "69": 1,
+      "7": 391,
+      "70": 2,
+      "71": 1,
+      "72": 3,
+      "74": 2,
+      "75": 2,
+      "76": 1,
+      "79": 3,
+      "8": 397,
+      "80": 2,
+      "81": 1,
+      "82": 1,
+      "85": 1,
+      "87": 1,
+      "89": 1,
+      "9": 308,
+      "90": 2,
+      "94": 2,
+      "95": 1,
+      "98": 2,
+      "99": 2
+    },
+    "split_shift_max": 277,
+    "split_shift_min": 1,
+    "split_shift_sum": 80038,
+    "total_spans": 40904241,
+    "tree_reg_affected_chunks": 4366,
+    "wrong_gold_decisions": 4818
+  },
+  "tokenizer": "/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json",
+  "tree": "/home/wangpch/TG-Interpolation/dataset/bbc-news/tree/train.npy",
+  "validation": {
+    "all_changes_are_split_only": true,
+    "left_right_unchanged": true,
+    "span_counts_match": true
+  }
+}
