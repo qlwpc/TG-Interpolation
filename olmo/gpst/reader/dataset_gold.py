@@ -56,8 +56,12 @@ def tree_to_merge_orders(tree, direction: str = "right") -> Tuple[List[int], Lis
     leaves, spans = tree_spans(bin_tree)
     # spans are already post-order (tree_spans emits children before parents).
     merge_orders = [split for (_l, split, _r) in spans if _l != _r]
-    assert len(merge_orders) == max(len(leaves) - 1, 0), \
-        f"merge_orders {len(merge_orders)} != leaves-1 {len(leaves)-1}"
+    expected = list(range(max(len(leaves) - 1, 0)))
+    if sorted(merge_orders) != expected:
+        raise ValueError(
+            "gold merge orders are not a gap permutation: "
+            f"got={merge_orders}, expected={expected}"
+        )
     return leaves, merge_orders
 
 

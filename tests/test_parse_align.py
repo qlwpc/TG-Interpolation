@@ -171,6 +171,15 @@ def test_tree_spans_binary():
     assert (2, 2, 3) in spans  # B: (2,2,3)
 
 
+def test_tree_spans_repeated_interned_leaf_occurrences():
+    # The two 82 leaves are the same CPython-interned integer object. Tree
+    # positions must nevertheless have independent ranges.
+    tree = ("S", [82, ("B", [1, 82])])
+    leaves, spans = tree_spans(tree)
+    assert leaves == [82, 1, 82]
+    assert spans == [(1, 1, 2), (0, 0, 2)]
+
+
 # --------------------------------------------------------------------------- #
 # No-binarize path (tree -> spans directly, one span per real internal node)
 # --------------------------------------------------------------------------- #

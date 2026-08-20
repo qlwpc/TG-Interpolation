@@ -41,6 +41,15 @@ def test_depth_matrix_ignores_padded_spans():
     assert int(S0.max()) == 0
 
 
+def test_depth_matrix_ignores_split_coordinate():
+    fixed = torch.tensor([[[1, 1, 4], [0, 0, 4]]], dtype=torch.long)
+    corrupted = torch.tensor([[[1, 3, 4], [0, 4, 4]]], dtype=torch.long)
+    assert torch.equal(
+        compute_depth_matrix_gpu(fixed, 5),
+        compute_depth_matrix_gpu(corrupted, 5),
+    )
+
+
 def test_pushdown_depth_bias_shape():
     pdb = PushdownDepthBias(max_depth=16, d_model=64, n_heads=4)
     # key_weight: (n_kv_h * d_head, d_model) = (4*16, 64).

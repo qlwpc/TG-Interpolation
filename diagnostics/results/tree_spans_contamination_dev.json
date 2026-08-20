@@ -1,0 +1,407 @@
+{
+  "claim_type": "computed",
+  "data_dir": "/home/wangpch/TG-Interpolation/dataset/bbc-news/parse_aligned/dev_treereg",
+  "elapsed_seconds": 13.85585331916809,
+  "max_len": 2048,
+  "requested_workers": 4,
+  "schema_version": 1,
+  "statistics": {
+    "affected_chunks": 596,
+    "changed_left_right_spans": 0,
+    "changed_spans": 974,
+    "changed_split_spans": 974,
+    "chunks": 1620,
+    "corrupted_intended_decisions": 445,
+    "count_mismatch_chunks": 0,
+    "dropped_intended_decisions": 67,
+    "examples": [
+      {
+        "chunk": 6,
+        "new": [
+          1915,
+          1915,
+          1920
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1915,
+          1919,
+          1920
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1891
+      },
+      {
+        "chunk": 10,
+        "new": [
+          169,
+          169,
+          174
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          169,
+          173,
+          174
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 160
+      },
+      {
+        "chunk": 11,
+        "new": [
+          1131,
+          1131,
+          1135
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1131,
+          1134,
+          1135
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1179
+      },
+      {
+        "chunk": 12,
+        "new": [
+          14,
+          14,
+          25
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          14,
+          21,
+          25
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 18
+      },
+      {
+        "chunk": 15,
+        "new": [
+          1496,
+          1496,
+          1501
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1496,
+          1500,
+          1501
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1436
+      },
+      {
+        "chunk": 17,
+        "new": [
+          1528,
+          1528,
+          1556
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1528,
+          1547,
+          1556
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1641
+      },
+      {
+        "chunk": 25,
+        "new": [
+          1963,
+          1963,
+          1980
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1963,
+          1970,
+          1980
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1992
+      },
+      {
+        "chunk": 26,
+        "new": [
+          14,
+          14,
+          17
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          14,
+          17,
+          17
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 9
+      },
+      {
+        "chunk": 26,
+        "new": [
+          141,
+          141,
+          158
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          141,
+          148,
+          158
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 168
+      },
+      {
+        "chunk": 33,
+        "new": [
+          402,
+          402,
+          425
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          402,
+          417,
+          425
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 427
+      },
+      {
+        "chunk": 33,
+        "new": [
+          1612,
+          1612,
+          1633
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1612,
+          1615,
+          1633
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1668
+      },
+      {
+        "chunk": 35,
+        "new": [
+          480,
+          480,
+          483
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          480,
+          483,
+          483
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 489
+      },
+      {
+        "chunk": 37,
+        "new": [
+          1030,
+          1030,
+          1036
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1030,
+          1034,
+          1036
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1018
+      },
+      {
+        "chunk": 37,
+        "new": [
+          1026,
+          1026,
+          1036
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1026,
+          1034,
+          1036
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1022
+      },
+      {
+        "chunk": 37,
+        "new": [
+          2017,
+          2017,
+          2025
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          2017,
+          2022,
+          2025
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 2013
+      },
+      {
+        "chunk": 37,
+        "new": [
+          2015,
+          2015,
+          2025
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          2015,
+          2022,
+          2025
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 2015
+      },
+      {
+        "chunk": 39,
+        "new": [
+          1429,
+          1429,
+          1432
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1429,
+          1431,
+          1432
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1451
+      },
+      {
+        "chunk": 48,
+        "new": [
+          1933,
+          1933,
+          1941
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1933,
+          1935,
+          1941
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1964
+      },
+      {
+        "chunk": 48,
+        "new": [
+          1989,
+          1989,
+          2003
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1989,
+          1996,
+          2003
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 2044
+      },
+      {
+        "chunk": 49,
+        "new": [
+          46,
+          46,
+          64
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          46,
+          58,
+          64
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 65
+      }
+    ],
+    "new_tree_reg_decisions": 1736167,
+    "non_singleton_spans": 2925669,
+    "old_only_decisions": 0,
+    "old_tree_reg_decisions": 1736100,
+    "rates": {
+      "affected_chunk_rate": 0.36790123456790125,
+      "changed_non_singleton_span_rate": 0.00033291530928481654,
+      "changed_span_rate": 0.00029416996802487217,
+      "corrupted_tree_reg_decision_rate": 0.00025631174881218224,
+      "dropped_intended_decision_rate": 3.859075768632856e-05,
+      "tree_reg_affected_chunk_rate": 0.20185185185185187,
+      "wrong_gold_decision_rate": 0.00021772099112585367
+    },
+    "split_shift_abs_sum": 6511,
+    "split_shift_histogram": {
+      "10": 14,
+      "106": 1,
+      "11": 16,
+      "12": 22,
+      "13": 11,
+      "14": 20,
+      "15": 8,
+      "16": 9,
+      "17": 7,
+      "18": 10,
+      "19": 9,
+      "2": 219,
+      "20": 8,
+      "21": 11,
+      "22": 7,
+      "23": 2,
+      "24": 5,
+      "25": 4,
+      "26": 3,
+      "27": 2,
+      "3": 167,
+      "30": 1,
+      "31": 1,
+      "32": 3,
+      "33": 1,
+      "34": 2,
+      "36": 1,
+      "38": 1,
+      "4": 166,
+      "46": 2,
+      "49": 1,
+      "5": 98,
+      "52": 1,
+      "6": 45,
+      "7": 38,
+      "8": 36,
+      "9": 21,
+      "94": 1
+    },
+    "split_shift_max": 106,
+    "split_shift_min": 2,
+    "split_shift_sum": 6511,
+    "total_spans": 3311011,
+    "tree_reg_affected_chunks": 327,
+    "wrong_gold_decisions": 378
+  },
+  "tokenizer": "/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json",
+  "tree": "/home/wangpch/TG-Interpolation/dataset/bbc-news/tree/dev.npy",
+  "validation": {
+    "all_changes_are_split_only": true,
+    "left_right_unchanged": true,
+    "span_counts_match": true
+  }
+}

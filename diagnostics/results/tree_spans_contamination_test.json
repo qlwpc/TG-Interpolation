@@ -1,0 +1,479 @@
+{
+  "claim_type": "computed",
+  "data_dir": "/home/wangpch/TG-Interpolation/dataset/bbc-news/parse_aligned/test_treereg",
+  "elapsed_seconds": 13.890594720840454,
+  "max_len": 2048,
+  "requested_workers": 4,
+  "schema_version": 1,
+  "statistics": {
+    "affected_chunks": 588,
+    "changed_left_right_spans": 0,
+    "changed_spans": 1064,
+    "changed_split_spans": 1064,
+    "chunks": 1637,
+    "corrupted_intended_decisions": 610,
+    "count_mismatch_chunks": 0,
+    "dropped_intended_decisions": 75,
+    "examples": [
+      {
+        "chunk": 2,
+        "new": [
+          1007,
+          1007,
+          1010
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1007,
+          1009,
+          1010
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 955
+      },
+      {
+        "chunk": 13,
+        "new": [
+          955,
+          955,
+          971
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          955,
+          969,
+          971
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 993
+      },
+      {
+        "chunk": 13,
+        "new": [
+          979,
+          979,
+          995
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          979,
+          993,
+          995
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1012
+      },
+      {
+        "chunk": 13,
+        "new": [
+          1003,
+          1003,
+          1019
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1003,
+          1017,
+          1019
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1033
+      },
+      {
+        "chunk": 13,
+        "new": [
+          1027,
+          1027,
+          1043
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1027,
+          1041,
+          1043
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1054
+      },
+      {
+        "chunk": 13,
+        "new": [
+          1051,
+          1051,
+          1067
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1051,
+          1065,
+          1067
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1075
+      },
+      {
+        "chunk": 13,
+        "new": [
+          1075,
+          1075,
+          1091
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1075,
+          1089,
+          1091
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1096
+      },
+      {
+        "chunk": 13,
+        "new": [
+          1099,
+          1099,
+          1115
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1099,
+          1113,
+          1115
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1117
+      },
+      {
+        "chunk": 14,
+        "new": [
+          1582,
+          1582,
+          1585
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1582,
+          1585,
+          1585
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1613
+      },
+      {
+        "chunk": 15,
+        "new": [
+          417,
+          417,
+          423
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          417,
+          422,
+          423
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 420
+      },
+      {
+        "chunk": 18,
+        "new": [
+          457,
+          457,
+          475
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          457,
+          472,
+          475
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 472
+      },
+      {
+        "chunk": 22,
+        "new": [
+          1119,
+          1119,
+          1128
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1119,
+          1121,
+          1128
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1156
+      },
+      {
+        "chunk": 22,
+        "new": [
+          1771,
+          1771,
+          1773
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1771,
+          1773,
+          1773
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1829
+      },
+      {
+        "chunk": 24,
+        "new": [
+          776,
+          776,
+          785
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          776,
+          783,
+          785
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 837
+      },
+      {
+        "chunk": 25,
+        "new": [
+          1915,
+          1915,
+          1923
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1915,
+          1922,
+          1923
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 2013
+      },
+      {
+        "chunk": 28,
+        "new": [
+          434,
+          434,
+          437
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          434,
+          437,
+          437
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 459
+      },
+      {
+        "chunk": 31,
+        "new": [
+          1901,
+          1901,
+          1950
+        ],
+        "new_tree_reg_eligible": true,
+        "old": [
+          1901,
+          1929,
+          1950
+        ],
+        "old_tree_reg_eligible": true,
+        "span_row": 1935
+      },
+      {
+        "chunk": 35,
+        "new": [
+          140,
+          140,
+          145
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          140,
+          144,
+          145
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 146
+      },
+      {
+        "chunk": 35,
+        "new": [
+          1516,
+          1516,
+          1522
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1516,
+          1521,
+          1522
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1533
+      },
+      {
+        "chunk": 35,
+        "new": [
+          1898,
+          1898,
+          1900
+        ],
+        "new_tree_reg_eligible": false,
+        "old": [
+          1898,
+          1900,
+          1900
+        ],
+        "old_tree_reg_eligible": false,
+        "span_row": 1925
+      }
+    ],
+    "new_tree_reg_decisions": 1756051,
+    "non_singleton_spans": 2954648,
+    "old_only_decisions": 0,
+    "old_tree_reg_decisions": 1755976,
+    "rates": {
+      "affected_chunk_rate": 0.3591936469150886,
+      "changed_non_singleton_span_rate": 0.000360110578315928,
+      "changed_span_rate": 0.00031759895192345867,
+      "corrupted_tree_reg_decision_rate": 0.000347370321249212,
+      "dropped_intended_decision_rate": 4.270946572736213e-05,
+      "tree_reg_affected_chunk_rate": 0.2125839951130116,
+      "wrong_gold_decision_rate": 0.00030466085552184987
+    },
+    "split_shift_abs_sum": 21673,
+    "split_shift_histogram": {
+      "10": 17,
+      "100": 3,
+      "102": 2,
+      "104": 1,
+      "106": 2,
+      "108": 2,
+      "11": 20,
+      "110": 3,
+      "112": 2,
+      "114": 3,
+      "118": 2,
+      "12": 23,
+      "122": 2,
+      "124": 3,
+      "126": 2,
+      "13": 6,
+      "130": 4,
+      "134": 2,
+      "136": 1,
+      "137": 1,
+      "138": 1,
+      "14": 21,
+      "140": 1,
+      "144": 1,
+      "146": 1,
+      "15": 7,
+      "150": 2,
+      "154": 2,
+      "155": 1,
+      "156": 1,
+      "16": 10,
+      "160": 2,
+      "164": 1,
+      "166": 3,
+      "17": 7,
+      "171": 1,
+      "18": 14,
+      "184": 3,
+      "186": 1,
+      "19": 3,
+      "192": 1,
+      "199": 1,
+      "2": 195,
+      "20": 5,
+      "202": 1,
+      "206": 2,
+      "209": 1,
+      "21": 4,
+      "210": 2,
+      "211": 1,
+      "213": 1,
+      "214": 1,
+      "219": 1,
+      "22": 5,
+      "220": 1,
+      "221": 1,
+      "228": 1,
+      "23": 3,
+      "230": 1,
+      "234": 1,
+      "237": 1,
+      "24": 3,
+      "241": 1,
+      "247": 1,
+      "249": 1,
+      "25": 3,
+      "252": 1,
+      "26": 8,
+      "260": 1,
+      "27": 3,
+      "28": 1,
+      "29": 4,
+      "3": 194,
+      "30": 2,
+      "32": 2,
+      "33": 2,
+      "34": 3,
+      "4": 126,
+      "40": 3,
+      "41": 1,
+      "42": 5,
+      "46": 5,
+      "48": 3,
+      "5": 90,
+      "50": 1,
+      "52": 2,
+      "54": 4,
+      "56": 2,
+      "57": 1,
+      "58": 2,
+      "6": 56,
+      "60": 1,
+      "62": 1,
+      "64": 1,
+      "68": 2,
+      "7": 44,
+      "72": 4,
+      "74": 1,
+      "76": 1,
+      "78": 1,
+      "79": 1,
+      "8": 34,
+      "80": 1,
+      "82": 1,
+      "84": 1,
+      "86": 1,
+      "9": 19,
+      "90": 1,
+      "92": 3,
+      "94": 1
+    },
+    "split_shift_max": 260,
+    "split_shift_min": 2,
+    "split_shift_sum": 21673,
+    "total_spans": 3350137,
+    "tree_reg_affected_chunks": 348,
+    "wrong_gold_decisions": 535
+  },
+  "tokenizer": "/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json",
+  "tree": "/home/wangpch/TG-Interpolation/dataset/bbc-news/tree/test.npy",
+  "validation": {
+    "all_changes_are_split_only": true,
+    "left_right_unchanged": true,
+    "span_counts_match": true
+  }
+}

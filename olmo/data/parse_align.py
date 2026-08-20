@@ -440,32 +440,36 @@ def tree_spans(tree: TreeNode) -> Tuple[List[int], List[Span]]:
     # Iterative post-order traversal (an explicit stack) instead of recursion:
     # the train split has deeply-nested parse trees that exceed Python's default
     # 1000-frame recursion limit (RecursionError at ~97% of a prior run). Each
-    # stack entry is either ('node', node) — to be expanded — or ('ready', node,
-    # left) — children processed, ready to emit the span. A node's leaf-range
-    # (left, right) is stored in `ranges` keyed by id(node) so its parent can
-    # read it without recursion.
+    # stack entry is either ('node', node, occurrence_key) — to be expanded — or
+    # ('ready', node, occurrence_key, left, child_keys) — children processed,
+    # ready to emit the span. Keys identify occurrences in the tree rather than
+    # Python objects: repeated integer leaves can be the same interned object, so
+    # id(node) is not a safe positional key.
     ranges: Dict[int, Tuple[int, int]] = {}
-    stack: List[Tuple] = [("node", tree)]
+    next_key = 1
+    stack: List[Tuple] = [("node", tree, 0)]
     while stack:
         entry = stack.pop()
         if entry[0] == "node":
-            node = entry[1]
+            _, node, key = entry
             if isinstance(node, int):
                 idx = len(leaves)
                 leaves.append(node)
-                ranges[id(node)] = (idx, idx)
+                ranges[key] = (idx, idx)
                 continue
             label, children = node
             left = len(leaves)
+            child_keys = list(range(next_key, next_key + len(children)))
+            next_key += len(children)
             # Re-push as 'ready' (emits span after children), then push children
             # in reverse so they're processed left-to-right.
-            stack.append(("ready", node, left))
-            for c in reversed(children):
-                stack.append(("node", c))
+            stack.append(("ready", node, key, left, child_keys))
+            for child, child_key in reversed(list(zip(children, child_keys))):
+                stack.append(("node", child, child_key))
         else:  # 'ready'
-            _, node, left = entry
+            _, node, key, left, child_keys = entry
             label, children = node
-            child_ranges = [ranges[id(c)] for c in children]
+            child_ranges = [ranges[child_key] for child_key in child_keys]
             right = child_ranges[-1][1]
             if len(children) == 2:
                 split = child_ranges[0][1]
@@ -480,7 +484,7 @@ def tree_spans(tree: TreeNode) -> Tuple[List[int], List[Span]]:
                 # callers needing a real binary split (TreeReg CE) must binarize_tree
                 # first (which replaces this node with nested binary children).
                 spans.append((left, right, right))
-            ranges[id(node)] = (left, right)
+            ranges[key] = (left, right)
     return leaves, spans
 
 
