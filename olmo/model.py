@@ -608,13 +608,33 @@ class OLMoBlock(nn.Module):
             )
             return r.transpose(1, 2)
         elif block_mask is not None:
-            return self.flex_attention(
+            flex_diagnostics = os.environ.get("OLMO_FLEX_ATTENTION_DIAGNOSTICS") == "1"
+            if flex_diagnostics:
+                log.warning(
+                    "FLEX_DIAG forward_begin layer=%d q_shape=%s k_shape=%s v_shape=%s "
+                    "q_stride=%s k_stride=%s v_stride=%s dtype=%s block_mask_shape=%s",
+                    self.layer_id,
+                    tuple(q.shape),
+                    tuple(k.shape),
+                    tuple(v.shape),
+                    tuple(q.stride()),
+                    tuple(k.stride()),
+                    tuple(v.stride()),
+                    q.dtype,
+                    tuple(block_mask.shape),
+                )
+                torch.cuda.synchronize(q.device)
+            result = self.flex_attention(
                 q,
                 k,
                 v,
                 block_mask=block_mask,
                 kernel_options=self.flex_attention_kernel_options,
             )
+            if flex_diagnostics:
+                torch.cuda.synchronize(q.device)
+                log.warning("FLEX_DIAG forward_end layer=%d output_shape=%s", self.layer_id, tuple(result.shape))
+            return result
         else:
             # torch's sdpa doesn't support GQA, so we're doing this
             assert k.size(1) == v.size(1)
@@ -1759,6 +1779,54 @@ class OLMo(nn.Module):
         # shape: (batch_size, seq_len, d_model)
         x = self.transformer.emb_drop(x)  # type: ignore
 
+        # Opt-in workaround for FlexAttention tail-block failures. Padding
+        # happens after token embedding and is removed before logits, so the
+        # original tokens and loss shape are unchanged. Padded query rows attend
+        # only to themselves to avoid fully-masked softmax rows; original queries
+        # cannot attend to padded keys.
+        flex_unpadded_seq_len: Optional[int] = None
+        flex_pad_raw = os.environ.get("OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE")
+        if flex_pad_raw is not None and self.config.flex_attention and attention_bias is not None:
+            try:
+                flex_pad_multiple = int(flex_pad_raw)
+            except ValueError as exc:
+                raise OLMoConfigurationError(
+                    "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive integer"
+                ) from exc
+            if flex_pad_multiple <= 0:
+                raise OLMoConfigurationError(
+                    "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive integer"
+                )
+            if attention_mask is not None:
+                raise OLMoConfigurationError(
+                    "FlexAttention padding does not support attention_mask"
+                )
+            if attention_bias.shape[-2:] != (seq_len, seq_len):
+                raise OLMoConfigurationError(
+                    f"FlexAttention padding expected a square {seq_len}x{seq_len} bias, "
+                    f"found {tuple(attention_bias.shape[-2:])}"
+                )
+            padded_seq_len = math.ceil(seq_len / flex_pad_multiple) * flex_pad_multiple
+            if padded_seq_len != seq_len:
+                flex_unpadded_seq_len = seq_len
+                x = F.pad(x, (0, 0, 0, padded_seq_len - seq_len))
+                padded_attention_bias = torch.zeros(
+                    (*attention_bias.shape[:-2], padded_seq_len, padded_seq_len),
+                    dtype=torch.bool,
+                    device=attention_bias.device,
+                )
+                padded_attention_bias[..., :seq_len, :seq_len] = attention_bias.to(dtype=torch.bool)
+                padded_positions = torch.arange(seq_len, padded_seq_len, device=attention_bias.device)
+                padded_attention_bias[..., padded_positions, padded_positions] = True
+                attention_bias = padded_attention_bias
+                seq_len = padded_seq_len
+                log.warning(
+                    "FLEX_DIAG padded_sequence original=%d padded=%d multiple=%d",
+                    flex_unpadded_seq_len,
+                    seq_len,
+                    flex_pad_multiple,
+                )
+
         block_mask:BlockMask = None
         if self.config.flex_attention and attention_bias is not None:
             if attention_bias.dtype != torch.bool:
@@ -1982,6 +2050,11 @@ class OLMo(nn.Module):
                 if attn_key_values is not None:
                     assert cache is not None
                     attn_key_values.extend(cache)
+
+        if flex_unpadded_seq_len is not None:
+            x = x[:, :flex_unpadded_seq_len]
+            if output_hidden_states:
+                all_hidden_states = [state[:, :flex_unpadded_seq_len] for state in all_hidden_states]
 
         # Pushdown attachment head: compute the reduce-target logits from the
         # final-layer residual, captured BEFORE ln_f and BEFORE the last_logits_only
