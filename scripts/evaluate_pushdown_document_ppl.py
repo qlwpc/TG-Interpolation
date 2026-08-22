@@ -28,7 +28,11 @@ def main() -> None:
     parser.add_argument("--eval-batch-size", type=int, default=4)
     parser.add_argument("--max-sentences", type=int)
     parser.add_argument("--max-sequence-length", type=int, default=2048)
-    parser.add_argument("--deduplicate-trees", action="store_true")
+    parser.add_argument(
+        "--deduplicate-trees", action="store_true",
+        help=("diagnostic: give each distinct tree one mixture slot; identical "
+              "trees are always compressed internally without changing the default metric"),
+    )
     parser.add_argument("--token-only", action="store_true")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log-every", type=int, default=10)

@@ -11,7 +11,9 @@ import torch
 import olmo.gpst  # noqa: F401
 from olmo.gpst.eval.document_ppl import (
     GoldTree300Corpus,
+    GoldSegment,
     _candidate_signature,
+    _compress_candidates,
     aggregate_candidate_nll,
 )
 from olmo.gpst.reader.dataset_gold import GoldTreeCollator, tree_to_merge_orders
@@ -47,6 +49,22 @@ def test_candidate_aggregation_matches_olmo_legacy_and_uniform_mixture():
         np.log(300)
     )
     assert aggregate_candidate_nll(nll, normalize_mixture=True) == pytest.approx(0.0)
+
+
+def test_candidate_compression_preserves_repeated_slot_probability():
+    left = (GoldSegment((10, 20, 30), (0, 1)),)
+    right = (GoldSegment((10, 20, 30), (1, 0)),)
+    unique, counts = _compress_candidates((left, left, right, left, right))
+    assert unique == (left, right)
+    assert counts.tolist() == [3, 2]
+    unique_nll = torch.tensor([1.25, 2.5], dtype=torch.float64)
+    expanded_nll = torch.tensor([1.25, 1.25, 2.5, 1.25, 2.5], dtype=torch.float64)
+    assert aggregate_candidate_nll(unique_nll, multiplicities=counts) == pytest.approx(
+        aggregate_candidate_nll(expanded_nll)
+    )
+    assert aggregate_candidate_nll(
+        unique_nll, normalize_mixture=True, multiplicities=counts
+    ) == pytest.approx(aggregate_candidate_nll(expanded_nll, normalize_mixture=True))
 
 
 def test_force_gold_tree_emits_prescribed_action_sequences():

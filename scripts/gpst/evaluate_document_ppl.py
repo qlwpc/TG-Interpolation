@@ -61,7 +61,8 @@ def main() -> None:
     parser.add_argument(
         "--deduplicate-trees",
         action="store_true",
-        help="collapse candidates that map to the same unlabeled GPST tree",
+        help=("diagnostic: give each distinct tree one mixture slot; identical "
+              "trees are always compressed internally without changing the default metric"),
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log-every", type=int, default=10)

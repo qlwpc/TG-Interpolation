@@ -117,6 +117,35 @@ def _signature(c: PushdownGoldCandidate) -> Tuple[Tuple[int, int, int], ...]:
     return c.spans
 
 
+def _compress_candidates(
+    candidates: Sequence[PushdownGoldCandidate],
+) -> Tuple[Tuple[PushdownGoldCandidate, ...], torch.Tensor]:
+    """Return stable unique structures and their original slot counts."""
+    unique: List[PushdownGoldCandidate] = []
+    counts: List[int] = []
+    positions = {}
+    for candidate in candidates:
+        signature = _signature(candidate)
+        position = positions.get(signature)
+        if position is None:
+            positions[signature] = len(unique)
+            unique.append(candidate)
+            counts.append(1)
+        else:
+            counts[position] += 1
+    return tuple(unique), torch.tensor(counts, dtype=torch.float64)
+
+
+def _weighted_logsumexp(nll: torch.Tensor, multiplicities: torch.Tensor) -> torch.Tensor:
+    if nll.ndim != 1 or nll.shape != multiplicities.shape or nll.numel() == 0:
+        raise ValueError("NLL and multiplicities must be non-empty vectors of equal shape")
+    if bool((multiplicities <= 0).any()):
+        raise ValueError("multiplicities must be positive")
+    return torch.logsumexp(
+        -nll.to(torch.float64) + multiplicities.to(nll.device, torch.float64).log(), 0
+    )
+
+
 def _trim_prefix(prefix: Sequence[PushdownGoldCandidate], current: PushdownGoldCandidate, max_length: int) -> Tuple[PushdownGoldCandidate, ...]:
     if len(current.tokens) > max_length:
         raise ValueError(f"one sentence has {len(current.tokens)} tokens, exceeding max_sequence_length={max_length}")
@@ -208,7 +237,14 @@ class PushdownDocumentPPLResult:
     legacy_log_likelihood: float; uniform_mixture_log_likelihood: float
     terminal_count: int; sentence_count: int; document_count: int; samples_per_sentence: int
     deduplicated_trees: bool; beam_search: bool = False
-    def as_dict(self) -> dict: return dict(self.__dict__)
+    candidate_slots: int = 0; model_candidate_forwards: int = 0
+    def as_dict(self) -> dict:
+        result = dict(self.__dict__)
+        result["candidate_compression_ratio"] = (
+            self.candidate_slots / self.model_candidate_forwards
+            if self.model_candidate_forwards else math.nan
+        )
+        return result
 
 
 def evaluate_pushdown_document_ppl(
@@ -221,21 +257,32 @@ def evaluate_pushdown_document_ppl(
         raise RuntimeError("joint Pushdown PPL requires a checkpoint with attachment-head weights; use token-only explicitly")
     model.eval(); prefix: Tuple[PushdownGoldCandidate, ...] = (); previous_doc: Optional[int] = None
     legacy_ll = mixture_ll = token_ll = 0.0; terminals = documents = 0
+    candidate_slots = model_candidate_forwards = 0
     for index, (doc_id, original) in enumerate(corpus):
         first = doc_id != previous_doc
         if first:
             prefix = (); previous_doc = doc_id; documents += 1
         candidates = original if first else tuple(_drop_leading_bos(c, corpus.vocab.bos) for c in original)
-        scored = candidates
+        scored, multiplicities = _compress_candidates(candidates)
+        candidate_slots += len(candidates)
+        model_candidate_forwards += len(scored)
         if deduplicate_trees:
-            unique = {}; [unique.setdefault(_signature(c), c) for c in candidates]; scored = tuple(unique.values())
+            # Diagnostic semantics: distinct structures receive equal mass.
+            # Otherwise counts restore the exact original 300-slot mixture.
+            multiplicities.fill_(1)
         current = candidates[0]; context = _trim_prefix(prefix, current, max_sequence_length)
         scores = score_pushdown_gold_candidates(model, context, scored, device, eval_batch_size, include_attachment_probability)
-        legacy_ll += torch.logsumexp(-scores.joint_nll, 0).item()
-        mixture_ll += (torch.logsumexp(-scores.joint_nll, 0) - math.log(len(scores.joint_nll))).item()
-        token_ll += torch.logsumexp(-scores.token_nll, 0).item()
+        joint_ll = _weighted_logsumexp(scores.joint_nll, multiplicities)
+        token_sentence_ll = _weighted_logsumexp(scores.token_nll, multiplicities)
+        legacy_ll += joint_ll.item()
+        mixture_ll += (joint_ll - math.log(int(multiplicities.sum().item()))).item()
+        token_ll += token_sentence_ll.item()
         terminals += len(current.tokens) - (1 if first and current.tokens and current.tokens[0] == corpus.vocab.bos else 0)
         prefix = prefix + (current,)
         if progress: progress(index + 1, len(corpus), doc_id)
     def ppl(ll: float) -> float: return math.exp(-ll / terminals) if terminals else math.nan
-    return PushdownDocumentPPLResult(ppl(legacy_ll), ppl(mixture_ll), ppl(token_ll), legacy_ll, mixture_ll, terminals, len(corpus), documents, corpus.samples_per_sentence, deduplicate_trees)
+    return PushdownDocumentPPLResult(
+        ppl(legacy_ll), ppl(mixture_ll), ppl(token_ll), legacy_ll, mixture_ll,
+        terminals, len(corpus), documents, corpus.samples_per_sentence,
+        deduplicate_trees, False, candidate_slots, model_candidate_forwards,
+    )

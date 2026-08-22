@@ -1,4 +1,8 @@
-# Shared native n-ary top-300 corpus
+# Legacy shared native n-ary top-300 corpus (format v1)
+
+This document describes the preserved `native_nary_300` provenance dataset.
+It is not the current GPST protocol. Format v2 gives GPST a direct strict-binary
+CKY candidate space and is documented in `native_model_topk_300_v2_format.md`.
 
 ## Semantic contract
 

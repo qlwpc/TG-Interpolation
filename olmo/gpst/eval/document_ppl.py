@@ -171,15 +171,52 @@ def _count_actions(segments: Sequence[GoldSegment]) -> int:
 
 
 def aggregate_candidate_nll(
-    nll: torch.Tensor, normalize_mixture: bool = False
+    nll: torch.Tensor,
+    normalize_mixture: bool = False,
+    multiplicities: Optional[torch.Tensor] = None,
 ) -> float:
-    """Return a sentence log likelihood from its fixed-tree joint NLLs."""
+    """Return a sentence log likelihood from its fixed-tree joint NLLs.
+
+    ``multiplicities`` allows identical tree candidates to be evaluated once
+    without changing the probability represented by the original candidate
+    list.  This matters for tree_300: label and unary-chain differences often
+    collapse to the same unlabeled GPST merge trajectory.
+    """
     if nll.ndim != 1 or nll.numel() == 0:
         raise ValueError("candidate NLL must be a non-empty one-dimensional tensor")
-    value = torch.logsumexp(-nll.to(dtype=torch.float64), dim=0).item()
+    terms = -nll.to(dtype=torch.float64)
+    candidate_count = nll.numel()
+    if multiplicities is not None:
+        if multiplicities.shape != nll.shape:
+            raise ValueError("multiplicities must have the same shape as candidate NLL")
+        multiplicities = multiplicities.to(dtype=torch.float64, device=nll.device)
+        if bool((multiplicities <= 0).any()):
+            raise ValueError("multiplicities must be positive")
+        terms = terms + multiplicities.log()
+        candidate_count = int(multiplicities.sum().item())
+    value = torch.logsumexp(terms, dim=0).item()
     if normalize_mixture:
-        value -= math.log(nll.numel())
+        value -= math.log(candidate_count)
     return value
+
+
+def _compress_candidates(
+    candidates: Sequence[Tuple[GoldSegment, ...]],
+) -> Tuple[Tuple[Tuple[GoldSegment, ...], ...], torch.Tensor]:
+    """Return stable unique candidates and their slot multiplicities."""
+    unique: List[Tuple[GoldSegment, ...]] = []
+    counts: List[int] = []
+    positions = {}
+    for candidate in candidates:
+        signature = _candidate_signature(candidate)
+        position = positions.get(signature)
+        if position is None:
+            positions[signature] = len(unique)
+            unique.append(candidate)
+            counts.append(1)
+        else:
+            counts[position] += 1
+    return tuple(unique), torch.tensor(counts, dtype=torch.float64)
 
 
 def _trim_prefix(
@@ -265,9 +302,16 @@ class GoldTreePPLResult:
     samples_per_sentence: int
     normalized_mixture: bool
     deduplicated_trees: bool
+    candidate_slots: int
+    model_candidate_forwards: int
 
     def as_dict(self) -> dict:
-        return dict(self.__dict__)
+        result = dict(self.__dict__)
+        result["candidate_compression_ratio"] = (
+            self.candidate_slots / self.model_candidate_forwards
+            if self.model_candidate_forwards else math.nan
+        )
+        return result
 
 
 def evaluate_gold_tree_document_ppl(
@@ -297,18 +341,23 @@ def evaluate_gold_tree_document_ppl(
     seen_documents = 0
     log_likelihood = 0.0
     terminal_count = 0
+    candidate_slots = 0
+    model_candidate_forwards = 0
 
     for sentence_index, (doc_id, original_candidates) in enumerate(corpus):
         if doc_id != previous_doc:
             prefix = ()
             previous_doc = doc_id
             seen_documents += 1
-        candidates = original_candidates
+        candidates, multiplicities = _compress_candidates(original_candidates)
+        candidate_slots += len(original_candidates)
+        model_candidate_forwards += len(candidates)
         if deduplicate_trees:
-            unique_candidates = {}
-            for candidate in candidates:
-                unique_candidates.setdefault(_candidate_signature(candidate), candidate)
-            candidates = tuple(unique_candidates.values())
+            # Historical diagnostic mode: treat each distinct unlabeled tree as
+            # one mixture component.  Normal evaluation retains all original
+            # slots through their multiplicities while still forwarding each
+            # distinct tree only once.
+            multiplicities.fill_(1)
         current = candidates[0]
         current_tokens = _count_tokens(current)
         current_actions = _count_actions(current)
@@ -326,7 +375,9 @@ def evaluate_gold_tree_document_ppl(
                 prefix_tokens, current_tokens, prefix_actions, current_actions,
             ))
         nll = torch.cat(nll_parts)
-        sentence_log_likelihood = aggregate_candidate_nll(nll, normalize_mixture)
+        sentence_log_likelihood = aggregate_candidate_nll(
+            nll, normalize_mixture, multiplicities=multiplicities
+        )
         log_likelihood += sentence_log_likelihood
         terminal_count += current_tokens
         # OLMo commits candidate 0 to the shared document cache.
@@ -344,4 +395,6 @@ def evaluate_gold_tree_document_ppl(
         samples_per_sentence=corpus.samples_per_sentence,
         normalized_mixture=normalize_mixture,
         deduplicated_trees=deduplicate_trees,
+        candidate_slots=candidate_slots,
+        model_candidate_forwards=model_candidate_forwards,
     )
