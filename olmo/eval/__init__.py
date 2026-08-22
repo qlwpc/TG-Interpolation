@@ -164,14 +164,18 @@ def build_downstream_evaluator(
         if eval_cfg.type == EvaluatorType.tg_doc:
             ds = ds_eval_dataset
             sent_size = getattr(ds, "SENT_SIZE", None) or getattr(ds, "samples_per_sent", 300)
-            # ds.doc_index (post-prep_examples cumsum) holds per-document sentence
-            # counts; build [0, sents_0, sents_0+sents_1, ...] * SENT_SIZE.
+            # ds.doc_index is CUMULATIVE after prep_examples (downstream.py
+            # torch.cumsum): doc_index[g] = total sentences in docs 0..g. The
+            # sample boundary before doc g+1 is therefore doc_index[g]*SENT_SIZE
+            # (NOT an additive running sum — that would cumsum the cumsum and
+            # inflate group_starts[-1] far past len(dataset), making the sampler
+            # emit out-of-range indices and crash __getitem__'s [index+1] access).
             doc_idx = getattr(ds, "doc_index", None)
             if doc_idx is not None:
                 doc_sents = doc_idx.tolist() if hasattr(doc_idx, "tolist") else list(doc_idx)
                 starts = [0]
                 for s in doc_sents:
-                    starts.append(starts[-1] + int(s) * int(sent_size))
+                    starts.append(int(s) * int(sent_size))
                 group_starts = torch.LongTensor(starts)
         elif eval_cfg.label == "BLiMP" and ds_eval_dataset.SENT_SIZE > 1:
             # Gold-K BLiMP batches and BLiMPMetric rows are sentence groups of
