@@ -174,19 +174,38 @@ class CanonicalPPLCorpus:
         record, content, content_start, content_end = _tree_terminals_and_record(
             self.candidate_zero_block(sentence_id), self.vocab
         )
-        text = self.tokenizer.decode(list(content), skip_special_tokens=False)
-        words = tuple(text.strip().split())
-        if not words:
-            raise ValueError(f"sentence {sentence_id} has no parser words")
-        word_piece_ids = tuple(
-            tuple(self.tokenizer.encode(" " + word, add_special_tokens=False).ids)
-            for word in words
+        # TG serialization inserts a space before every ordinary parser leaf,
+        # which GPT-2 records as a ``Ġ`` word start. Recover groups directly
+        # from the existing IDs: decoding and re-encoding is not identity for
+        # literal strings such as "-LSB-", because the second pass recognizes
+        # them as added tokens. PTB bracket added tokens also ignore surrounding
+        # whitespace, so each must be treated as one atomic parser word.
+        ptb_atoms = {"-LRB-", "-RRB-", "-LCB-", "-RCB-", "-LSB-", "-RSB-"}
+        piece_rows = []
+        current = []
+        for token in content:
+            spelling = self.tokenizer.id_to_token(int(token))
+            if spelling in ptb_atoms:
+                if current:
+                    piece_rows.append(tuple(current))
+                    current = []
+                piece_rows.append((int(token),))
+            else:
+                if current and spelling.startswith("Ġ"):
+                    piece_rows.append(tuple(current))
+                    current = []
+                current.append(int(token))
+        if current:
+            piece_rows.append(tuple(current))
+        word_piece_ids = tuple(piece_rows)
+        words = tuple(
+            self.tokenizer.decode(list(pieces), skip_special_tokens=False).strip()
+            for pieces in word_piece_ids
         )
-        reconstructed = tuple(token for pieces in word_piece_ids for token in pieces)
-        if reconstructed != content:
-            raise ValueError(
-                f"sentence {sentence_id} terminal text cannot be losslessly split into parser words"
-            )
+        if not words or any(not word for word in words):
+            raise ValueError(f"sentence {sentence_id} has an empty recovered parser word")
+        if tuple(token for pieces in word_piece_ids for token in pieces) != content:
+            raise AssertionError("word grouping changed terminal IDs")
         return SentenceInput(
             global_sentence_id=sentence_id,
             document_id=self.document_id(sentence_id),
