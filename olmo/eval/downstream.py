@@ -596,7 +596,10 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.dataset_path = dataset_path
         self.dataset_name = dataset_name
         self.model_ctx_len = model_ctx_len
-        self.transformer_grammar_type = transformer_grammar_type
+        # Checkpoint configs for the ordinary terminal model historically use
+        # ``null`` here.  Treat it as the empty grammar rather than requiring
+        # every direct evaluator caller to special-case it.
+        self.transformer_grammar_type = transformer_grammar_type or ""
         if self.ispause:
             # Shrink the real-token budget so the expanded (paused) length still
             # fits model_ctx_len. For spec (p, q), expansion factor is (q+p)/q,
@@ -1438,6 +1441,40 @@ class TGPerplexityDocumentLevelMetric(Metric):
         ppl = np.exp(-ppl / data_numwords)
         return torch.tensor(ppl)
 
+
+class TerminalDocumentPerplexityMetric(Metric):
+    """Global token-weighted K=1 document PPL for the terminal projection."""
+
+    full_state_update: bool = False
+
+    def __init__(self, term_length: Sequence[int], dataset_length: int) -> None:
+        super().__init__(sync_on_compute=False)
+        self.metric_type = "doc_ppl"
+        self.data_numwords = int(sum(term_length))
+        self.expected_records = int(dataset_length)
+        if self.data_numwords <= 0 or self.expected_records <= 0:
+            raise ValueError("terminal document PPL requires non-empty data")
+        self.add_state(
+            "total_nll", default=torch.tensor(0.0, dtype=torch.float64), dist_reduce_fx=None
+        )
+        self.add_state(
+            "evaluated_records", default=torch.tensor(0, dtype=torch.int64), dist_reduce_fx=None
+        )
+
+    def update(self, batch: Dict[str, Any], ce_loss: torch.Tensor, **kwargs) -> None:
+        self.total_nll += ce_loss.detach().to(dtype=torch.float64).sum()
+        self.evaluated_records += int(ce_loss.numel())
+
+    def compute(self) -> torch.Tensor:
+        total_nll = _all_reduce_tensor(self.total_nll)
+        evaluated_records = _all_reduce_tensor(self.evaluated_records)
+        if int(evaluated_records.item()) != self.expected_records:
+            raise RuntimeError(
+                "terminal document PPL must evaluate every sentence exactly once: "
+                f"{int(evaluated_records.item())} != {self.expected_records}"
+            )
+        return torch.exp(total_nll / self.data_numwords)
+
 # Deprecated please use Document Level ppl metric
 class TGPerplexitySentenceLevelMetric(Metric):
     # update method does not require access to global metric state
@@ -1536,6 +1573,53 @@ class TGPerplexitySentenceLevelMetric(Metric):
         return torch.tensor(ppl)
 
 
+def normalize_testppl_document_record(
+    input_ids: np.ndarray,
+    *,
+    first_in_document: bool,
+    last_in_document: bool,
+    bos_token_id: int,
+    eos_token_id: int,
+    pad_token_id: int,
+) -> np.ndarray:
+    """Idempotently frame one testppl candidate with document BOS/EOS.
+
+    Historical testppl data has one boundary special per document: the first
+    document of each source split has BOS only and later documents have EOS
+    only.  This helper accepts both that layout and the normalized layout.  It
+    rejects misplaced/duplicated specials instead of silently hiding corrupt
+    record boundaries.
+    """
+    values = np.asarray(input_ids)
+    if values.ndim != 1:
+        raise ValueError(f"testppl candidate must be one-dimensional, got {values.shape}")
+    bos_positions = np.flatnonzero(values == bos_token_id)
+    eos_positions = np.flatnonzero(values == eos_token_id)
+    if np.any(values == pad_token_id):
+        raise ValueError("testppl candidate unexpectedly contains PAD")
+    if len(bos_positions) > 1 or len(eos_positions) > 1:
+        raise ValueError("testppl candidate contains duplicated BOS/EOS")
+    if len(bos_positions) and (not first_in_document or int(bos_positions[0]) != 0):
+        raise ValueError("BOS occurs outside the start of a document's first sentence")
+    if len(eos_positions) and (
+        not last_in_document or int(eos_positions[0]) != len(values) - 1
+    ):
+        raise ValueError("EOS occurs outside the end of a document's last sentence")
+
+    pieces = []
+    if first_in_document and not len(bos_positions):
+        pieces.append(np.asarray([bos_token_id], dtype=values.dtype))
+    pieces.append(values)
+    if last_in_document and not len(eos_positions):
+        pieces.append(np.asarray([eos_token_id], dtype=values.dtype))
+    normalized = np.concatenate(pieces) if len(pieces) > 1 else values
+    if first_in_document != bool(len(normalized) and int(normalized[0]) == bos_token_id):
+        raise AssertionError("normalized BOS contract failed")
+    if last_in_document != bool(len(normalized) and int(normalized[-1]) == eos_token_id):
+        raise AssertionError("normalized EOS contract failed")
+    return normalized
+
+
 class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
     metric_type: str
 
@@ -1552,13 +1636,20 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         device_eval_batch_size: int = 60,
         transformer_grammar_type: str = "",
         pause_token_id: int = None,
+        normalize_document_boundaries: Optional[bool] = None,
+        samples_per_sentence: int = 300,
+        data_filename: Optional[str] = None,
+        sentence_index_filename: Optional[str] = None,
+        document_index_filename: Optional[str] = None,
         **kwargs
     ):
         super().__init__()
         self.tokenizer = tokenizer
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
         self.dataset_path = dataset_path
-        self.transformer_grammar_type = transformer_grammar_type
+        # Ordinary terminal checkpoints historically serialize this field as
+        # null.  Direct document-PPL evaluation must accept that representation.
+        self.transformer_grammar_type = transformer_grammar_type or ""
 
         # For tree_noont / tree_compress / tree_triplecnt, the underlying .npy data
         # is in tree format so we keep dataset_name as "tree" for loading.
@@ -1570,8 +1661,15 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         self.metric_type = metric_type
         self.log_instances = 2  # Set to > 0 to log the first few instances as a sanity check
         self.batch_size = device_eval_batch_size
-        self.SENT_SIZE = 300
+        if samples_per_sentence <= 0:
+            raise ValueError("samples_per_sentence must be positive")
+        self.SENT_SIZE = int(samples_per_sentence)
         self.pause_token_id = pause_token_id
+        self.normalize_document_boundaries = (
+            metric_type == "doc"
+            if normalize_document_boundaries is None
+            else bool(normalize_document_boundaries)
+        )
 
         self.samples: List[Dict[str, Any]] = []
         self.term_len: List[int] = []
@@ -1580,9 +1678,40 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
                 f"Starting loading {self.dataset_name}_approx_ppl dataset"
             )
 
-        self.dataset = np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_300.npy"), mmap_mode='r')
-        self.sent_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_sent_index.npy")))
-        self.doc_index = torch.LongTensor(np.load(os.path.join(self.dataset_path, f"{self.dataset_name}_doc_index.npy")))
+        data_filename = data_filename or f"{self.dataset_name}_300.npy"
+        sentence_index_filename = (
+            sentence_index_filename or f"{self.dataset_name}_sent_index.npy"
+        )
+        document_index_filename = (
+            document_index_filename or f"{self.dataset_name}_doc_index.npy"
+        )
+        self.dataset = np.load(
+            os.path.join(self.dataset_path, data_filename), mmap_mode="r"
+        )
+        self.sent_index = torch.LongTensor(
+            np.load(os.path.join(self.dataset_path, sentence_index_filename))
+        )
+        self.doc_index = torch.LongTensor(
+            np.load(os.path.join(self.dataset_path, document_index_filename))
+        )
+        if len(self.sent_index) % self.SENT_SIZE:
+            raise ValueError(
+                f"{self.dataset_name}_sent_index.npy length must be divisible by "
+                f"{self.SENT_SIZE}, got {len(self.sent_index)}"
+            )
+        document_counts = self.doc_index.numpy().astype(np.int64, copy=False)
+        if not len(document_counts) or np.any(document_counts <= 0):
+            raise ValueError("testppl document sentence counts must all be positive")
+        sentence_count = len(self.sent_index) // self.SENT_SIZE
+        if int(document_counts.sum(dtype=np.int64)) != sentence_count:
+            raise ValueError(
+                "testppl document index does not cover the sentence index: "
+                f"{int(document_counts.sum(dtype=np.int64))} != {sentence_count}"
+            )
+        self.document_ends = np.cumsum(document_counts, dtype=np.int64)
+        self.document_starts = np.concatenate(
+            (np.zeros(1, dtype=np.int64), self.document_ends[:-1])
+        )
         self.length = len(self.sent_index)
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.prep_examples()
@@ -1591,6 +1720,23 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
     def __getitem__(self, index):
         input_ids = self.dataset[self.sent_index[index]:self.sent_index[index+1]]
+        if self.normalize_document_boundaries:
+            sentence_index = int(index) // self.SENT_SIZE
+            document_id = int(
+                np.searchsorted(self.document_ends, sentence_index, side="right")
+            )
+            input_ids = normalize_testppl_document_record(
+                input_ids,
+                first_in_document=(
+                    sentence_index == int(self.document_starts[document_id])
+                ),
+                last_in_document=(
+                    sentence_index + 1 == int(self.document_ends[document_id])
+                ),
+                bos_token_id=self.vocab.bos,
+                eos_token_id=self.vocab.eos,
+                pad_token_id=self.vocab.pad,
+            )
         input_ids = self._convert_sequence(input_ids)
         return {
             "sent_id" : index//self.SENT_SIZE + 1,
@@ -1637,7 +1783,15 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
         for i in range(1, len(self.term_len)):
             sent = self[self.SENT_SIZE * (i-1)]
-            self.term_len[i] = sum([self.vocab.is_terminal(token) or token==self.vocab.eos for token in sent["input_ids"]])
+            self.term_len[i] = int(
+                sent.get(
+                    "term_count",
+                    sum(
+                        self.vocab.is_terminal(token) or token == self.vocab.eos
+                        for token in sent["input_ids"]
+                    ),
+                )
+            )
 
     def pad_tokens_until_max(self, tokens, max_len=2048):
         """truncate from left if len(tokens) > model_ctx_len, max_len is not considered then
@@ -1687,6 +1841,25 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             attention_bias, label_mask = None, None
             if self.generate_TG_attention_bias is not None:
                 attention_bias, label_mask = self.generate_TG_attention_bias(cur_input_id)
+            sample_label_mask = sample.get("label_mask")
+            if sample_label_mask is not None:
+                sample_label_mask = np.asarray(sample_label_mask, dtype=np.bool_)
+                if len(sample_label_mask) > len(cur_input_id):
+                    # pad_tokens_until_max truncates a too-long record from the
+                    # left, so keep the matching suffix of its label mask.
+                    sample_label_mask = sample_label_mask[-len(cur_input_id) :]
+                elif len(sample_label_mask) < len(cur_input_id):
+                    sample_label_mask = np.pad(
+                        sample_label_mask,
+                        (0, len(cur_input_id) - len(sample_label_mask)),
+                        constant_values=False,
+                    )
+                sample_label_mask = torch.from_numpy(sample_label_mask)
+                label_mask = (
+                    sample_label_mask
+                    if label_mask is None
+                    else torch.bitwise_and(label_mask, sample_label_mask)
+                )
             input_ids.append(cur_input_id)
             
             if attention_bias is not None:
@@ -1728,6 +1901,69 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
     def token_decode(self, tokens: List[int]) -> str:
         return self.tokenizer.decode(tokens)
+
+
+class TerminalDocumentPerplexityDataset(TGPerplexityApproximationDataset):
+    """One-path terminal projection for exact document-level PPL comparison."""
+
+    def __init__(self, tokenizer: Tokenizer, dataset_path: str, **kwargs):
+        super().__init__(
+            tokenizer=tokenizer,
+            dataset_path=dataset_path,
+            dataset_name="test",
+            metric_type="doc",
+            samples_per_sentence=1,
+            data_filename="test.npy",
+            sentence_index_filename="test_sent_index.npy",
+            document_index_filename="test_doc_index.npy",
+            **kwargs,
+        )
+
+    def prep_examples(self):
+        """Prepare pause phase offsets before the base class indexes records."""
+        self._pause_enabled = self.transformer_grammar_type[:5] == "pause"
+        if self._pause_enabled:
+            self._pause_p, self._pause_q = pause_spec_from_grammar_type(
+                self.transformer_grammar_type
+            )
+            raw_lengths = self.sent_index.numpy().astype(np.int64, copy=False)
+            raw_document_counts = self.doc_index.numpy().astype(np.int64, copy=False)
+            self._pause_start_phase = np.zeros(len(raw_lengths), dtype=np.int64)
+            sentence_id = 0
+            for document_count in raw_document_counts:
+                phase = 0
+                for _ in range(int(document_count)):
+                    self._pause_start_phase[sentence_id] = phase
+                    phase = (phase + int(raw_lengths[sentence_id])) % self._pause_q
+                    sentence_id += 1
+        super().prep_examples()
+
+    def __getitem__(self, index):
+        sample = super().__getitem__(index)
+        input_ids = np.asarray(sample["input_ids"])
+        sample["term_count"] = sum(
+            self.vocab.is_terminal(token) or token == self.vocab.eos
+            for token in input_ids
+        )
+        if not self._pause_enabled:
+            return sample
+
+        phase = int(self._pause_start_phase[int(index)])
+        expanded = []
+        label_mask = []
+        for raw_token in input_ids:
+            token = int(raw_token)
+            expanded.append(token)
+            label_mask.append(True)
+            phase = (phase + 1) % self._pause_q
+            if phase == 0:
+                pause_value = token if self.pause_token_id is None else self.pause_token_id
+                expanded.extend([pause_value] * self._pause_p)
+                label_mask.extend([False] * self._pause_p)
+        sample["input_ids"] = np.asarray(expanded, dtype=input_ids.dtype)
+        sample["label_mask"] = np.asarray(label_mask, dtype=np.bool_)
+        return sample
+
 
 formula_dict = {
     'center_embed': ['[ (%plaus%) ] < [ (%implaus%) ]'],
@@ -4757,6 +4993,7 @@ class OEEvalTask(ICLMultiChoiceTaskDataset):
 
 TG_path = "./dataset/bbc-news/testppl_tg/"
 TXLTREE_path = "./dataset/bbc-news/testppl_tree/"
+TERMINAL_path = "./dataset/bbc-news/terminal/"
 TESTOR_TG_PATH = "./dataset/bbc-news/testor_tg/"
 TESTOR_TREE_PATH = "./dataset/bbc-news/testor_tree/"
 BLiMP_PATH = "./dataset/BLiMP/tree300/"
@@ -4771,6 +5008,12 @@ TG_task_map = {
     "tg_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TG_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
     "txl_approx_doc": (TGPerplexityApproximationDataset, {"dataset_path": TXLTREE_path, "dataset_name": "tree", "metric_type": "doc"}),
     "txl_approx_doc_testor": (TGPerplexityApproximationDataset, {"dataset_path": TESTOR_TREE_PATH, "dataset_name": "CC-MAIN-2022-49", "metric_type": "doc"}),
+    "terminal_doc_ppl": (
+        TerminalDocumentPerplexityDataset,
+        {
+            "dataset_path": TERMINAL_path,
+        },
+    ),
     "syntactic_generalization": (SGDataset, {"dataset_path": "./evaluation/SG/tokenized"}), 
     "BLiMP": (BLiMPApproximationDataset, {"dataset_path": BLiMP_PATH}), 
     "xsum": (XsumDataset, {"dataset_path":"./dataset/Xsum", "metric_type": "rouge"}),

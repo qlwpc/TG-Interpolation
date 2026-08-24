@@ -805,6 +805,7 @@ class DataConfig(BaseConfig):
 class EvaluatorType(StrEnum):
     downstream = "downstream"
     lm = "lm"
+    terminal_doc = "terminal_doc"
     tg_doc = "tg_doc"
     tg_sent = "tg_sent"
     rouge = "rouge"
@@ -864,6 +865,9 @@ class EvaluatorConfig(BaseConfig):
     # instead of being dragged down by un-scored (zero) slots. None => 1000 (full).
     # Honored only for label=="BLiMP".
     pair_per_task: Optional[int] = None
+    # Optional tokenized SG suite override. Qwen-family checkpoints require
+    # the Qwen-tokenized suite rather than the GPT-2 default.
+    sg_dataset_path: Optional[str] = None
 
 
 class TruncationDirection(StrEnum):

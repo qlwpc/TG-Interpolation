@@ -1157,9 +1157,18 @@ class Trainer:
             self.cur_length = 0
             self.last_logProb = None
             self.logits_to_update = None
+        # Freeze the preceding sentence's next-token distribution. The cache
+        # commit below updates self.last_logProb to the CURRENT sentence, which
+        # must not be used to score this sentence's first token.
+        prefix_last_log_prob = self.last_logProb
         
         batch = move_to_device(batch, self.device)
         self.num_evaled += batch_size
+        samples_per_sentence = int(evaluator.eval_loader.dataset.SENT_SIZE)
+        starts_sentence = (
+            (self.num_evaled - batch_size) % samples_per_sentence == 0
+        )
+        ends_sentence = self.num_evaled % samples_per_sentence == 0
 
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
@@ -1179,11 +1188,11 @@ class Trainer:
                     attention_bias=batch.get("attention_bias"),
                     doc_lens=batch.get("doc_lens"),
                     max_doc_lens=batch.get("max_doc_lens"),
-                    use_cache=(self.num_evaled % 300 == batch_size or batch_size==300),
+                    use_cache=starts_sentence,
                     past_key_values = self.past_key_values,
                 )
                 logits, kv_cache = out.logits, out.attn_key_values
-                if self.num_evaled % 300 == batch_size or batch_size == 300:
+                if starts_sentence:
                     # update input_ids
                     # List[Tuple[torch.Tensor, torch.Tensor]] -> len=model_num_layers, tuple(key, value), 
                     # tensor shape: Batch * n_kv_heads * seq_length * dim_head
@@ -1194,7 +1203,7 @@ class Trainer:
                         for k, v in kv_cache
                     ]
                     self.logits_to_update = torch.log_softmax(logits[0, update_T - 1, :], dim=-1)
-                if self.num_evaled % 300 == 0:
+                if ends_sentence:
                     # update past_key_values
                     self.doc_kv_cache = self.kv_to_update
                     self.cur_length = self.doc_kv_cache[0][0].shape[-2]
@@ -1212,8 +1221,12 @@ class Trainer:
                     logits_for_loss, labels, ignore_index=self.cfg.model.pad_token_id, reduction="none"
                 )
                 ce_loss = ce_loss.view(batch_size, -1).sum(dim=1)
-                if self.last_logProb is not None:
-                    ce_loss -= torch.gather(self.last_logProb, dim=0, index=batch["input_ids"][:, 0])
+                if prefix_last_log_prob is not None:
+                    ce_loss -= torch.gather(
+                        prefix_last_log_prob,
+                        dim=0,
+                        index=batch["input_ids"][:, 0],
+                    )
 
         evaluator.update_metrics(
             batch, ce_loss, logits
@@ -1295,7 +1308,12 @@ class Trainer:
                                 use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
                             )
                         score_dict[sent["condition_name"]] = score
-                    elif self.cfg.model.transformer_grammar_type[:8] == "terminal" or self.cfg.model.ispause or self.cfg.model.transformer_grammar_type in {"treereg", "pushdown"}:
+                    elif (
+                        structure_mode == "terminal"
+                        or self.cfg.model.transformer_grammar_type[:8] == "terminal"
+                        or self.cfg.model.ispause
+                        or self.cfg.model.transformer_grammar_type in {"treereg", "pushdown"}
+                    ):
                         sent = move_to_device(sent, self.device)
                         ce_loss, _ , logits, _, _ = self.model_forward(sent, loss_reduction="none")
                         # Align tag mask with ce_loss positions.
@@ -1774,7 +1792,7 @@ class Trainer:
             log.info(f"Running evaluation for '{evaluator.label}'...")
             # Reset metrics.
             evaluator.reset_metrics()
-            if evaluator.type == EvaluatorType.tg_doc:
+            if evaluator.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
                 evaluator.eval_loader.dataset.reset()
                 self.num_evaled = 0
                 self.cur_length = 0
@@ -1796,7 +1814,7 @@ class Trainer:
 
             # Run model over batches.
             for eval_step, eval_batch in enumerate(eval_batches):
-                if evaluator.type == EvaluatorType.tg_doc:
+                if evaluator.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
                     self.TG_doc_eval_step(eval_batch, evaluator)
                 elif evaluator.label == "syntactic_generalization":
                     self.SG_eval_step(
@@ -1828,7 +1846,7 @@ class Trainer:
             self.log_metrics_to_console(f"{evaluator.label}", metrics)
 
             del eval_batches
-            if evaluator.type == EvaluatorType.tg_doc:
+            if evaluator.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
                 del self.kv_to_update
                 del self.doc_kv_cache
                 del self.cur_doc_id

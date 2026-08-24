@@ -1,5 +1,6 @@
 from typing import Dict, List, Union
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchmetrics import MeanMetric, Metric
@@ -9,7 +10,7 @@ from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import get_global_rank, get_world_size
 from ..data.util import DistributedEvalSampler
-from .downstream import ICLMetric, BeamSearchICLMetric, DecomposedICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
+from .downstream import ICLMetric, BeamSearchICLMetric, DecomposedICLMetric, label_to_task_map, TGPerplexitySentenceLevelMetric, TGPerplexityDocumentLevelMetric, TerminalDocumentPerplexityMetric, SyntacticGeneralizationMetric, BLiMPMetric, RougeMetric
 from .evaluator import Evaluator
 from olmo.data import get_TG_generate_bias_func
 
@@ -96,10 +97,19 @@ def build_downstream_evaluator(
         # that shared dictionary or leak into the next evaluator with the same
         # label.
         task_kwargs = dict(default_task_kwargs)
-        if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label=="BLiMP":
-            task_kwargs["device_eval_batch_size"] = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
+        if eval_cfg.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc) or eval_cfg.label=="BLiMP":
+            task_kwargs["device_eval_batch_size"] = (
+                1
+                if eval_cfg.type == EvaluatorType.terminal_doc
+                else eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
+            )
     else:
         task_class = task_spec
+    if (
+        eval_cfg.label == "syntactic_generalization"
+        and getattr(eval_cfg, "sg_dataset_path", None) is not None
+    ):
+        task_kwargs["dataset_path"] = eval_cfg.sg_dataset_path
     task_kwargs["model_ctx_len"] = train_config.model.max_sequence_length
     task_kwargs["vocab_path"] = train_config.tokenizer.vocabulary
     task_kwargs["generate_TG_attention_bias"] = get_TG_generate_bias_func(train_config)
@@ -152,7 +162,11 @@ def build_downstream_evaluator(
         # rank, in order); tg_sent/BLiMP assume sequential sent_id arrival and
         # index by position. The other evaluators (SG, Rouge, ICL,
         # beam_search_icl) have no order dependence and use strided partitioning.
-        contiguous = eval_cfg.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent] or eval_cfg.label == "BLiMP"
+        contiguous = eval_cfg.type in [
+            EvaluatorType.tg_doc,
+            EvaluatorType.terminal_doc,
+            EvaluatorType.tg_sent,
+        ] or eval_cfg.label == "BLiMP"
         # tg_doc additionally needs whole-document partitioning: its KV cache
         # accumulates across every sentence of a document, so a document must
         # not be split across ranks (count-based contiguous splitting would cut
@@ -161,18 +175,18 @@ def build_downstream_evaluator(
         # document is an integer number of sentences (SENT_SIZE trees), so this
         # also keeps the per-sentence 300-sync in TG_doc_eval_step aligned.
         group_starts = None
-        if eval_cfg.type == EvaluatorType.tg_doc:
+        if eval_cfg.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
             ds = ds_eval_dataset
             sent_size = getattr(ds, "SENT_SIZE", None) or getattr(ds, "samples_per_sent", 300)
-            # ds.doc_index (post-prep_examples cumsum) holds per-document sentence
-            # counts; build [0, sents_0, sents_0+sents_1, ...] * SENT_SIZE.
-            doc_idx = getattr(ds, "doc_index", None)
-            if doc_idx is not None:
-                doc_sents = doc_idx.tolist() if hasattr(doc_idx, "tolist") else list(doc_idx)
-                starts = [0]
-                for s in doc_sents:
-                    starts.append(starts[-1] + int(s) * int(sent_size))
-                group_starts = torch.LongTensor(starts)
+            # The dataset keeps sentence-level cumulative document ends before
+            # prep_examples mutates doc_index. Convert those exact boundaries to
+            # flat candidate-record offsets.
+            document_ends = getattr(ds, "document_ends", None)
+            if document_ends is not None:
+                starts = np.concatenate(
+                    (np.zeros(1, dtype=np.int64), np.asarray(document_ends))
+                ) * int(sent_size)
+                group_starts = torch.from_numpy(starts)
         elif eval_cfg.label == "BLiMP" and ds_eval_dataset.SENT_SIZE > 1:
             # Gold-K BLiMP batches and BLiMPMetric rows are sentence groups of
             # exactly SENT_SIZE parses. A plain contiguous N/world_size split
@@ -195,21 +209,34 @@ def build_downstream_evaluator(
             group_starts=group_starts,
         )
     eval_batch_size = eval_cfg.device_eval_batch_size or train_config.device_eval_batch_size
+    if eval_cfg.type == EvaluatorType.terminal_doc:
+        # One terminal path per sentence. Sequential batch size 1 lets the
+        # shared document scorer commit that path to its KV cache immediately.
+        # Pause models receive a document-phase-aware expanded sequence and a
+        # label mask that excludes the inserted pause targets.
+        eval_batch_size = 1
     if eval_cfg.label in beam_search_tasks or eval_cfg.type == EvaluatorType.beam_search_icl \
         or (eval_cfg.label == "BLiMP" and (
             structure_mode == "beam"
         )):
         eval_batch_size = 1
     
+    loader_num_workers = (
+        0 if eval_cfg.type == EvaluatorType.terminal_doc else data_config.num_workers
+    )
     ds_eval_dataloader = DataLoader(
         ds_eval_dataset,
         batch_size=eval_batch_size,
         collate_fn=ds_eval_dataset.collate_fn,
-        num_workers=data_config.num_workers,
+        num_workers=loader_num_workers,
         sampler=ds_eval_sampler,
         pin_memory=data_config.pin_memory,
-        prefetch_factor=data_config.prefetch_factor,
-        persistent_workers=data_config.persistent_workers,
+        prefetch_factor=(
+            None if loader_num_workers == 0 else data_config.prefetch_factor
+        ),
+        persistent_workers=(
+            False if loader_num_workers == 0 else data_config.persistent_workers
+        ),
         timeout=data_config.timeout,
     )
     if eval_cfg.type == EvaluatorType.tg_sent:
@@ -219,13 +246,19 @@ def build_downstream_evaluator(
             term_length=ds_eval_dataset.get_term_length(),
             device_eval_batch_size = eval_batch_size
         )
+    elif eval_cfg.type == EvaluatorType.terminal_doc:
+        metric = TerminalDocumentPerplexityMetric(
+            term_length=ds_eval_dataset.get_term_length(),
+            dataset_length=len(ds_eval_dataset),
+        )
     elif eval_cfg.type == EvaluatorType.tg_doc:
         metric = TGPerplexityDocumentLevelMetric(
             vocab_path=train_config.tokenizer.vocabulary,
             metric_type=ds_eval_dataset.metric_type, 
             term_length=ds_eval_dataset.get_term_length(),
             device_eval_batch_size = eval_batch_size,
-            dataset_length=len(ds_eval_dataset)
+            dataset_length=len(ds_eval_dataset),
+            samples_per_sent=ds_eval_dataset.SENT_SIZE,
         )
     elif eval_cfg.label == "syntactic_generalization":
         metric = SyntacticGeneralizationMetric(metric_type=ds_eval_dataset.metric_type,
@@ -287,7 +320,7 @@ def build_downstream_evaluator(
                             doc_group=ds_eval_dataset.doc_group,
                             save_per_example_path=save_path)
 
-    if eval_cfg.type == EvaluatorType.tg_doc or eval_cfg.label == "BLiMP":
+    if eval_cfg.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc) or eval_cfg.label == "BLiMP":
         assert (
             ds_eval_dataset.SENT_SIZE % eval_batch_size == 0
             or ds_eval_dataset.TASK_SIZE % eval_batch_size == 0
@@ -312,7 +345,7 @@ def build_evaluator(
 ) -> Evaluator:
     from ..data import build_eval_dataloader
 
-    if eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.tg_sent, EvaluatorType.downstream, EvaluatorType.rouge, EvaluatorType.beam_search_icl]:
+    if eval_config.type in [EvaluatorType.tg_doc, EvaluatorType.terminal_doc, EvaluatorType.tg_sent, EvaluatorType.downstream, EvaluatorType.rouge, EvaluatorType.beam_search_icl]:
         # Downstream evaluation.
         return build_downstream_evaluator(train_config, eval_config, tokenizer, device)
     elif eval_config.type == EvaluatorType.lm:
