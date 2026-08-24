@@ -50,6 +50,11 @@ compile: null
 
 optimizer:
   name: adamw
+  # Step Law provenance (scripts/step_law.py): lr=0.003608 does NOT match the
+  # full LIN1 stream (D=24.7B → lr would be 0.007013).  It matches a run
+  # truncated at stop_at: D = 19233 steps × 72 batch × 2048 = 2.835e9 tokens
+  # → lr = 0.003608 and B(D) = 70.7 ≈ 72.  The released Tree-100M checkpoint
+  # (step49440 = 7.29B tokens) trained 2.6x past this lr's design D.
   learning_rate: 0.003608
   weight_decay: 0.1
   eps: 1e-8

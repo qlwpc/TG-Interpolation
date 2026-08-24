@@ -79,11 +79,14 @@ class TestModelConfig:
         cfg = ModelConfig(transformer_grammar_type=grammar_type)
         assert cfg.ispause == expected, f"Failed for type={grammar_type}"
 
-    def test_ispause_exact_pause_crashes(self):
-        """BUG: 'pause' without a number suffix crashes in ispause."""
+    def test_ispause_bare_pause_defaults_to_one(self):
+        """Bare 'pause' (no number suffix) is treated as 'pause1' → ispause == 1.
+
+        See pause_spec_from_grammar_type (olmo/data/util.py): a bare "pause"
+        no longer crashes; it parses as the (1, 1) spec.
+        """
         cfg = ModelConfig(transformer_grammar_type="pause")
-        with pytest.raises(ValueError):
-            _ = cfg.ispause  # int("") → ValueError
+        assert cfg.ispause == 1
 
     def test_ispause_short_string_ok(self):
         """Short strings like 'tg', 'tree' should not accidentally match 'pause'."""
