@@ -29,7 +29,11 @@ class Evaluator:
     def compute_metrics(self) -> Dict[str, float]:
         if self.label in ["syntactic_generalization","BLiMP"] or self.type == EvaluatorType.rouge:
             return self.eval_metric.compute()
-        elif self.type in [EvaluatorType.tg_sent, EvaluatorType.tg_doc]:
+        elif self.type in [
+            EvaluatorType.tg_sent,
+            EvaluatorType.tg_doc,
+            EvaluatorType.terminal_doc,
+        ]:
             assert isinstance(self.eval_metric, Metric)
             value = self.eval_metric.compute().item()
             key = f"eval/downstream/{self.label}_{self.eval_metric.metric_type}"
@@ -104,7 +108,7 @@ class Evaluator:
         elif self.type == EvaluatorType.tg_sent:
             # assert isinstance(self.eval_metric, TGPerplexitySentenceLevelMetric)
             self.eval_metric.update(batch, logits)
-        elif self.type == EvaluatorType.tg_doc:
+        elif self.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
             # assert isinstance(self.eval_metric, TGPerplexityDocumentLevelMetric)
             self.eval_metric.update(batch, ce_loss)
         elif self.type == EvaluatorType.beam_search_icl:

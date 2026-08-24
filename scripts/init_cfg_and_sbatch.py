@@ -8,8 +8,11 @@ import subprocess
 import argparse
 import json
 import re
+import copy
 from pathlib import Path
 from typing import List, Optional
+
+from omegaconf import OmegaConf as om
 
 sys.path.append(os.path.expanduser("~/TG-Interpolation"))
 
@@ -72,7 +75,10 @@ Device_args = {
 }
 
 INPUTFORMAT = {
-    "terminal": ["terminal", "pause1", "pause1_label", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
+    # TreeReg is trained with a terminal stream and adds only a train-time
+    # auxiliary regularizer, so its document PPL uses the same terminal_doc
+    # protocol as terminal/pause checkpoints.
+    "terminal": ["terminal", "treereg", "treereg_layer9", "pause1", "pause1_label", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
     "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
     "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"],
     "tree_compress" : ["tree_compress"],
@@ -90,6 +96,11 @@ Models = {
     "terminal-1B": {"model.transformer_grammar_type": "terminal"},
     "terminal-500M": {"model.transformer_grammar_type": "terminal"},
     "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
+    "treereg": {"model.transformer_grammar_type": "treereg"},
+    "treereg_layer9": {
+        "model.transformer_grammar_type": "treereg",
+        "model.treereg_layer": 9,
+    },
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
     "tgtree-500M": {"model.transformer_grammar_type": "tgtree"},
     "tgtree-100M-early": {"model.transformer_grammar_type": "tgtree"},
@@ -123,8 +134,18 @@ mixing = {
     "nomask_mix_tg" : [TGConfig(grammar_type="tg", n_heads=6), TGConfig(grammar_type="tgnomask", n_heads=6)]
 }
 
-test_only_params = {"eval_on_load": True, "eval_no_save": True, "max_duration": 0}
+# Evaluation must support model-only checkpoints.  In ``scripts/train.py``
+# ``reset_*`` is translated to ``load_*_state=False``; without these flags an
+# otherwise valid test-only run still tries to restore ``optim.pt``/``train.pt``.
+test_only_params = {
+    "eval_on_load": True,
+    "eval_no_save": True,
+    "max_duration": 0,
+    "reset_optimizer_state": True,
+    "reset_trainer_state": True,
+}
 finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "eval_interval": 1000000}
+TEST_ONLY_TASKS = {"docppl", "xsum_test", "blimp", "SG", "hellaswag", "winogrande"}
 
 train_params = {
     "pretrain_tg": {"global_train_batch_size": 280, "device_train_microbatch_size": 30, "optimizer.learning_rate": 0.0076}, 
@@ -252,6 +273,10 @@ def generate_sbatch_content(
 
     default_commands = f"""
 workspace=${{HOME}}/TG-Interpolation
+# Slurm launches a non-interactive shell, which does not inherit the conda
+# activation used by the login session. Keep the generated evaluator scripts
+# self-contained and use the repository's pinned runtime explicitly.
+export PATH=${{HOME}}/.conda/envs/LLM/bin:${{PATH}}
 export HF_ENDPOINT=https://hf-mirror.com
 export PYTHONPATH=${{PYTHONPATH}}:${{workspace}}
 
@@ -282,22 +307,62 @@ date
     print(f"已生成sbatch脚本: {script_filename}")
     return script_filename
 
+def _load_checkpoint_config(
+    checkpoint_config_path: Path, overrides: List[str], modelname: str
+) -> TrainConfig:
+    """Load a checkpoint config, repairing only known legacy null grammar."""
+    raw = TrainConfig.update_legacy_settings(om.load(str(checkpoint_config_path)))
+    model_raw = raw.get("model")
+    if model_raw is not None and model_raw.get("transformer_grammar_type") is None:
+        # Some original terminal checkpoints predate this required field.  The
+        # requested model key is the explicit, auditable migration source.
+        model_raw["transformer_grammar_type"] = Models[modelname][
+            "model.transformer_grammar_type"
+        ]
+    conf = om.merge(om.structured(TrainConfig), raw)
+    if overrides:
+        conf = om.merge(conf, om.from_dotlist(overrides))
+    return om.to_object(conf)
+
+
 def generate_config(save_path: Path, args_list: List[str], Device:str, modelname: str, task: str) -> None:
-    default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal.yaml")
-    if modelname[-2:] == "1B":
-        default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal-1B.yaml")
-    elif modelname[-4:] == "500M":
-        default_yaml_path = os.path.expanduser("~/TG-Interpolation/train_configs/terminal-500M.yaml")
+    """Create an evaluation/finetuning config from the exact model checkpoint.
+
+    The checkpoint config is the only reliable source for architectural options.
+    It is deliberately *not* treated as a runtime config: data paths, restore
+    state, output folder, stop criteria, and evaluator definitions below are
+    reconstructed for the requested task.
+    """
+    if modelname not in model_paths:
+        raise OLMoCliError(f"Unknown or unmapped model: {modelname}")
+    checkpoint_path = Path(
+        os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
+    ).resolve()
+    checkpoint_config_path = checkpoint_path / "config.yaml"
+    if not checkpoint_config_path.is_file():
+        raise FileNotFoundError(
+            f"Checkpoint config is required for reproducible evaluation: {checkpoint_config_path}"
+        )
     override_args = {
         **Models[modelname],
         **train_params[task],
     }
     override_args = [f"{key}={value}" for key, value in override_args.items()]
     args_list = args_list + override_args
-    cfg = TrainConfig.load(default_yaml_path, args_list)
+    cfg = _load_checkpoint_config(checkpoint_config_path, args_list, modelname)
     
     workspace = "${workspace}" if Device not in ["H800"] else "/dev/shm"
 
+    # Do not inherit a stale train run or a foreign-dataset path from the
+    # checkpoint (notably the 1B FineWeb-Edu configs).  ``load_path`` is kept
+    # in the generated YAML as provenance; the sbatch CLI repeats it harmlessly.
+    cfg.workspace = workspace
+    cfg.run_name = f"{modelname}_{task}"
+    cfg.save_folder = f"{workspace}/saved_models/test_models/{modelname}_{task}"
+    cfg.remote_save_folder = None
+    cfg.load_path = str(checkpoint_path)
+    cfg.load_path_sharded_checkpointer = None
+    cfg.try_load_latest_save = False
     cfg.tokenizer.vocabulary = cfg.tokenizer.identifier = f"{workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json"
     modelConfig = Models[modelname]
     input_format = None
@@ -305,24 +370,73 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         if modelConfig["model.transformer_grammar_type"] in grammar:
             input_format = form
             break
-    train_path = f"{workspace}/dataset/bbc-news/" + input_format + "/train.npy"
-    cfg.data.paths[0] = train_path
+    if input_format is None:
+        raise OLMoCliError(f"No BBC News input format registered for {modelname}")
 
-    if task[:8]=="pretrain" or task=="docppl" and input_format == "terminal":
+    # Tree-Shuffle is a tree-format training checkpoint, but the requested
+    # comparison is terminal-only inference.  Keep the checkpoint weights and
+    # tokenizer intact while presenting the model as a terminal LM to every
+    # generated test config; this disables tree shuffling/latent-structure
+    # branches in the runtime and selects terminal BBC data.
+    if modelname == "tree_shuffle" and task in TEST_ONLY_TASKS:
+        cfg.model.transformer_grammar_type = "terminal"
+        input_format = "terminal"
+    train_path = f"{workspace}/dataset/bbc-news/" + input_format + "/train.npy"
+    # Replace the complete list.  Editing only paths[0] leaves inherited
+    # FineWeb shards in place and makes an otherwise BBC-only evaluator fail
+    # while its unused training dataloader is constructed.
+    cfg.data.paths = [train_path]
+    cfg.data.parse_tree_paths = None
+    # TreeReg's train loader is still constructed for eval_on_load. It requires
+    # parse-aligned metadata even though terminal_doc itself does not consume
+    # the auxiliary supervision tensors.
+    if cfg.model.transformer_grammar_type == "treereg":
+        cfg.data.paths = [f"{workspace}/dataset/bbc-news/parse_aligned/train_treereg"]
+
+    if task[:8]=="pretrain":
         Evallist = [EvaluatorConfig(label="TG-ppl-validation"), EvaluatorConfig(label="TG-ppl-validation-test")]
         Evallist[0].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/dev.npy"]
         Evallist[1].data.paths = [f"{workspace}/dataset/bbc-news/" + input_format + "/test.npy"]
         Evallist[0].data.pin_memory = Evallist[1].data.pin_memory = True
         Evallist[0].data.generate_doc_lengths = Evallist[1].data.generate_doc_lengths = (input_format!="tg")
-        Evaltasks[task] = Evallist
+        evaluators = Evallist
         cfg.model.flex_attention = True
     elif task=="docppl":
-        Evaltasks["docppl"][0].label = "tg_approx_doc" if input_format=="tg" else "txl_approx_doc"
-    elif task=="blimp":
-        if cfg.model.transformer_grammar_type[:8] == "terminal" or cfg.model.transformer_grammar_type[:5] == "pause":
-            Evaltasks["blimp"][0].device_eval_batch_size = 100
+        # Tree-Shuffle's diagnostic establishes terminal-only inference on
+        # terminal input, so it shares the exact terminal document protocol.
+        if input_format == "terminal" or modelname == "tree_shuffle":
+            evaluators = [
+                EvaluatorConfig(
+                    label="terminal_doc_ppl",
+                    type=EvaluatorType.terminal_doc,
+                    device_eval_batch_size=1,
+                )
+            ]
         else:
-            Evaltasks["blimp"][0].device_eval_batch_size = 150
+            evaluators = [
+                EvaluatorConfig(
+                    label="tg_approx_doc" if input_format == "tg" else "txl_approx_doc",
+                    type=EvaluatorType.tg_doc,
+                    device_eval_batch_size=60,
+                )
+            ]
+    else:
+        # The registry is module-global; a deep copy prevents a batch-size
+        # mutation for one model from leaking into the next generated config.
+        evaluators = copy.deepcopy(Evaltasks[task])
+
+    # Tree-Shuffle is terminal at inference for the requested comparison. The
+    # explicit protocol prevents auto mode from selecting latent beam/gold paths.
+    if modelname == "tree_shuffle" and task in {"SG", "blimp"}:
+        evaluators[0].structure_mode = "terminal"
+        evaluators[0].tree_eval_type = "terminal"
+        evaluators[0].beam_search = False
+
+    if task=="blimp":
+        if cfg.model.transformer_grammar_type[:8] == "terminal" or cfg.model.transformer_grammar_type[:5] == "pause":
+            evaluators[0].device_eval_batch_size = 100
+        else:
+            evaluators[0].device_eval_batch_size = 150
 
     if Device == "SIST_TITAN":
         cfg.model.flash_attention = False
@@ -330,8 +444,34 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     if cfg.model.transformer_grammar_type=="mixing":
         cfg.model.mix_head_type = mixing[modelname]
 
-    cfg.evaluators = Evaltasks[task]
-    cfg.wandb.name = "${run_name}"
+    if task in TEST_ONLY_TASKS:
+        # Explicitly overwrite any training-state controls inherited from the
+        # checkpoint.  Evaluation is model-only and must never resume a run.
+        cfg.eval_on_load = True
+        cfg.eval_no_save = True
+        cfg.max_duration = "0ep"
+        cfg.stop_at = 0
+        cfg.reset_optimizer_state = True
+        cfg.reset_trainer_state = True
+        cfg.wandb = None
+        cfg.save_data_indices = False
+        cfg.data.num_workers = 0
+        cfg.data.prefetch_factor = None
+        cfg.data.persistent_workers = False
+        cfg.data.drop_last = False
+    elif not task.startswith("pretrain"):
+        # Finetuning starts from checkpoint weights but intentionally creates
+        # a new optimizer/trainer state.  A historical ``stop_at`` must not
+        # silently truncate the requested epoch budget.
+        cfg.eval_on_load = False
+        cfg.eval_no_save = False
+        cfg.stop_at = None
+        cfg.reset_optimizer_state = True
+        cfg.reset_trainer_state = True
+
+    cfg.evaluators = evaluators
+    if cfg.wandb is not None:
+        cfg.wandb.name = "${run_name}"
     log.info("Configuration:")
     log.info(cfg)
     cfg.save(save_path)
@@ -357,6 +497,8 @@ model_paths = {
     "terminal1024": "/saved_models/terminal_100M_1024/step34115-unsharded",
     "terminal-500M" : "/saved_models/terminal_500M/step34115-unsharded",
     "terminal-100M-early": "/saved_models/terminal_100M_early/step14425-unsharded",
+    "treereg": "/saved_models/treereg/step34354-unsharded",
+    "treereg_layer9": "/saved_models/treereg_layer9/step34354-unsharded",
     "tree-500M" : "/saved_models/Tree_500M/step49440-unsharded",
     "tree-100M-early" : "/saved_models/Tree_100M_early/step19233-unsharded",
     "tgtree-500M" : "/saved_models/TGTree_500M/step55853-unsharded",

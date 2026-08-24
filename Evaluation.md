@@ -1,7 +1,7 @@
 # Evaluation 工作流程文档
 
 **代码库**: /home/wangpch/TG-Interpolation (OLMo-based)
-**生成日期**: 2026-07-10
+**更新日期**: 2026-08-23
 **用途**: 个人参考文档，记录 evaluation 系统如何运作，含 file:line 引用和关键数值。
 
 ---
@@ -12,9 +12,10 @@
 ```python
 class EvaluatorType(StrEnum):
     downstream = "downstream"      # ICL 多选 (boolq/cb/copa 等)
-    lm = "lm"                      # 语言模型困惑度 (docppl)
+    lm = "lm"                      # legacy token-stream PPL
     tg_doc = "tg_doc"              # TG 格式文档级困惑度
     tg_sent = "tg_sent"            # TG 格式句子级困惑度
+    terminal_doc = "terminal_doc"  # terminal/pause 文档级 PPL
     rouge = "rouge"                # 摘要 ROUGE (xsum)
     beam_search_icl = "beam_search_icl"
 ```
@@ -22,13 +23,14 @@ class EvaluatorType(StrEnum):
 ### 三处分发
 
 **1. 构造分发** (`olmo/eval/__init__.py:166-196`): `build_evaluator` 按 `eval_config.type` 分发
-- `{tg_doc, tg_sent, downstream, rouge, beam_search_icl}` → `build_downstream_evaluator`
+- `{tg_doc, terminal_doc, tg_sent, downstream, rouge, beam_search_icl}` → `build_downstream_evaluator`
 - `lm` → `build_eval_dataloader` + `MeanMetric`
 - 其他 → `ValueError`
 
 **2. Metric 类分发** (`olmo/eval/__init__.py:90-143`): `build_downstream_evaluator` 内按 type/label 选 metric
 - `tg_sent` → `TGPerplexitySentenceLevelMetric`
 - `tg_doc` → `TGPerplexityDocumentLevelMetric`
+- `terminal_doc` → `TerminalDocumentPerplexityMetric`（FP64 NLL，严格检查每句恰好一次）
 - label `"syntactic_generalization"` → `SyntacticGeneralizationMetric`
 - label `"BLiMP"` → `BLiMPMetric`
 - type `rouge` → `RogueMetric`
@@ -38,7 +40,7 @@ class EvaluatorType(StrEnum):
 
 **3. 运行时分发** (`olmo/train.py:1301-1311`): `eval()` 方法按 batch 分发到不同 eval_step
 ```python
-if evaluator.type == EvaluatorType.tg_doc:
+if evaluator.type in (EvaluatorType.tg_doc, EvaluatorType.terminal_doc):
     self.TG_doc_eval_step(eval_batch, evaluator)
 elif evaluator.label == "syntactic_generalization":   # SG 按 label 分发 (type 是 downstream)
     self.SG_eval_step(eval_batch, evaluator)
@@ -56,7 +58,8 @@ else:   # lm, tg_sent, downstream (ICL 多选)
 | Task | EvaluatorConfig label | Type | Metric 类 | Dataset 类 |
 |------|----------------------|------|-----------|------------|
 | pretrain | TG-ppl-validation | lm | MeanMetric | MemMapDataset |
-| docppl (terminal) | TG-ppl-validation + -test | lm | MeanMetric | MemMapDataset |
+| docppl (terminal/pause，当前标准) | terminal_doc_ppl | terminal_doc | TerminalDocumentPerplexityMetric | TerminalDocumentPerplexityDataset |
+| docppl (terminal/pause，旧口径) | TG-ppl-validation + -test | lm | MeanMetric | MemMapDataset |
 | docppl (tg/tree) | tg_approx_doc / txl_approx_doc | tg_doc | TGPerplexityDocumentLevelMetric | TGPerplexityApproximationDataset |
 | boolq/cb/copa/... | {task} | downstream | ICLMetric | ICLMultiChoiceTaskDataset 子类 |
 | SG | syntactic_generalization | downstream | SyntacticGeneralizationMetric | SGDataset |
@@ -110,7 +113,10 @@ if not cancel_initiated and (
 
 定义于 `scripts/init_cfg_and_sbatch.py:122-123`:
 ```python
-test_only_params = {"eval_on_load": True, "eval_no_save": True, "max_duration": 0}
+test_only_params = {
+    "eval_on_load": True, "eval_no_save": True, "max_duration": 0,
+    "reset_optimizer_state": True, "reset_trainer_state": True,
+}
 finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "eval_interval": 1000000}
 ```
 
@@ -118,7 +124,9 @@ finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "
 - `eval_on_load=True`: 训练前在 step 0 eval
 - `eval_no_save=True`: 不保存 checkpoint
 - `max_duration=0`: 0 训练步，eval 通过 `eval_on_load` 触发
-- **行为**: 加载 checkpoint → step 0 eval → 无训练 → 无保存
+- `reset_optimizer_state=True` / `reset_trainer_state=True`: 恢复时只加载
+  `model.pt`，不读取 `optim.pt` 或 `train.pt`
+- **行为**: 加载 model-only checkpoint → step 0 eval → 无训练 → 无保存
 
 ### finetune_params (用于 boolq, cb, copa, multirc, record, rte, wic, wsc, xsum_finetune)
 - `reset_optimizer_state=True`: 清空 Adam 动量，finetune 从零开始优化器状态
@@ -131,7 +139,35 @@ finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "
 
 ---
 
-## 4. docppl (TG-ppl-validation)
+## 4. document-level PPL（当前可比口径）
+
+`task="docppl"` 对 terminal 和所有 pause grammar 现在统一产生：
+
+```python
+EvaluatorConfig(
+    label="terminal_doc_ppl", type=EvaluatorType.terminal_doc,
+    device_eval_batch_size=1,
+)
+```
+
+它读取 `dataset/bbc-news/terminal/{test.npy,test_sent_index.npy,test_doc_index.npy}`，一条路径一条句子地延续 KV cache；每篇文章从 BOS 开始、以 EOS 结束。BOS 只提供上下文，所有普通 terminal 与 EOS 都计分。当前数据集固定为 **148,836 句、4,966 篇文档、3,284,061 个计分 token**。
+
+pause 模型按其 grammar 在同一文档内连续插入 pause（下一篇文档相位重置），并以 `label_mask` 排除插入位置；因此分子和分母与普通 terminal 完全对齐，能直接比较 PPL。`terminal_doc` 强制 batch=1、num_workers=0，防止乱序破坏 KV cache。
+
+句子间首 token 使用上一句冻结的末位分布计分；该修正不能用当前句缓存提交后的分布覆盖。
+
+### 本机完整运行（2026-08-23）
+
+| 模型 | checkpoint | Slurm job | 状态 |
+|---|---|---:|---|
+| terminal | `saved_models/Terminal-lr005-bs144/step34115-unsharded` | 3444 | 完成：PPL 9.88981（148,836 句） |
+| pause1 | `saved_models/pretrain_pause1_100M/step45487-unsharded` | 3445 | 完成：PPL 9.83125（148,836 句） |
+
+首次提交 `3442/3443` 在 GPU 启动前因非交互 Slurm shell 缺少 `torchrun` 退出；已在脚本生成器中固定 `LLM` conda 环境并重提为 `3444/3445`，不产生任何 PPL 结果。
+
+生成的可复现配置、脚本和日志在 `artifacts/evaluation/terminal_doc_ppl_20260823/{terminal,pause1}/`。结果从各自 `logs/slurm-*.out` 的 `eval/downstream/terminal_doc_ppl_doc_ppl` 读取；两次运行均完成于 2026-08-23。
+
+### 旧的 lm 路径（仅保留作历史对照）
 
 两条路径取决于 `input_format`:
 
@@ -160,10 +196,9 @@ cfg.model.flex_attention = True
 ### TG_doc_eval_step (`train.py:979-1054`)
 顺序处理文档 + KV cache，每 300 token 快照 KV cache (`doc_kv_cache`)。CE 在所有位置计算 (line 1045-1048)，减去前一块边界的首 token log-prob 修正 (line 1049-1050)。
 
-### Pause 稀释 CE/PPL
-- **lm 路径 (terminal docppl)**: `MemMapDataset` 接收 `pause_token_id` 和 `transformer_grammar_type` (`olmo/data/__init__.py:184,190`)，pause 展开序列。CE 在**所有位置** (含 pause) 计算 → **被稀释**: 真实 CE ≈ 报告 CE × 展开倍数 `(q+p)/q` (pause 位置 loss≈0 但增大分母)。
-- **tg_doc 路径**: `term_length` 只数 terminal，PPL 按真实 token 数归一化 → **不被稀释**。
-- 因此 pause 模型的 terminal docppl CE/PPL 不可直接与 terminal 比较；真实 CE ≈ 报告值 × 展开倍数。
+### 旧 lm 路径的 pause 稀释
+- `TG-ppl-validation[-test]` 的 `lm` 路径仍会把 pause 展开位置纳入平均 CE，不能与 terminal 或 `terminal_doc` PPL 比较。
+- 不要用简单的展开倍数换算其 PPL；新的 `terminal_doc_ppl` 是唯一报告用的 terminal/pause 文档 PPL。
 
 ---
 
@@ -352,7 +387,14 @@ pause 路径 (line 620) 仅当 `self.ispause` 为真时执行。terminal `pause_
 ```
 
 ### generate_config (`scripts/init_cfg_and_sbatch.py:258-312`)
-加载默认 YAML → 应用 `Models[modelname]` + `train_params[task]` 覆盖 → 从 `INPUTFORMAT` 解析 `input_format`。
+加载目标 checkpoint 的 `config.yaml` 作为**模型结构基线** → 应用
+`Models[modelname]` + `train_params[task]` 覆盖 → 从 `INPUTFORMAT` 解析
+`input_format`。随后重建 workspace、tokenizer、训练占位数据、load path、
+evaluator 与状态控制；不继承 checkpoint 的数据 shards、`try_load_latest_save`、
+`stop_at` 或 optimizer/trainer state。
+
+这避免了 1B checkpoint 的 FineWeb-Edu shard 列表污染 BBC News 测评，也使仅有
+`model.pt` 的 checkpoint（例如已知的 Tree-Shuffle）能够进行 test-only 评测。
 
 ### INPUTFORMAT 解析 (lines 70-77, 276-280)
 ```python
@@ -364,13 +406,8 @@ pause 路径 (line 620) 仅当 `self.ispause` 为真时执行。terminal `pause_
 决定数据路径: `train_path = {workspace}/dataset/bbc-news/{input_format}/train.npy` (line 281)。
 **注意**: 新 grammar type 必须加入对应 INPUTFORMAT 列表，否则 `input_format=None` → 数据路径 `bbc-news/None` 失败。
 
-### docppl/terminal-input 分支 (lines 284-291)
-当 `task[:8]=="pretrain"` 或 `(task=="docppl" and input_format=="terminal")`:
-- 创建 `TG-ppl-validation` + `TG-ppl-validation-test` (type `lm`)
-- `data.paths` = dev.npy / test.npy
-- `generate_doc_lengths = (input_format != "tg")`
-- `cfg.model.flex_attention = True`
-- 覆盖 `Evaltasks[task]`
+### docppl/terminal-input 分支
+当 `task=="docppl" and input_format=="terminal"`（含 pause）时，创建唯一的 `terminal_doc_ppl` / `terminal_doc` evaluator，batch=1。`pretrain*` 仍保留旧的 `TG-ppl-validation` lm 监控，不应当作上述正式比较指标。
 
 ### docppl 非 terminal 分支 (lines 292-293)
 `task=="docppl"` 但 `input_format != "terminal"`: label 改 `tg_approx_doc` (tg) 或 `txl_approx_doc` (tree)，type `tg_doc`，batch 60。
@@ -382,6 +419,20 @@ if grammar_type[:8]=="terminal" or grammar_type[:5]=="pause":
 else:
     device_eval_batch_size = 150
 ```
+
+### Tree-Shuffle terminal syntax protocol
+
+Tree-Shuffle 的 SG/BLiMP 若要与普通 terminal 模型比较，必须显式设置：
+
+```yaml
+structure_mode: terminal
+tree_eval_type: terminal
+beam_search: false
+```
+
+代码分支也已硬编码支持该协议：SG 在 `structure_mode=terminal` 时走
+teacher-forced causal logits，不调用 `word_sync_beam_search`；BLiMP 通过
+`force_terminal` 使用 terminal 数据且 `SENT_SIZE=1`，不加载 gold300。
 
 最后 `cfg.evaluators = Evaltasks[task]` (line 306)。
 
@@ -403,6 +454,8 @@ else:
 | SG sg_pc | 3 |
 | docppl tg_doc SENT_SIZE | 300 |
 | docppl tg_doc batch | 60 |
+| terminal_doc batch / workers | 1 / 0 |
+| terminal_doc 测试集 | 148,836 句 / 4,966 文档 / 3,284,061 tokens |
 | xsum MAX_SUMMARY_LENGTH | 150 |
 | xsum beam_size | 6 |
 | xsum test set | 11,332 句 |
@@ -427,7 +480,7 @@ else:
 2. sbatch 脚本需注入 `conda activate LLM` (在 `cd ${workspace}` 后)
 3. `sbatch run_folder/{model}/{model}_{task}_test.sh`
 4. 结果在 `slurm-{jobid}.out`:
-   - docppl: `eval/TG-ppl-validation-test/CrossEntropyLoss=` / `Perplexity=`
+   - terminal/pause docppl: `eval/terminal_doc_ppl/Perplexity=`
    - SG: `avg=`
    - BLiMP: `overall/overall=`
    - boolq: `eval/downstream/boolq_acc__=`
@@ -436,4 +489,4 @@ else:
 ## 已知坑
 
 1. **新 grammar type 必须加入 INPUTFORMAT** — 否则数据路径解析为 None
-2. **pause 稀释 docppl** — pause 模型 terminal docppl CE/PPL 被稀释，真实 CE ≈ 报告值 × 展开倍数
+2. **不要混用旧 lm docppl** — 它的 pause CE/PPL 被插入位置稀释；报告 terminal/pause 对比时只使用 `terminal_doc_ppl`

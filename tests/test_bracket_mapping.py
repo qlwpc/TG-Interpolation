@@ -221,6 +221,18 @@ class TestEncodeTGString:
 # TokenizerConfig integration
 # ---------------------------------------------------------------------------
 
+def _offline_hf_tokenizer():
+    """Minimal WordLevel tokenizer so tests run without network access."""
+    from tokenizers import Tokenizer as HFTokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+
+    vocab = {"<pad>": 0, "(": 1, ")": 2, "-LRB-": 3, "Cats": 4, "chase": 5, "mice": 6}
+    tok = HFTokenizer(WordLevel(vocab=vocab, unk_token="<pad>"))
+    tok.pre_tokenizer = Whitespace()
+    return tok
+
+
 class TestTokenizerConfigIntegration:
     def test_default_is_false(self):
         from olmo.config import TokenizerConfig
@@ -236,17 +248,15 @@ class TestTokenizerConfigIntegration:
 
     def test_flag_stored_on_tokenizer(self):
         from olmo.tokenizer import Tokenizer as OlmoTokenizer
-        from tokenizers import Tokenizer as HFTokenizer
 
-        base = HFTokenizer.from_pretrained("gpt2")
+        base = _offline_hf_tokenizer()
         tok = OlmoTokenizer(base, eos_token_id=50256, use_bracket_mapping=True)
         assert tok.use_bracket_mapping is True
 
     def test_flag_default_false_on_tokenizer(self):
         from olmo.tokenizer import Tokenizer as OlmoTokenizer
-        from tokenizers import Tokenizer as HFTokenizer
 
-        base = HFTokenizer.from_pretrained("gpt2")
+        base = _offline_hf_tokenizer()
         tok = OlmoTokenizer(base, eos_token_id=50256)
         assert tok.use_bracket_mapping is False
 

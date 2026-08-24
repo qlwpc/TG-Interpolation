@@ -51,6 +51,9 @@ compile:
 
 optimizer:
   name: adamw
+  # Step Law (paper Eq.8): lr = 1.79·N^-0.713·D^0.307 with N=507,896,576
+  # (non-embedding params) and D=10,061,025,584 (terminal/train.npy tokens)
+  # → lr = 0.001308 (exact). See scripts/step_law.py to re-derive.
   learning_rate: 0.001308
   weight_decay: 0.1
   eps: 1e-8

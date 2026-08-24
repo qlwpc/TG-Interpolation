@@ -11,6 +11,7 @@ import torch
 from datatools.native_binary import (
     NativeBinaryCandidate,
     NativeNaryCandidate,
+    adapt_native_binary_candidates_to_gpst,
     adapt_native_nary_candidates,
     aggregate_label_scores,
     candidate_to_tree,
@@ -171,6 +172,42 @@ def test_nary_gpst_adapter_splices_word_pieces_before_right_binarizing():
     binary = adapted.gpst_candidates[0]
     assert len(binary.spans) == 3
     assert binary.merge_orders == (2, 1, 0)
+
+
+def test_direct_gpst_adapter_preserves_distinct_binary_cky_candidates():
+    candidates = [
+        NativeBinaryCandidate(score=4.0, spans=((0, 0, 1), (0, 1, 2))),
+        NativeBinaryCandidate(score=3.0, spans=((1, 1, 2), (0, 0, 2))),
+    ]
+    adapted = adapt_native_binary_candidates_to_gpst(
+        candidates, [[10, 11], [12], [13, 14]]
+    )
+
+    assert adapted.tokens == (10, 11, 12, 13, 14)
+    assert [candidate.score for candidate in adapted.candidates] == [4.0, 3.0]
+    assert len({candidate.spans for candidate in adapted.candidates}) == 2
+    assert len({candidate.merge_orders for candidate in adapted.candidates}) == 2
+    assert all(len(candidate.spans) == 4 for candidate in adapted.candidates)
+    # CKY word splits map to exact BPE word boundaries. Shared local word
+    # subtrees are unscored representation nodes and do not move these splits.
+    assert {(0, 1, 2), (0, 2, 4)} <= set(adapted.candidates[0].spans)
+    assert {(2, 2, 4), (0, 1, 4)} <= set(adapted.candidates[1].spans)
+
+
+def test_direct_gpst_adapter_maps_every_cky_split_to_word_boundary():
+    scores = np.random.default_rng(20260822).normal(size=(6, 6))
+    word_candidates = decode_native_binary_topk(scores, k=42)
+    pieces = [[10, 11], [12], [13, 14, 15], [16], [17, 18], [19]]
+    adapted = adapt_native_binary_candidates_to_gpst(word_candidates, pieces)
+    starts = np.cumsum([0] + [len(row) for row in pieces[:-1]])
+    ends = np.cumsum([len(row) for row in pieces]) - 1
+
+    for word_candidate, bpe_candidate in zip(word_candidates, adapted.candidates):
+        mapped_cky_spans = {
+            (int(starts[left]), int(ends[split]), int(ends[right]))
+            for left, split, right in word_candidate.spans
+        }
+        assert mapped_cky_spans <= set(bpe_candidate.spans)
 
 
 def test_short_sentence_returns_all_unique_topologies_without_padding():
