@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from olmo.attachment import derive_gold_attachment_actions
 from olmo.data.parse_align import TreeVocab, parse_chunk_slice
+from olmo.eval.native_model_topk_corpus import NativeModelTopKCorpus
 from olmo.model import OLMo
 
 
@@ -106,6 +107,48 @@ class PushdownGold300Corpus:
             yield self.document_id(i), self.sentence_candidates(i)
 
 
+def _native_candidate(tokens: Sequence[int], spans: Sequence[Sequence[int]], content_bounds: Tuple[int, int]) -> PushdownGoldCandidate:
+    """Build Pushdown supervision directly from one native mmap candidate."""
+    token_tuple = tuple(map(int, tokens))
+    left, right = map(int, content_bounds)
+    if not 0 <= left < right <= len(token_tuple):
+        raise ValueError(f"invalid native content bounds {content_bounds} for {len(token_tuple)} tokens")
+    span_tuple = tuple(tuple(map(int, span)) for span in spans if int(span[0]) >= 0)
+    sentence_ids = tuple(0 if left <= index < right else -1 for index in range(len(token_tuple)))
+    span_tensor = torch.tensor(span_tuple or [(-1, -1, -1)], dtype=torch.long).unsqueeze(0)
+    sid_tensor = torch.tensor(sentence_ids, dtype=torch.long).unsqueeze(0)
+    targets, legal = derive_gold_attachment_actions(span_tensor, sid_tensor)
+    return PushdownGoldCandidate(token_tuple, span_tuple, sentence_ids,
+                                 tuple(map(int, targets[0].tolist())),
+                                 tuple(tuple(x) for x in legal[0]))
+
+
+class NativePushdownTopKCorpus:
+    """Zero-reparse Pushdown corpus backed by native-model-topk v2 mmaps."""
+
+    def __init__(self, native_path: str, tokenizer_path: str, max_sentences: Optional[int] = None,
+                 start_document: int = 0, end_document: Optional[int] = None) -> None:
+        self.native = NativeModelTopKCorpus(native_path)
+        self.vocab = TreeVocab.from_tokenizer_file(tokenizer_path)
+        self.samples_per_sentence = int(self.native.manifest["candidate_slots"])
+        self.start_sentence, end_sentence = self.native.document_sentence_range(start_document, end_document)
+        self.num_sentences = end_sentence - self.start_sentence
+        if max_sentences is not None:
+            self.num_sentences = min(self.num_sentences, max_sentences)
+
+    def __len__(self) -> int:
+        return self.num_sentences
+
+    def sentence_candidates(self, sentence_index: int) -> Tuple[PushdownGoldCandidate, ...]:
+        row = self.native.sentence(self.start_sentence + sentence_index)
+        return tuple(_native_candidate(row.tokens, spans[:int(count)], row.content_bounds)
+                     for spans, count in zip(row.pushdown_spans, row.pushdown_span_counts))
+
+    def __iter__(self) -> Iterator[Tuple[int, Tuple[PushdownGoldCandidate, ...]]]:
+        for index in range(len(self)):
+            yield self.native.sentence(self.start_sentence + index).document_id, self.sentence_candidates(index)
+
+
 @dataclass(frozen=True)
 class PushdownCandidateScores:
     joint_nll: torch.Tensor
@@ -182,17 +225,93 @@ def _compose(prefix: Sequence[PushdownGoldCandidate], current: PushdownGoldCandi
     )
 
 
+def _pack_shared_native_candidates(
+    prefix: Sequence[PushdownGoldCandidate], candidates: Sequence[PushdownGoldCandidate],
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    """Pack native candidates while sharing their identical terminal stream.
+
+    The old scorer called ``_compose`` once per candidate, even though only the
+    parse spans and attachment actions vary.  This produces the same tensors in
+    one pass and creates one host-to-device transfer per batch.
+    """
+    if not candidates:
+        raise ValueError("candidates cannot be empty")
+    reference = _compose(prefix, candidates[0])
+    token_row, span_row, sid_row, _targets, _legal, prefix_length = reference
+    total_length = int(token_row.numel())
+    current_length = total_length - prefix_length
+    if any(candidate.tokens != candidates[0].tokens or candidate.sentence_ids != candidates[0].sentence_ids
+           for candidate in candidates[1:]):
+        raise ValueError("native candidates do not share terminal/sentence-ID rows")
+    prefix_spans = [tuple(map(int, span)) for span in span_row.tolist() if int(span[0]) < prefix_length]
+    max_spans = max(len(prefix_spans) + len(candidate.spans) for candidate in candidates)
+    spans = np.full((len(candidates), max(max_spans, 1), 3), -1, dtype=np.int64)
+    legal = np.zeros((len(candidates), current_length, total_length), dtype=np.bool_)
+    targets = np.full((len(candidates), current_length), -100, dtype=np.int64)
+    for batch, candidate in enumerate(candidates):
+        row_spans = prefix_spans + [tuple(value + prefix_length for value in span) for span in candidate.spans]
+        if row_spans:
+            spans[batch, :len(row_spans)] = row_spans
+        if len(candidate.attachment_targets) != current_length or len(candidate.legal_attachment_targets) != current_length:
+            raise ValueError("native attachment actions do not match current terminal length")
+        for query, (target, keys) in enumerate(zip(candidate.attachment_targets, candidate.legal_attachment_targets)):
+            if not keys:
+                continue
+            key_array = np.asarray(keys, dtype=np.int64)
+            if int(target) not in keys:
+                raise ValueError("gold attachment target is outside its legal action set")
+            legal[batch, query, prefix_length + key_array] = True
+            targets[batch, query] = int(target) + prefix_length
+    return (token_row, sid_row, torch.from_numpy(spans), torch.from_numpy(legal),
+            torch.from_numpy(targets), prefix_length)
+
+
+@torch.no_grad()
+def score_pushdown_native_candidates(
+    model: OLMo, prefix: Sequence[PushdownGoldCandidate], candidates: Sequence[PushdownGoldCandidate],
+    device: torch.device | str, include_attachment_probability: bool = True,
+) -> PushdownCandidateScores:
+    """Score one native candidate batch without repeated CPU composition."""
+    device = torch.device(device)
+    token_row, sid_row, spans, legal, targets, prefix_length = _pack_shared_native_candidates(prefix, candidates)
+    batch_size = len(candidates)
+    input_ids = token_row.unsqueeze(0).expand(batch_size, -1).to(device)
+    sentence_ids = sid_row.unsqueeze(0).expand(batch_size, -1).to(device)
+    tree_spans = spans.to(device, non_blocking=True)
+    target_start = max(prefix_length, 1); target_end = int(token_row.numel())
+    out = model(input_ids=input_ids, attention_mask=torch.ones_like(input_ids, dtype=torch.bool),
+                tree_spans=tree_spans, pushdown_sentence_ids=sentence_ids,
+                compute_attachment_logits=include_attachment_probability,
+                logits_range=(target_start - 1, target_end - 1),
+                attachment_query_range=(prefix_length, target_end))
+    labels = input_ids[:, target_start:target_end]
+    token_nll = F.cross_entropy(out.logits.float().transpose(1, 2), labels,
+                                reduction="none").sum(dim=1).to(torch.float64).cpu()
+    if not include_attachment_probability:
+        zeros = torch.zeros(batch_size, dtype=torch.float64)
+        return PushdownCandidateScores(token_nll, token_nll, zeros)
+    if out.attachment_logits is None:
+        raise RuntimeError("joint Pushdown PPL requires attachment logits")
+    masked = out.attachment_logits.float().masked_fill(~legal.to(device, non_blocking=True), float("-inf"))
+    attachment_nll = F.cross_entropy(masked.transpose(1, 2), targets.to(device, non_blocking=True),
+                                     ignore_index=-100, reduction="none").sum(dim=1).to(torch.float64).cpu()
+    return PushdownCandidateScores(token_nll + attachment_nll, token_nll, attachment_nll)
+
+
 @torch.no_grad()
 def score_pushdown_gold_candidates(
     model: OLMo, prefix: Sequence[PushdownGoldCandidate], candidates: Sequence[PushdownGoldCandidate],
     device: torch.device | str, eval_batch_size: int = 4, include_attachment_probability: bool = True,
+    max_batch_tokens: int = 65536,
 ) -> PushdownCandidateScores:
-    if not candidates:
+    if not candidates or max_batch_tokens <= 0:
         raise ValueError("candidates cannot be empty")
     device = torch.device(device)
     token_losses: List[torch.Tensor] = []; attachment_losses: List[torch.Tensor] = []
-    for start in range(0, len(candidates), eval_batch_size):
-        packed = [_compose(prefix, candidate) for candidate in candidates[start:start + eval_batch_size]]
+    probe = _compose(prefix, candidates[0])
+    batch_size = min(eval_batch_size, max(1, max_batch_tokens // int(probe[0].numel())))
+    for start in range(0, len(candidates), batch_size):
+        packed = [_compose(prefix, candidate) for candidate in candidates[start:start + batch_size]]
         total_length = int(packed[0][0].numel()); prefix_length = packed[0][-1]
         if any(int(row[0].numel()) != total_length or row[-1] != prefix_length for row in packed):
             raise ValueError("all candidate token sequences must have the same length")
@@ -235,6 +354,7 @@ def score_pushdown_gold_candidates(
 class PushdownDocumentPPLResult:
     legacy_perplexity: float; uniform_mixture_perplexity: float; token_only_perplexity: float
     legacy_log_likelihood: float; uniform_mixture_log_likelihood: float
+    token_only_log_likelihood: float
     terminal_count: int; sentence_count: int; document_count: int; samples_per_sentence: int
     deduplicated_trees: bool; beam_search: bool = False
     candidate_slots: int = 0; model_candidate_forwards: int = 0
@@ -248,9 +368,10 @@ class PushdownDocumentPPLResult:
 
 
 def evaluate_pushdown_document_ppl(
-    model: OLMo, corpus: PushdownGold300Corpus, device: torch.device | str, eval_batch_size: int = 4,
+    model: OLMo, corpus: PushdownGold300Corpus | NativePushdownTopKCorpus, device: torch.device | str, eval_batch_size: int = 4,
     max_sequence_length: int = 2048, deduplicate_trees: bool = False,
     include_attachment_probability: bool = True, progress: Optional[Callable[[int, int, int], None]] = None,
+    max_batch_tokens: int = 65536,
 ) -> PushdownDocumentPPLResult:
     if eval_batch_size <= 0: raise ValueError("eval_batch_size must be positive")
     if include_attachment_probability and not hasattr(model, "pushdown_attachment_head"):
@@ -263,7 +384,13 @@ def evaluate_pushdown_document_ppl(
         if first:
             prefix = (); previous_doc = doc_id; documents += 1
         candidates = original if first else tuple(_drop_leading_bos(c, corpus.vocab.bos) for c in original)
-        scored, multiplicities = _compress_candidates(candidates)
+        # Native v2 Pushdown rows are canonical unique n-ary structures, so
+        # bypass the legacy serialized-tree deduplication/hash pass.
+        if isinstance(corpus, NativePushdownTopKCorpus):
+            scored = candidates
+            multiplicities = torch.ones(len(scored), dtype=torch.float64)
+        else:
+            scored, multiplicities = _compress_candidates(candidates)
         candidate_slots += len(candidates)
         model_candidate_forwards += len(scored)
         if deduplicate_trees:
@@ -271,7 +398,18 @@ def evaluate_pushdown_document_ppl(
             # Otherwise counts restore the exact original 300-slot mixture.
             multiplicities.fill_(1)
         current = candidates[0]; context = _trim_prefix(prefix, current, max_sequence_length)
-        scores = score_pushdown_gold_candidates(model, context, scored, device, eval_batch_size, include_attachment_probability)
+        score_fn = score_pushdown_native_candidates if isinstance(corpus, NativePushdownTopKCorpus) else score_pushdown_gold_candidates
+        if score_fn is score_pushdown_native_candidates:
+            parts = []
+            probe_length = sum(len(sentence.tokens) for sentence in context) + len(scored[0].tokens)
+            batch_size = min(eval_batch_size, max(1, max_batch_tokens // probe_length))
+            for start in range(0, len(scored), batch_size):
+                parts.append(score_fn(model, context, scored[start:start + batch_size], device, include_attachment_probability))
+            scores = PushdownCandidateScores(*(torch.cat([getattr(part, field) for part in parts])
+                                               for field in ("joint_nll", "token_nll", "attachment_nll")))
+        else:
+            scores = score_fn(model, context, scored, device, eval_batch_size,
+                              include_attachment_probability, max_batch_tokens)
         joint_ll = _weighted_logsumexp(scores.joint_nll, multiplicities)
         token_sentence_ll = _weighted_logsumexp(scores.token_nll, multiplicities)
         legacy_ll += joint_ll.item()
@@ -282,7 +420,7 @@ def evaluate_pushdown_document_ppl(
         if progress: progress(index + 1, len(corpus), doc_id)
     def ppl(ll: float) -> float: return math.exp(-ll / terminals) if terminals else math.nan
     return PushdownDocumentPPLResult(
-        ppl(legacy_ll), ppl(mixture_ll), ppl(token_ll), legacy_ll, mixture_ll,
+        ppl(legacy_ll), ppl(mixture_ll), ppl(token_ll), legacy_ll, mixture_ll, token_ll,
         terminals, len(corpus), documents, corpus.samples_per_sentence,
         deduplicate_trees, False, candidate_slots, model_candidate_forwards,
     )

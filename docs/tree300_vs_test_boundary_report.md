@@ -174,6 +174,32 @@ candidate-0 文档层检查结果为：
 
 真实 Tree/TG Dataset 加载验证均通过：各 44,650,800 个 candidate 记录，运行时规范化在新数据上保持幂等。用于 perplexity 指数分母的是 **3,284,061 = 3,279,095 普通 terminal + 4,966 EOS**；BOS 只作为条件上下文，不计入预测 token 数。15 个边界单元测试覆盖补齐、幂等、一词文档、重复/错位特殊 token 和 PAD 拒绝。
 
+### Terminal document-PPL evaluation 任务
+
+新增 evaluator 类型 `terminal_doc` 和任务标签 `terminal_doc_ppl`，用于普通 Terminal 模型与 Tree/TG document-PPL 的同口径比较。它直接读取：
+
+- `dataset/bbc-news/terminal/test.npy`；
+- `dataset/bbc-news/terminal/test_sent_index.npy`；
+- `dataset/bbc-news/terminal/test_doc_index.npy`。
+
+该任务把每句视为一条路径（`SENT_SIZE=1`），复用 document scorer 的逐句 KV cache：文档切换时清空 cache，同文档内保留前文，超过模型上下文时从左侧滑动截断。BOS 仅作为第一篇句子的输入上下文，EOS 正常计分。专用 `TerminalDocumentPerplexityMetric` 用 FP64 累加全语料 NLL，然后除以固定的 3,284,061；若没有恰好覆盖全部 148,836 句，会报错而不是输出部分语料 PPL。
+
+配置写法为：
+
+```yaml
+evaluators:
+  - label: terminal_doc_ppl
+    type: terminal_doc
+    device_eval_batch_size: 1
+    data:
+      num_workers: 0
+      drop_last: false
+```
+
+`scripts/init_cfg_and_sbatch.py` 的 `model=terminal, task=docppl` 已自动生成上述任务，并设置 `eval_on_load=true`、`eval_no_save=true`、`max_duration=0`。执行器会强制 batch size 为 1、worker 数为 0，避免有状态的文档 cache 被 batch/worker 交错破坏。当前仅允许 `transformer_grammar_type=terminal`；Pause 等动态扩展格式需要单独定义其有效 token 和上下文口径。
+
+同时修复了共享 document scorer 的一个历史问题：sentence group 结束时必须使用 forward 前冻结的“上一句末 next-token distribution”补算当前句首，而不能在 cache commit 后误用当前句末分布。候选数同步逻辑也从硬编码 300 改为读取数据集的 `SENT_SIZE`，因此 Tree/TG 仍为 300，而 Terminal 为 1。
+
 ## 比较口径
 
 本报告使用如下口径，避免标签和序列化格式干扰内容判断：

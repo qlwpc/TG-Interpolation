@@ -103,6 +103,14 @@ class NativeModelTopKCorpus:
         self.ends = np.cumsum(counts)
         if not len(self.ends) or int(self.ends[-1]) != int(self.manifest["sentence_count"]):
             raise ValueError("native model top-K shard counts do not match manifest")
+        # Only ~0.6 MB for BBC test-PPL. Keeping this index in RAM lets callers
+        # split evaluation on document boundaries without touching large mmap
+        # candidate arrays or accidentally dropping a document prefix.
+        self.document_ids = np.concatenate(
+            [np.asarray(shard.document_ids, dtype=np.uint32) for shard in self.shards]
+        )
+        if np.any(self.document_ids[1:] < self.document_ids[:-1]):
+            raise ValueError("native model top-K document IDs are not monotone")
 
     def __len__(self) -> int:
         return int(self.ends[-1])
@@ -113,6 +121,20 @@ class NativeModelTopKCorpus:
         shard_id = int(np.searchsorted(self.ends, index, side="right"))
         start = 0 if shard_id == 0 else int(self.ends[shard_id - 1])
         return self.shards[shard_id].sentence(index - start)
+
+    def document_sentence_range(self, start_document: int = 0, end_document: int | None = None) -> tuple[int, int]:
+        """Return the half-open sentence interval for complete document IDs."""
+        total = int(self.manifest["document_count"])
+        if end_document is None:
+            end_document = total
+        if not 0 <= start_document <= end_document <= total:
+            raise ValueError(f"invalid document interval [{start_document}, {end_document})")
+        start = int(np.searchsorted(self.document_ids, start_document, side="left"))
+        end = int(np.searchsorted(self.document_ids, end_document, side="left"))
+        if start_document < end_document:
+            if start == len(self.document_ids) or int(self.document_ids[start]) != start_document:
+                raise ValueError(f"document {start_document} is absent")
+        return start, end
 
     def sentences(self, indices: Sequence[int]):
         return tuple(self.sentence(int(index)) for index in indices)

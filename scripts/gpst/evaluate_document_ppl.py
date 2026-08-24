@@ -20,7 +20,7 @@ if REPO not in sys.path:
 import torch  # noqa: E402
 
 from olmo.gpst.eval.document_ppl import (  # noqa: E402
-    GoldTree300Corpus,
+    NativeGPSTTopKCorpus,
     evaluate_gold_tree_document_ppl,
 )
 from olmo.gpst.model.model_factory import create_model  # noqa: E402
@@ -29,15 +29,7 @@ from olmo.gpst.model.model_factory import create_model  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument(
-        "--tree-data", default="dataset/testppl_tree/tree_300.npy"
-    )
-    parser.add_argument(
-        "--sentence-index", default="dataset/testppl_tree/tree_sent_index.npy"
-    )
-    parser.add_argument(
-        "--document-index", default="dataset/testppl_tree/tree_doc_index.npy"
-    )
+    parser.add_argument("--native-data", default="dataset/bbc-news/testppl/native_model_topk_300_v2")
     parser.add_argument(
         "--tokenizer-path", default="dataset/bbc-news/TG_GPT2_tokenizer.json"
     )
@@ -48,21 +40,17 @@ def main() -> None:
         "--gpt-config", default="olmo/gpst/data/gpt2-bbc/config.json"
     )
     parser.add_argument("--backbone", choices=("olmo", "gpt2"), default="olmo")
-    parser.add_argument("--samples-per-sentence", type=int, default=300)
-    parser.add_argument("--eval-batch-size", type=int, default=4)
+    parser.add_argument("--eval-batch-size", type=int, default=64)
+    parser.add_argument("--max-batch-actions", type=int, default=65536)
     parser.add_argument("--max-sentences", type=int)
+    parser.add_argument("--start-document", type=int, default=0)
+    parser.add_argument("--end-document", type=int)
     parser.add_argument("--max-action-nodes", type=int, default=2048)
     parser.add_argument("--max-terminals", type=int, default=2048)
     parser.add_argument(
         "--normalize-mixture",
         action="store_true",
         help="subtract log(K) per sentence; default reproduces OLMo's legacy metric",
-    )
-    parser.add_argument(
-        "--deduplicate-trees",
-        action="store_true",
-        help=("diagnostic: give each distinct tree one mixture slot; identical "
-              "trees are always compressed internally without changing the default metric"),
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log-every", type=int, default=10)
@@ -75,15 +63,9 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.backends.cuda.enable_flash_sdp(False)
 
-    log.info("loading fixed gold-tree corpus (beam search is disabled)")
-    corpus = GoldTree300Corpus(
-        args.tree_data,
-        args.sentence_index,
-        args.document_index,
-        args.tokenizer_path,
-        samples_per_sentence=args.samples_per_sentence,
-        max_sentences=args.max_sentences,
-    )
+    log.info("loading native mmap corpus (serialized tree parsing is disabled)")
+    corpus = NativeGPSTTopKCorpus(args.native_data, args.tokenizer_path, args.max_sentences,
+                                  args.start_document, args.end_document)
     log.info("loading GPST checkpoint with %s transformer blocks", args.backbone)
     model = create_model(
         "r2d2-gen-fast", args.r2d2_config, args.gpt_config, backbone=args.backbone
@@ -103,8 +85,9 @@ def main() -> None:
         eval_batch_size=args.eval_batch_size,
         max_action_nodes=args.max_action_nodes,
         max_terminals=args.max_terminals,
+        max_batch_actions=args.max_batch_actions,
         normalize_mixture=args.normalize_mixture,
-        deduplicate_trees=args.deduplicate_trees,
+        deduplicate_trees=False,
         progress=progress,
     )
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
