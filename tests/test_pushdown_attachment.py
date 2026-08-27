@@ -352,6 +352,27 @@ def test_attachment_loss_sum_scales_by_valid_token_count():
     assert torch.allclose(summed, mean * mask.sum())
 
 
+def test_incremental_score_next_matches_full_last_row():
+    """Cached generation's Eq. 5 shortcut is exactly the full head's last row."""
+    torch.manual_seed(17)
+    B, n, d, vocab = 3, 7, 16, 31
+    head = PushdownAttachmentHead(d, vocab)
+    prefix_hidden = torch.randn(B, n, d)
+    next_tokens = torch.randint(0, vocab, (B,))
+    wte = torch.randn(vocab, d)
+    # h_k is irrelevant to the last query: earlier columns use prefix h_j and
+    # the diagonal is overwritten by the h_tilde shift-only score.
+    extended_hidden = torch.cat([prefix_hidden, torch.randn(B, 1, d)], dim=1)
+    extended_ids = torch.cat(
+        [torch.randint(0, vocab, (B, n)), next_tokens[:, None]], dim=1
+    )
+    full_last = head(
+        extended_hidden, extended_ids, wte, query_range=(n, n + 1)
+    )[:, 0, :]
+    incremental = head.score_next(prefix_hidden, next_tokens, wte)
+    assert torch.allclose(incremental, full_last, atol=1e-6, rtol=1e-6)
+
+
 # --------------------------------------------------------------------------- #
 # beam search inference with the attachment head
 # --------------------------------------------------------------------------- #

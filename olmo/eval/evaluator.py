@@ -18,6 +18,11 @@ class Evaluator:
     eval_loader: DataLoader
     eval_metric: Union[Metric, Dict[str, Metric]]
     subset_num_batches: Optional[int] = None
+    # Shift-reduce decoding controls for Pushdown generation evaluators (XSum).
+    # Keeping them on the evaluator makes an experiment YAML authoritative rather
+    # than silently relying on Trainer-local constants.
+    pushdown_beam_size: int = 20
+    pushdown_max_reduce: Optional[int] = None
 
     def reset_metrics(self) -> None:
         if isinstance(self.eval_metric, Metric):

@@ -4,7 +4,12 @@ import numpy as np
 import torch
 import pytest
 
-from olmo.pushdown import compute_depth_matrix_gpu, PushdownDepthBias, _DepthBiasGradP
+from olmo.pushdown import (
+    compute_depth_matrix_gpu,
+    compute_last_depth_row_gpu,
+    PushdownDepthBias,
+    _DepthBiasGradP,
+)
 from olmo.data.parse_align import compute_depth_matrix
 
 
@@ -115,6 +120,19 @@ def test_depth_matrix_saturates_before_int8_cast():
     assert depth.item() == 127
 
 
+def test_incremental_last_depth_row_matches_full_matrix():
+    spans = torch.tensor(
+        [
+            [[0, 1, 3], [1, 2, 2], [4, 4, 6], [-1, -1, -1]],
+            [[0, 2, 6], [2, 3, 5], [3, 3, 3], [3, 3, 3]],
+        ],
+        dtype=torch.long,
+    )
+    full = compute_depth_matrix_gpu(spans, 7)[:, -1:, :]
+    incremental = compute_last_depth_row_gpu(spans, 7)
+    assert torch.equal(incremental, full)
+
+
 def test_pushdown_model_forward_parity():
     """Empty spans (no parse) must equal no-spans; real spans must differ."""
     from olmo.config import (ModelConfig, BlockType, LayerNormType, ActivationType, InitFnType)
@@ -185,3 +203,38 @@ def test_pushdown_depth_matrix_is_forward_scoped():
     # so a stale S from a previous forward can never be read. The output-difference
     # checks above are the real invariant; this confirms the memo path actually ran.
     assert "pushdown_depth_matrix" in m._OLMo__cache, "memo should be populated after a pushdown forward"
+
+
+def test_pushdown_cached_decode_matches_full_forward():
+    """A one-token cached decode must use the bottom row of the full depth tape."""
+    from olmo.config import (ModelConfig, BlockType, LayerNormType, ActivationType, InitFnType)
+    from olmo.model import OLMo
+    cfg = ModelConfig(
+        d_model=32, n_heads=4, n_layers=2, mlp_ratio=2, mlp_hidden_size=64,
+        vocab_size=128, embedding_size=128, max_sequence_length=16,
+        block_type=BlockType.sequential, layer_norm_type=LayerNormType.rms,
+        activation_type=ActivationType.swiglu, rope=True, flash_attention=False,
+        flex_attention=False, attention_dropout=0.0, init_device="cpu",
+        init_fn=InitFnType.normal, init_std=0.02,
+        transformer_grammar_type="pushdown", pushdown_max_depth=8,
+        pushdown_use_flex=False, weight_tying=True, eos_token_id=1, pad_token_id=127,
+    )
+    model = OLMo(cfg).eval()
+    ids = torch.tensor([[2, 10, 11, 12, 13, 14]])
+    prefix_spans = torch.tensor([[[0, 1, 2]]])
+    full_spans = torch.tensor([[[0, 1, 2], [3, 4, 5]]])
+    with torch.no_grad():
+        prefix = model(
+            input_ids=ids[:, :-1], tree_spans=prefix_spans,
+            use_cache=True, last_logits_only=True, return_final_hidden=True,
+        )
+        cached = model(
+            input_ids=ids[:, -1:], past_key_values=prefix.attn_key_values,
+            tree_spans=full_spans, use_cache=True, last_logits_only=True,
+            return_final_hidden=True,
+        )
+        full = model(
+            input_ids=ids, tree_spans=full_spans, last_logits_only=True,
+        )
+    assert cached.final_hidden is not None and cached.final_hidden.shape == (1, 1, 32)
+    assert torch.allclose(cached.logits, full.logits, atol=2e-5, rtol=2e-5)

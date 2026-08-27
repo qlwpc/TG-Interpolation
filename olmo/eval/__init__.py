@@ -348,6 +348,8 @@ def build_downstream_evaluator(
         eval_loader=ds_eval_dataloader,
         eval_metric=metric.to(device),
         subset_num_batches=eval_cfg.subset_num_batches,
+        pushdown_beam_size=eval_cfg.pushdown_beam_size,
+        pushdown_max_reduce=eval_cfg.pushdown_max_reduce,
     )
     return evaluator
 

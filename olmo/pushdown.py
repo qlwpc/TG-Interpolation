@@ -223,6 +223,32 @@ def compute_depth_matrix_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
     return S.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8)
 
 
+def compute_last_depth_row_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
+    """Compute only ``S[:, n-1:n, :]`` for one-token cached decoding.
+
+    At the last query position every supplied closed span satisfies ``r <= n-1``.
+    Therefore its stale depth is simply the number of closed spans covering each
+    key. A 1-D difference array gives the exact final row in O(B*(M+n)), avoiding
+    the O(B*n^2) allocation and two 2-D cumulative sums used for training/prefill.
+    """
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
+    B, M, _ = spans.shape
+    device = spans.device
+    l0 = spans[..., 0]
+    r0 = spans[..., 2]
+    valid = (l0 >= 0) & (r0 >= 0) & (l0 <= r0) & (r0 < n)
+    l = l0.clamp(0, n - 1)
+    r = r0.clamp(0, n - 1)
+    batch = torch.arange(B, device=device).unsqueeze(1).expand(B, M)
+    diff = torch.zeros(B, n + 1, device=device, dtype=torch.int32)
+    contribution = valid.to(torch.int32)
+    diff.index_put_((batch, l), contribution, accumulate=True)
+    diff.index_put_((batch, r + 1), -contribution, accumulate=True)
+    row = torch.cumsum(diff[:, :n], dim=1)
+    return row.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8).unsqueeze(1)
+
+
 class PushdownDepthBias(nn.Module):
     """Per-layer depth-embedding for Pushdown Layers.
 

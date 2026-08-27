@@ -1,4 +1,5 @@
 from olmo.eval import downstream
+from olmo.data.parse_align import TreeVocab
 from olmo.eval.downstream import ICLMultiChoiceTaskDataset
 
 
@@ -34,6 +35,14 @@ def test_pushdown_encoding_returns_terminals_and_terminal_coordinate_spans(monke
     dataset = object.__new__(_Dataset)
     dataset.tokenizer = object()
     dataset.vocab = _Vocab()
+    dataset.parse_binarize_direction = "right"
+    dataset.pushdown_tree_vocab = TreeVocab(
+        op_lo=100,
+        op_hi=100,
+        cl_lo=101,
+        cl_hi=101,
+        id2tok={100: "<(S>", 101: "<S)>"},
+    )
     monkeypatch.setattr(
         downstream,
         "encode_TG_string",
@@ -41,7 +50,9 @@ def test_pushdown_encoding_returns_terminals_and_terminal_coordinate_spans(monke
     )
     terminals, spans = dataset.encode_pushdown_with_spans("ignored")
     assert terminals == [7, 11, 12, 8]
-    assert spans == [(1, 2, 2)]
+    # The parsed node is binary and coordinates refer to the terminal stream;
+    # singleton/preterminal spans are deliberately omitted for Pushdown SHIFTs.
+    assert spans == [(1, 1, 2)]
     assert dataset.convert_grammar_input(
         [7, 100, 11, 12, 101, 8], grammar_type="pushdown"
     ) == terminals

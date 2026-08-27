@@ -141,6 +141,41 @@ class PushdownAttachmentHead(nn.Module):
                 query_range,
             )
 
+    def score_next(
+        self,
+        prefix_hidden: torch.Tensor,
+        next_token_ids: torch.Tensor,
+        wte_weight: torch.Tensor,
+    ) -> torch.Tensor:
+        """Score attachment targets for one candidate token per prefix.
+
+        This is the incremental form of Eq. 5 used by cached beam decoding.
+        The new token's transformer state is not needed: earlier targets use
+        ``h_j`` from the prefix and the shift-only diagonal uses ``h_tilde``.
+        Avoiding a full shifted-prefix transformer forward is both exact and a
+        major generation speedup.
+
+        Args:
+            prefix_hidden: ``(B, n, d)`` pre-``ln_f`` residual states.
+            next_token_ids: ``(B,)`` candidate token IDs.
+
+        Returns:
+            ``(B, n + 1)`` scores for targets ``0..n``; the final column is
+            the shift-only action.
+        """
+        if prefix_hidden.ndim != 3 or next_token_ids.ndim != 1:
+            raise ValueError("expected prefix_hidden (B,n,d) and next_token_ids (B,)")
+        if prefix_hidden.shape[0] != next_token_ids.shape[0]:
+            raise ValueError("prefix_hidden and next_token_ids batch sizes differ")
+        with torch.autocast(device_type=prefix_hidden.device.type, enabled=False):
+            h = prefix_hidden.float()
+            emb = F.embedding(next_token_ids, wte_weight).float()
+            h_tilde = self.mlp(torch.cat([emb, h[:, -1, :]], dim=-1))
+            projected = self.W(h_tilde)
+            reduce_scores = torch.bmm(h, projected.unsqueeze(-1)).squeeze(-1)
+            shift_score = (projected * h_tilde).sum(dim=-1, keepdim=True)
+            return torch.cat([reduce_scores, shift_score], dim=-1)
+
     def _forward_fp32(
         self,
         final_hidden: torch.Tensor,

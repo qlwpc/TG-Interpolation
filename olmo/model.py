@@ -794,8 +794,8 @@ class OLMoBlock(nn.Module):
         When ``tree_spans`` is None (no parse) the depth bias is zero and the caller
         falls through to the standard attention path.
         """
-        from olmo.pushdown import compute_depth_matrix_gpu
-        B, nh, n, hs = q.shape
+        from olmo.pushdown import compute_depth_matrix_gpu, compute_last_depth_row_gpu
+        B, nh, query_len, hs = q.shape
         # Stale depth tape over the (causal) key length. tree_spans: (B, M, 3).
         # S depends ONLY on tree_spans (layer-independent), so memoize it across
         # the 12 blocks within ONE forward pass — otherwise compute_depth_matrix_gpu
@@ -806,11 +806,22 @@ class OLMoBlock(nn.Module):
         # forward-pass entry during the backward recompute is correct.
         cache = self.__cache
         S = cache.get("pushdown_depth_matrix") if cache is not None else None
-        if S is None or S.shape[0] != B or S.shape[1] != n or S.device != q.device:
-            S = compute_depth_matrix_gpu(tree_spans.to(q.device), n)  # (B, n, n) int8
+        expected_rows = 1 if query_len == 1 and key_len > 1 else key_len
+        if (S is None or S.shape != (B, expected_rows, key_len)
+                or S.device != q.device):
+            spans = tree_spans.to(q.device)
+            if expected_rows == 1:
+                S = compute_last_depth_row_gpu(spans, key_len)  # (B, 1, k)
+            else:
+                S = compute_depth_matrix_gpu(spans, key_len)  # (B, k, k)
             if cache is not None:
                 cache["pushdown_depth_matrix"] = S
-        D = S.clamp(max=self.config.pushdown_max_depth).long()  # (B, n, n)
+        # During cached decoding q contains only the newly appended token(s),
+        # while k/v contain the complete prefix. Select the bottom query rows of
+        # the full stale-depth tape. In training/prefill query_len == key_len and
+        # this is the original square matrix.
+        D = S if expected_rows == 1 else S[:, key_len - query_len : key_len, :key_len]
+        D = D.clamp(max=self.config.pushdown_max_depth).long()  # (B, q, k)
         # Per-head depth embedding E_l: (n_heads, max_depth+1, d_head).
         n_kv = k.shape[1]
         kv_dim = n_kv * hs
@@ -873,7 +884,7 @@ class OLMoBlock(nn.Module):
             #     the grad path is fixed (planned: detach P in score_mod + an explicit
             #     aux loss that backprops to depth_emb).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
-            _B, _nh, _n = B, nh, n
+            _B, _nh, _n = B, nh, query_len
             # Bias representation. DEFAULT = fix #2 (the production path):
             #   gather-by-depth score_mod with P DETACHED (fast forward — flash-fused,
             #   77MB P, no 2.4GB materialization, no zeros_and_scatter) + a custom
@@ -991,7 +1002,7 @@ class OLMoBlock(nn.Module):
         # contiguous-gather path on the same hardware, and peak alloc drops by 4.8 GB/layer.
         depth_bias = torch.take_along_dim(
             P, Dc.unsqueeze(1), dim=3
-        )                                            # (B, n_h, n, n) fp32
+        )                                            # (B, n_h, q, k) fp32
         depth_bias = depth_bias / (hs ** 0.5)       # match SDPA's 1/sqrt(hs) scaling
         # Free the big intermediates before SDPA: P is (B, nh, n, D) fp32; it is not
         # needed once depth_bias is formed — keeping it alive through SDPA raised the
@@ -1001,11 +1012,13 @@ class OLMoBlock(nn.Module):
         # Merge with the causal+pad attention_bias prepared by OLMo.forward.
         if attention_bias is not None:
             ab = attention_bias
-            # Reshape to (B, n_h, n, n): incoming is (B, 1, n, n) or (B, n_h, n, n).
+            # Reshape to (B, n_h, q, k). Cached decoding receives the
+            # bottom rows of a square causal bias from ``attention``.
             if ab.dim() == 3:
                 ab = ab.unsqueeze(1)
+            ab = ab[..., -query_len:, :key_len]
             if ab.shape[1] == 1:
-                ab = ab.expand(B, nh, n, n)
+                ab = ab.expand(B, nh, query_len, key_len)
             ab = ab.to(dtype=torch.float32)
             # Replace any -inf (masked) kept as -inf; add depth bias elsewhere.
             mask_neg = ab.isneginf()
@@ -1014,8 +1027,13 @@ class OLMoBlock(nn.Module):
             del ab, mask_neg, depth_bias
         else:
             # No prebuilt bias: build a causal mask + depth bias (fp32).
-            causal = torch.full((n, n), float("-inf"), device=q.device, dtype=torch.float32)
-            causal = torch.triu(causal, diagonal=1)
+            q_positions = torch.arange(
+                key_len - query_len, key_len, device=q.device
+            )[:, None]
+            k_positions = torch.arange(key_len, device=q.device)[None, :]
+            causal = torch.zeros(
+                (query_len, key_len), device=q.device, dtype=torch.float32
+            ).masked_fill(k_positions > q_positions, float("-inf"))
             attn_mask = depth_bias + causal.unsqueeze(0).unsqueeze(0)
             del depth_bias, causal
 
@@ -1706,6 +1724,7 @@ class OLMo(nn.Module):
         tree_spans: Optional[torch.Tensor] = None,
         pushdown_sentence_ids: Optional[torch.Tensor] = None,
         compute_attachment_logits: bool = False,
+        return_final_hidden: bool = False,
         logits_range: Optional[Tuple[int, int]] = None,
         attachment_query_range: Optional[Tuple[int, int]] = None,
     ) -> OLMoOutput:
@@ -2062,7 +2081,7 @@ class OLMo(nn.Module):
         # prefix tokens, query h̃_k = MLP(emb(x_k), h_{k-1}^L)). Train-only at the
         # loss site; not computed during KV-cache generation.
         attachment_logits = None
-        final_hidden = None
+        final_hidden = x if return_final_hidden else None
         if (self.config.transformer_grammar_type == "pushdown"
                 and compute_attachment_logits
                 and past_key_values is None):
@@ -3606,14 +3625,17 @@ class OLMo(nn.Module):
         eos_token_id: Optional[int] = None,
         pad_token_id: Optional[int] = None,
         use_attachment_head: bool = False,
+        prompt_spans: Optional[torch.Tensor] = None,
     ) -> "OLMoGenerateOutput":
         """Generate words and normalized Pushdown attachments jointly.
 
-        The prompt parse is first inferred with :meth:`pushdown_beam_search`;
-        generation therefore starts from a real prompt stack/depth tape instead
-        of an empty stack. At every decode step word probabilities are followed
-        by a normalized attachment distribution (trained head when requested,
-        uniform over valid stack actions otherwise).
+        When ``prompt_spans`` is supplied, it is the gold terminal-coordinate
+        parse of the prompt.  It directly initializes the closed spans, stack,
+        and depth tape, avoiding an extremely expensive latent beam parse of a
+        long source article.  Otherwise the prompt parse is inferred with
+        :meth:`pushdown_beam_search` for backwards compatibility. At every
+        *generated* decode step, word probabilities and attachment actions are
+        jointly beam searched.
         """
         device = self.device
         if input_ids.dim() == 1:
@@ -3623,17 +3645,20 @@ class OLMo(nn.Module):
 
         def collate_spans(states: List[dict]) -> torch.Tensor:
             max_closed = max(max((len(s["closed"]) for s in states), default=0), 1)
-            result = torch.full(
-                (len(states), max_closed, 3), -1, dtype=torch.long, device=device
-            )
-            for bi, state in enumerate(states):
+            # Build once on the host and transfer once. The old implementation
+            # performed one CUDA indexed assignment per span (thousands of tiny
+            # kernel launches at beam=6 and a long parsed XSum prompt).
+            rows: List[List[List[int]]] = []
+            for state in states:
                 seq_len = len(state["input_ids"])
-                for si, (left, right) in enumerate(state["closed"]):
-                    if 0 <= left <= right < seq_len:
-                        result[bi, si] = torch.tensor(
-                            [left, right, right], dtype=torch.long, device=device
-                        )
-            return result
+                valid = [
+                    [left, right, right]
+                    for left, right in state["closed"]
+                    if 0 <= left <= right < seq_len
+                ]
+                valid.extend([[-1, -1, -1]] * (max_closed - len(valid)))
+                rows.append(valid)
+            return torch.tensor(rows, dtype=torch.long, device=device)
 
         def stack_from_closed(n_tokens: int, closed: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
             maximal: List[Tuple[int, int]] = []
@@ -3678,24 +3703,211 @@ class OLMo(nn.Module):
         all_scores: List[List[float]] = []
         for batch_idx in range(input_ids.shape[0]):
             prompt = [int(t) for t in input_ids[batch_idx].tolist()]
+            left_pad = 0
+            while prompt and prompt[0] == pad:
+                prompt.pop(0)
+                left_pad += 1
             while prompt and prompt[-1] == pad:
                 prompt.pop()
             if not prompt:
                 prompt = [int(eos)]
 
-            # Infer the prompt's best incremental parse. Using prompt[0] as the
-            # explicit context token prevents an artificial BOS insertion and
-            # keeps returned spans in prompt coordinates.
-            _, prompt_spans = self.pushdown_beam_search(
-                torch.tensor(prompt, dtype=torch.long, device=device),
-                beam_size=beam_size,
-                max_reduce=max_reduce,
-                bos_id=prompt[0],
-                tag=None,
-                use_attachment_head=use_attachment_head,
-                return_spans=True,
-            )
-            closed = [(int(row[0]), int(row[2])) for row in prompt_spans.tolist()]
+            if prompt_spans is not None:
+                # DataCollator pads unused span rows with -1 and shifts valid
+                # coordinates when it left-pads a batch.  Keep only spans fully
+                # contained in this prompt and translate any leading padding.
+                gold_spans = prompt_spans[batch_idx]
+                closed = [
+                    (int(row[0]) - left_pad, int(row[2]) - left_pad)
+                    for row in gold_spans.tolist()
+                    if (
+                        int(row[0]) >= left_pad
+                        and left_pad <= int(row[1]) <= int(row[2])
+                        and int(row[2]) - left_pad < len(prompt)
+                        and int(row[0]) < int(row[2])
+                    )
+                ]
+            else:
+                # Backwards-compatible latent prompt parsing for callers that
+                # do not have a gold parse. XSum supplies ``prompt_spans`` and
+                # therefore never takes this O(L) full-forward beam path.
+                _, inferred_spans = self.pushdown_beam_search(
+                    torch.tensor(prompt, dtype=torch.long, device=device),
+                    beam_size=beam_size,
+                    max_reduce=max_reduce,
+                    bos_id=prompt[0],
+                    tag=None,
+                    use_attachment_head=use_attachment_head,
+                    return_spans=True,
+                )
+                closed = [
+                    (int(row[0]), int(row[2])) for row in inferred_spans.tolist()
+                ]
+
+            # Fast XSum path: prefill the gold prompt once, then carry per-layer
+            # KV caches and final-layer residual states through the joint beam.
+            # The fallback below is retained for lightweight test doubles and
+            # callers that must infer the prompt parse.
+            if (
+                prompt_spans is not None
+                and hasattr(self, "transformer")
+                and hasattr(self, "pushdown_attachment_head")
+            ):
+                initial = {
+                    "input_ids": prompt,
+                    "closed": closed,
+                    "stack": stack_from_closed(len(prompt), closed),
+                    "generated": [],
+                    "logprob": 0.0,
+                    "done": False,
+                }
+                prompt_input = torch.tensor([prompt], dtype=torch.long, device=device)
+                with torch.no_grad():
+                    prefill = self.forward(
+                        input_ids=prompt_input,
+                        attention_mask=torch.ones_like(prompt_input, dtype=torch.bool),
+                        tree_spans=collate_spans([initial]),
+                        use_cache=True,
+                        last_logits_only=True,
+                        return_final_hidden=True,
+                    )
+                if prefill.attn_key_values is None or prefill.final_hidden is None:
+                    raise RuntimeError("Pushdown cached prefill did not return KV/hidden state")
+
+                beams = [initial]
+                beam_cache = prefill.attn_key_values
+                beam_hidden = prefill.final_hidden
+                beam_logits = prefill.logits[:, 0, :]
+                finished = []
+
+                for _ in range(max_steps):
+                    if not beams:
+                        break
+                    word_logprobs = torch.log_softmax(beam_logits.float(), dim=-1)
+                    top_k = min(beam_size, word_logprobs.shape[-1])
+                    shifted: List[dict] = []
+                    choice_counts: List[List[int]] = []
+                    for parent_idx, beam in enumerate(beams):
+                        top_lps, top_tokens = torch.topk(word_logprobs[parent_idx], top_k)
+                        for word_lp, token in zip(top_lps.tolist(), top_tokens.tolist()):
+                            token = int(token)
+                            if math.isnan(word_lp) or word_lp < -3e37:
+                                continue
+                            position = len(beam["input_ids"])
+                            shifted.append({
+                                "input_ids": beam["input_ids"] + [token],
+                                "closed": list(beam["closed"]),
+                                "stack": list(beam["stack"]) + [(position, position)],
+                                "generated": beam["generated"] + [token],
+                                "logprob": beam["logprob"] + word_lp,
+                                "done": token == eos,
+                                "parent_idx": parent_idx,
+                            })
+                            if token == eos:
+                                choice_counts.append([len(beam["stack"])])
+                            else:
+                                upper = max(len(beam["stack"]) - 1, 0)
+                                if max_reduce is not None:
+                                    upper = min(upper, max(max_reduce, 0))
+                                choice_counts.append(list(range(upper + 1)))
+
+                    attachment_rows = None
+                    if shifted and use_attachment_head:
+                        parent_indices = torch.tensor(
+                            [state["parent_idx"] for state in shifted],
+                            dtype=torch.long,
+                            device=device,
+                        )
+                        candidate_tokens = torch.tensor(
+                            [state["input_ids"][-1] for state in shifted],
+                            dtype=torch.long,
+                            device=device,
+                        )
+                        with torch.no_grad():
+                            attachment_rows = self.pushdown_attachment_head.score_next(
+                                beam_hidden.index_select(0, parent_indices),
+                                candidate_tokens,
+                                self.transformer.wte.weight,
+                            )
+
+                    expanded: List[dict] = []
+                    for shifted_idx, (state, counts) in enumerate(zip(shifted, choice_counts)):
+                        actions = [apply_action(state, count) for count in counts]
+                        if attachment_rows is None:
+                            action_lps = [-math.log(len(actions))] * len(actions)
+                        else:
+                            targets = torch.tensor(
+                                [target for _, target in actions],
+                                dtype=torch.long,
+                                device=device,
+                            )
+                            action_lps = torch.log_softmax(
+                                attachment_rows[shifted_idx].index_select(0, targets).float(),
+                                dim=0,
+                            ).tolist()
+                        for (new_state, _), action_lp in zip(actions, action_lps):
+                            new_state["logprob"] += action_lp
+                            expanded.append(new_state)
+
+                    finished.extend(state for state in expanded if state["done"])
+                    unfinished = [state for state in expanded if not state["done"]]
+                    unfinished.sort(key=lambda state: state["logprob"], reverse=True)
+                    beams = unfinished[:beam_size]
+                    if not beams:
+                        break
+
+                    parent_indices = torch.tensor(
+                        [state["parent_idx"] for state in beams],
+                        dtype=torch.long,
+                        device=device,
+                    )
+                    next_tokens = torch.tensor(
+                        [[state["input_ids"][-1]] for state in beams],
+                        dtype=torch.long,
+                        device=device,
+                    )
+                    selected_cache = [
+                        (
+                            key.index_select(0, parent_indices),
+                            value.index_select(0, parent_indices),
+                        )
+                        for key, value in beam_cache
+                    ]
+                    with torch.no_grad():
+                        decoded = self.forward(
+                            input_ids=next_tokens,
+                            past_key_values=selected_cache,
+                            use_cache=True,
+                            tree_spans=collate_spans(beams),
+                            last_logits_only=True,
+                            return_final_hidden=True,
+                        )
+                    if decoded.attn_key_values is None or decoded.final_hidden is None:
+                        raise RuntimeError("Pushdown cached decode did not return KV/hidden state")
+                    beam_hidden = torch.cat(
+                        [beam_hidden.index_select(0, parent_indices), decoded.final_hidden],
+                        dim=1,
+                    )
+                    beam_cache = decoded.attn_key_values
+                    beam_logits = decoded.logits[:, 0, :]
+
+                candidates = finished + beams
+                candidates.sort(key=lambda state: state["logprob"], reverse=True)
+                selected = candidates[:beam_size]
+                token_rows = []
+                score_rows = []
+                for state in selected:
+                    generated = state["generated"][:max_steps]
+                    generated += [pad] * (max_steps - len(generated))
+                    token_rows.append(generated)
+                    score_rows.append(float(state["logprob"]))
+                while len(token_rows) < beam_size:
+                    token_rows.append([pad] * max_steps)
+                    score_rows.append(-float("inf"))
+                all_tokens.append(token_rows)
+                all_scores.append(score_rows)
+                continue
+
             beams: List[dict] = [{
                 "input_ids": prompt,
                 "closed": closed,

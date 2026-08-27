@@ -1653,12 +1653,18 @@ class Trainer:
                             gen = self.dist_model.module.pushdown_generate(
                                 batch["input_ids"],
                                 max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
-                                beam_size=6, max_reduce=4,
+                                beam_size=evaluator.pushdown_beam_size,
+                                max_reduce=evaluator.pushdown_max_reduce,
                                 eos_token_id=self.cfg.model.eos_token_id,
                                 pad_token_id=self.cfg.model.pad_token_id,
                                 use_attachment_head=(
                                     self.cfg.model.pushdown_use_attachment_head_inference
                                 ),
+                                # XSumDataset supplies unary-collapsed gold spans
+                                # for article + instruction. They establish the
+                                # prompt stack tape; beam search remains only for
+                                # generated summary tokens and their attachments.
+                                prompt_spans=batch.get("tree_spans"),
                             )
                             predictions = gen.token_ids[:, 0, :].to(self.device)
                         else:

@@ -46,6 +46,150 @@ METRIC_FROM_OE_EVAL = {"acc_raw": "acc", "acc_per_char": "len_norm", "acc_uncond
 LOG_2_OF_E = 1.44269504089
 
 
+def _parse_treereg_tree_tokens(
+    tree_tokens: Sequence[int], tree_vocab: TreeVocab,
+) -> Dict[str, List[Any]]:
+    """Use the pretraining/eval parser to build the complete TreeReg contract."""
+    parsed = parse_chunk_slice(
+        tree_tokens, tree_vocab, direction="right", binarize=True,
+        collapse_unary=True,
+    )
+    return {
+        "input_ids": [int(x) for x in parsed["input_ids"].tolist()],
+        "tree_spans": [tuple(map(int, span)) for span in parsed["spans"].tolist()],
+        "treereg_word_boundaries": [bool(x) for x in parsed["word_boundaries"].tolist()],
+        "treereg_sentence_ids": [int(x) for x in parsed["sentence_ids"].tolist()],
+    }
+
+
+def _parse_pushdown_tree_tokens(
+    tree_tokens: Sequence[int], tree_vocab: TreeVocab, direction: str,
+) -> Dict[str, List[Any]]:
+    """Convert parsed TG tokens to Pushdown's terminal/unary-span contract.
+
+    Pushdown never receives bracket tokens as language-model inputs.  Instead,
+    it consumes the terminal stream together with the unary-collapsed,
+    binarized constituent spans used to build its stale stack tape.  Singleton
+    preterminal spans are SHIFT operations rather than REDUCE operations and
+    are therefore intentionally omitted.
+    """
+    parsed = parse_chunk_slice(
+        tree_tokens,
+        tree_vocab,
+        direction=direction,
+        binarize=True,
+        collapse_unary=True,
+        drop_singleton_spans=True,
+    )
+    return {
+        "input_ids": [int(x) for x in parsed["input_ids"].tolist()],
+        "tree_spans": [tuple(map(int, span)) for span in parsed["spans"].tolist()],
+        "pushdown_sentence_ids": [int(x) for x in parsed["sentence_ids"].tolist()],
+    }
+
+
+def _join_pushdown_parts(parts: Sequence[Dict[str, List[Any]]]) -> Dict[str, List[Any]]:
+    """Concatenate parsed Pushdown fragments without crossing tree boundaries."""
+    out: Dict[str, List[Any]] = {
+        "input_ids": [], "tree_spans": [], "pushdown_sentence_ids": [],
+    }
+    token_offset = sentence_offset = 0
+    for part in parts:
+        out["input_ids"].extend(part["input_ids"])
+        out["tree_spans"].extend(
+            (left + token_offset, split + token_offset, right + token_offset)
+            for left, split, right in part["tree_spans"]
+        )
+        sentence_ids = part["pushdown_sentence_ids"]
+        out["pushdown_sentence_ids"].extend(
+            sentence_id + sentence_offset if sentence_id >= 0 else -1
+            for sentence_id in sentence_ids
+        )
+        token_offset += len(part["input_ids"])
+        if any(sentence_id >= 0 for sentence_id in sentence_ids):
+            sentence_offset += max(
+                sentence_id for sentence_id in sentence_ids if sentence_id >= 0
+            ) + 1
+    return out
+
+
+def _slice_pushdown_parse(
+    parsed: Dict[str, List[Any]], start: int, end: int,
+) -> Dict[str, List[Any]]:
+    """Slice terminal coordinates and invalidate trees cut by a context window."""
+    start, end = max(0, int(start)), max(0, int(end))
+    all_sentence_ids = parsed["pushdown_sentence_ids"]
+    kept_sentence_ids = all_sentence_ids[start:end]
+    cut_ids = {
+        sentence_id for sentence_id in kept_sentence_ids if sentence_id >= 0
+        and any(
+            other == sentence_id
+            for other in all_sentence_ids[:start] + all_sentence_ids[end:]
+        )
+    }
+    return {
+        "input_ids": parsed["input_ids"][start:end],
+        "tree_spans": [
+            (left - start, split - start, right - start)
+            for left, split, right in parsed["tree_spans"]
+            if start <= left and right < end and all_sentence_ids[left] not in cut_ids
+        ],
+        "pushdown_sentence_ids": [
+            -1 if sentence_id in cut_ids else sentence_id
+            for sentence_id in kept_sentence_ids
+        ],
+    }
+
+
+def _slice_treereg_parse(
+    parsed: Dict[str, List[Any]], start: int, end: int,
+) -> Dict[str, List[Any]]:
+    """Slice terminal coordinates and exclude top-level trees cut by the window."""
+    start, end = max(0, int(start)), max(0, int(end))
+    all_sentence_ids = parsed["treereg_sentence_ids"]
+    kept_sentence_ids = all_sentence_ids[start:end]
+    cut_ids = {
+        sid for sid in kept_sentence_ids if sid >= 0
+        and any(other == sid for other in all_sentence_ids[:start] + all_sentence_ids[end:])
+    }
+    return {
+        "input_ids": parsed["input_ids"][start:end],
+        "tree_spans": [
+            (left - start, split - start, right - start)
+            for left, split, right in parsed["tree_spans"]
+            if start <= left and right < end and all_sentence_ids[left] not in cut_ids
+        ],
+        "treereg_word_boundaries": parsed["treereg_word_boundaries"][start:end],
+        "treereg_sentence_ids": [
+            -1 if sid in cut_ids else sid for sid in kept_sentence_ids
+        ],
+    }
+
+
+def _join_treereg_parts(parts: Sequence[Dict[str, List[Any]]]) -> Dict[str, List[Any]]:
+    """Concatenate parsed tree streams with globally unique sentence ids."""
+    out: Dict[str, List[Any]] = {
+        "input_ids": [], "tree_spans": [], "treereg_word_boundaries": [],
+        "treereg_sentence_ids": [],
+    }
+    offset = sentence_offset = 0
+    for part in parts:
+        out["input_ids"].extend(part["input_ids"])
+        out["treereg_word_boundaries"].extend(part["treereg_word_boundaries"])
+        out["tree_spans"].extend(
+            (left + offset, split + offset, right + offset)
+            for left, split, right in part["tree_spans"]
+        )
+        ids = part["treereg_sentence_ids"]
+        out["treereg_sentence_ids"].extend(
+            sid + sentence_offset if sid >= 0 else -1 for sid in ids
+        )
+        offset += len(part["input_ids"])
+        if any(sid >= 0 for sid in ids):
+            sentence_offset += max(sid for sid in ids if sid >= 0) + 1
+    return out
+
+
 def _world_size() -> int:
     """Number of distributed ranks (1 if distributed is unavailable/uninitialized)."""
     import torch.distributed as _dist
@@ -589,6 +733,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         vocab_path=None,
         tree_eval_type="default",
         pause_token_id=None,
+        parse_binarize_direction: str = "right",
     ):
         super().__init__()
 
@@ -620,6 +765,15 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         self.generate_TG_attention_bias = generate_TG_attention_bias
         print(f"vocab path is {vocab_path}")
         self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.parse_binarize_direction = parse_binarize_direction
+        self.pushdown_tree_vocab = (
+            TreeVocab.from_tokenizer_file(vocab_path)
+            if self.transformer_grammar_type == "pushdown" else None
+        )
+        self.treereg_vocab = (
+            TreeVocab.from_tokenizer_file(vocab_path)
+            if self.transformer_grammar_type == "treereg" else None
+        )
         self.pause_token_id = pause_token_id
         self.doc_group = None
 
@@ -677,6 +831,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             grammar_type[:8] == "terminal"
             or grammar_type[:5] == "pause"
             or grammar_type == "pushdown"
+            or grammar_type == "treereg"
         ):
             # Pushdown models are trained on terminal-only sequences. Their
             # structure is carried separately as spans / inferred attachment
@@ -704,27 +859,28 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
 
-    def encode_pushdown_with_spans(self, string: str) -> tuple[List[int], List[tuple[int, int, int]]]:
-        """Encode a parsed string as terminals plus terminal-coordinate spans."""
-        tree_ids = encode_TG_string(
-            self.tokenizer, string, string_with_POS_tags=False
+    def encode_pushdown_with_metadata(self, string: str) -> Dict[str, List[Any]]:
+        """Encode a parsed string as terminals, unary spans, and tree ids."""
+        if self.pushdown_tree_vocab is None:
+            raise RuntimeError("Pushdown parser requested outside a Pushdown run")
+        return _parse_pushdown_tree_tokens(
+            encode_TG_string(self.tokenizer, string, string_with_POS_tags=False),
+            self.pushdown_tree_vocab,
+            self.parse_binarize_direction,
         )
-        terminals: List[int] = []
-        stack: List[int] = []
-        spans: List[tuple[int, int, int]] = []
-        for token in tree_ids:
-            token = int(token)
-            if self.vocab.is_opening_non_terminal(token):
-                stack.append(len(terminals))
-            elif self.vocab.is_closing_non_terminal(token):
-                if stack:
-                    left = stack.pop()
-                    right = len(terminals) - 1
-                    if left <= right:
-                        spans.append((left, right, right))
-            else:
-                terminals.append(token)
-        return terminals, spans
+
+    def encode_pushdown_with_spans(self, string: str) -> tuple[List[int], List[tuple[int, int, int]]]:
+        """Backward-compatible terminal/spans view of Pushdown parse metadata."""
+        parsed = self.encode_pushdown_with_metadata(string)
+        return parsed["input_ids"], parsed["tree_spans"]
+
+    def encode_treereg_with_metadata(self, string: str) -> Dict[str, List[Any]]:
+        if self.treereg_vocab is None:
+            raise RuntimeError("TreeReg parser requested outside a TreeReg run")
+        return _parse_treereg_tree_tokens(
+            encode_TG_string(self.tokenizer, string, string_with_POS_tags=False),
+            self.treereg_vocab,
+        )
 
     def get_shots(self, shots_split):
         self.shots = []
@@ -758,10 +914,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                 label_id = self.doc_to_label(doc)
                 doc_text = self.doc_to_text(doc)
                 if self.transformer_grammar_type == "pushdown":
-                    ctx, ctx_spans = self.encode_pushdown_with_spans(doc_text)
-                    dc, _ = self.encode_pushdown_with_spans(
+                    ctx_parsed = self.encode_pushdown_with_metadata(doc_text)
+                    ctx, ctx_spans = ctx_parsed["input_ids"], ctx_parsed["tree_spans"]
+                    dc = self.encode_pushdown_with_metadata(
                         self.doc_to_domain_conditional(doc)
-                    )
+                    )["input_ids"]
                     # Appendix B initializes every context window with a
                     # dedicated ROOT token. The tokenizer's BOS is that ROOT;
                     # parser spans are shifted into the resulting coordinates.
@@ -770,22 +927,45 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         (left + 1, split + 1, right + 1)
                         for left, split, right in ctx_spans
                     ]
+                    ctx_parsed = {
+                        "input_ids": ctx,
+                        "tree_spans": ctx_spans,
+                        "pushdown_sentence_ids": [-1] + ctx_parsed[
+                            "pushdown_sentence_ids"
+                        ],
+                    }
                     dc = [int(self.vocab.bos)] + dc
+                    ctx_treereg = None
+                elif self.transformer_grammar_type == "treereg":
+                    ctx_treereg = self.encode_treereg_with_metadata(doc_text)
+                    ctx, ctx_spans = ctx_treereg["input_ids"], ctx_treereg["tree_spans"]
+                    dc = self.encode_treereg_with_metadata(
+                        self.doc_to_domain_conditional(doc)
+                    )["input_ids"]
                 else:
                     ctx = self.token_encode(doc_text)
                     dc = self.token_encode(self.doc_to_domain_conditional(doc))
                     ctx_spans = []
+                    ctx_treereg = None
 
                 for cont_id, continuation_str in enumerate(continuations):
                     # cont_str_len = len(continuation_str) - 1  # continuation contain leading blank
                     # cont_byte_len = len(continuation_str[1:].encode("utf-8"))
                     if self.transformer_grammar_type == "pushdown":
-                        continuation, continuation_spans = self.encode_pushdown_with_spans(
+                        continuation_parsed = self.encode_pushdown_with_metadata(
                             continuation_str
                         )
+                        continuation = continuation_parsed["input_ids"]
+                        continuation_spans = continuation_parsed["tree_spans"]
+                        continuation_treereg = None
+                    elif self.transformer_grammar_type == "treereg":
+                        continuation_treereg = self.encode_treereg_with_metadata(continuation_str)
+                        continuation = continuation_treereg["input_ids"]
+                        continuation_spans = continuation_treereg["tree_spans"]
                     else:
                         continuation = self.token_encode(continuation_str)
                         continuation_spans = []
+                        continuation_treereg = None
                     
 
                     # query, remove last token from continuation, truncate from left is longer than model ctx length
@@ -796,6 +976,15 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         (left + len(ctx), split + len(ctx), right + len(ctx))
                         for left, split, right in continuation_spans
                     ]
+                    treereg_metadata = (
+                        _join_treereg_parts((ctx_treereg, continuation_treereg))
+                        if ctx_treereg is not None and continuation_treereg is not None
+                        else None
+                    )
+                    pushdown_metadata = (
+                        _join_pushdown_parts((ctx_parsed, continuation_parsed))
+                        if self.transformer_grammar_type == "pushdown" else None
+                    )
                     # if self.split=="train":
                     #     query = ctx + continuation
                     # else:
@@ -818,6 +1007,20 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             for left, split, right in query_spans
                             if left >= trim_left
                         ]
+                        if pushdown_metadata is not None:
+                            retained = _slice_pushdown_parse(
+                                pushdown_metadata,
+                                trim_left,
+                                trim_left + len(query) - 1,
+                            )
+                            pushdown_metadata = _join_pushdown_parts((
+                                {
+                                    "input_ids": [int(self.vocab.bos)],
+                                    "tree_spans": [],
+                                    "pushdown_sentence_ids": [-1],
+                                },
+                                retained,
+                            ))
                     else:
                         query = query[trim_left:]
                         if trim_left:
@@ -826,6 +1029,17 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                                 for left, split, right in query_spans
                                 if left >= trim_left
                             ]
+                    if treereg_metadata is not None:
+                        treereg_metadata = _slice_treereg_parse(
+                            treereg_metadata, trim_left, trim_left + len(query)
+                        )
+                        query, query_spans = (
+                            treereg_metadata["input_ids"], treereg_metadata["tree_spans"]
+                        )
+                    if pushdown_metadata is not None:
+                        query, query_spans = (
+                            pushdown_metadata["input_ids"], pushdown_metadata["tree_spans"]
+                        )
                     query = self.convert_grammar_input(query)
                     dc_query = self.convert_grammar_input(dc_query)
                     continuation = self.convert_grammar_input(continuation)
@@ -843,6 +1057,14 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                         query_spans = [
                             span for span in query_spans if span[2] < len(query)
                         ]
+                        if treereg_metadata is not None:
+                            treereg_metadata = _slice_treereg_parse(
+                                treereg_metadata, 0, len(query)
+                            )
+                        if pushdown_metadata is not None:
+                            pushdown_metadata = _slice_pushdown_parse(
+                                pushdown_metadata, 0, len(query)
+                            )
                     continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
@@ -933,6 +1155,18 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                                                 # since some benchmarks have multiple correct labels
                             "cont_mask": mask,
                             "tree_spans": query_spans,
+                            "treereg_word_boundaries": (
+                                treereg_metadata["treereg_word_boundaries"]
+                                if treereg_metadata is not None else None
+                            ),
+                            "treereg_sentence_ids": (
+                                treereg_metadata["treereg_sentence_ids"]
+                                if treereg_metadata is not None else None
+                            ),
+                            "pushdown_sentence_ids": (
+                                pushdown_metadata["pushdown_sentence_ids"]
+                                if pushdown_metadata is not None else None
+                            ),
                         }
                     )
                 if self.log_instances > 0:
@@ -1008,6 +1242,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         all_label_mask = []
         all_cont_mask = []
         all_tree_spans = []
+        all_treereg_word_boundaries = []
+        all_treereg_sentence_ids = []
+        all_pushdown_sentence_ids = []
 
         # pad according to max_lengths
         for sample in data:
@@ -1021,6 +1258,27 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             input_ids = torch.LongTensor(self.pad_tokens_until_max(input_ids, max_len=max_query_len, max_model_len=pause_expanded_len(self.model_ctx_len, p, q)))
             queries.append(input_ids)
             all_tree_spans.append(sample.get("tree_spans", []))
+            if self.transformer_grammar_type == "treereg":
+                word_boundaries = sample["treereg_word_boundaries"]
+                sentence_ids = sample["treereg_sentence_ids"]
+                if word_boundaries is None or sentence_ids is None:
+                    raise RuntimeError("TreeReg sample is missing parser metadata")
+                all_treereg_word_boundaries.append(F.pad(
+                    torch.tensor(word_boundaries, dtype=torch.bool),
+                    (0, max_query_len - len(word_boundaries)), value=False,
+                ))
+                all_treereg_sentence_ids.append(F.pad(
+                    torch.tensor(sentence_ids, dtype=torch.int32),
+                    (0, max_query_len - len(sentence_ids)), value=-1,
+                ))
+            if self.transformer_grammar_type == "pushdown":
+                sentence_ids = sample["pushdown_sentence_ids"]
+                if sentence_ids is None:
+                    raise RuntimeError("Pushdown sample is missing parser sentence metadata")
+                all_pushdown_sentence_ids.append(F.pad(
+                    torch.tensor(sentence_ids, dtype=torch.int32),
+                    (0, max_query_len - len(sentence_ids)), value=-1,
+                ))
 
             label_mask = None
             if self.generate_TG_attention_bias is not None:
@@ -1085,6 +1343,11 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
             batch["label_mask"] = torch.stack(all_label_mask)
         if all_cont_mask:
             batch["cont_mask"] = torch.stack(all_cont_mask)
+        if all_treereg_word_boundaries:
+            batch["treereg_word_boundaries"] = torch.stack(all_treereg_word_boundaries)
+            batch["treereg_sentence_ids"] = torch.stack(all_treereg_sentence_ids)
+        if all_pushdown_sentence_ids:
+            batch["pushdown_sentence_ids"] = torch.stack(all_pushdown_sentence_ids)
         if any(all_tree_spans):
             max_spans = max(len(spans) for spans in all_tree_spans)
             tree_spans = torch.full(
@@ -1164,6 +1427,7 @@ class XsumDataset(metaclass=abc.ABCMeta):
         transformer_grammar_type:str = "",
         vocab_path: str = None,
         pause_token_id : int = None,
+        parse_binarize_direction: str = "right",
         **kwargs):
 
         self.tokenizer = tokenizer
@@ -1172,6 +1436,15 @@ class XsumDataset(metaclass=abc.ABCMeta):
                                         generate_attention_mask=True, shuffle_tree=transformer_grammar_type)
         self.MAX_SUMMARY_LENGTH = 150
         self.collator.vocab = self.vocab = SentencepieceVocab.from_vocab_file(vocab_path)
+        self.treereg_vocab = (
+            TreeVocab.from_tokenizer_file(vocab_path)
+            if transformer_grammar_type == "treereg" else None
+        )
+        self.pushdown_tree_vocab = (
+            TreeVocab.from_tokenizer_file(vocab_path)
+            if transformer_grammar_type == "pushdown" else None
+        )
+        self.parse_binarize_direction = parse_binarize_direction
         self.model_ctx_len = model_ctx_len
         self.generate_TG_attention_bias = generate_TG_attention_bias
         self.prompts = " \n<(S><(VP> Summarize<(NP> the above article<NP)><(PP> in<(NP> 1 sentence<NP)><PP)><VP)> .<S)> \n"
@@ -1241,6 +1514,108 @@ class XsumDataset(metaclass=abc.ABCMeta):
         '''
         passage = self.passages[index]
         passage_tokens = encode_TG_string(self.tokenizer, passage)
+        if self.transformer_grammar_type == "pushdown":
+            if self.pushdown_tree_vocab is None:
+                raise RuntimeError("Pushdown XSum dataset is missing its tree vocabulary")
+            parse = lambda tokens: _parse_pushdown_tree_tokens(
+                tokens, self.pushdown_tree_vocab, self.parse_binarize_direction
+            )
+            passage_parsed = parse(passage_tokens)
+            prompt_parsed = parse(self.prompts_tokens)
+            prefix = {
+                "input_ids": [int(self.vocab.bos)], "tree_spans": [],
+                "pushdown_sentence_ids": [-1],
+            }
+            suffix = {
+                "input_ids": [int(self.vocab.eos)], "tree_spans": [],
+                "pushdown_sentence_ids": [-1],
+            }
+            if self.train_summary is not None:
+                summary_parsed = parse(
+                    encode_TG_string(self.tokenizer, self.train_summary[index])
+                )
+                passage_budget = (
+                    self.model_ctx_len - len(summary_parsed["input_ids"])
+                    - len(prompt_parsed["input_ids"]) - 2
+                )
+                # The XSum input is a prefix window; never retain a constituent
+                # whose closing terminal is outside that window.
+                passage_parsed = {
+                    "input_ids": passage_parsed["input_ids"][:passage_budget],
+                    "tree_spans": [
+                        span for span in passage_parsed["tree_spans"]
+                        if span[2] < passage_budget
+                    ],
+                    "pushdown_sentence_ids": passage_parsed[
+                        "pushdown_sentence_ids"
+                    ][:passage_budget],
+                }
+                parsed = _join_pushdown_parts(
+                    (prefix, passage_parsed, prompt_parsed, summary_parsed, suffix)
+                )
+                label_mask = torch.zeros(len(parsed["input_ids"]), dtype=torch.bool)
+                label_mask[-(len(summary_parsed["input_ids"]) + 1):] = True
+            else:
+                passage_budget = (
+                    self.model_ctx_len - self.MAX_SUMMARY_LENGTH
+                    - len(prompt_parsed["input_ids"]) - 2
+                )
+                passage_parsed = {
+                    "input_ids": passage_parsed["input_ids"][:passage_budget],
+                    "tree_spans": [
+                        span for span in passage_parsed["tree_spans"]
+                        if span[2] < passage_budget
+                    ],
+                    "pushdown_sentence_ids": passage_parsed[
+                        "pushdown_sentence_ids"
+                    ][:passage_budget],
+                }
+                parsed = _join_pushdown_parts((prefix, passage_parsed, prompt_parsed))
+                label_mask = None
+            return {
+                "attention_bias": None,
+                "gold_summary": self.gold_summary[index],
+                "label_mask": label_mask,
+                "input_ids": np.asarray(parsed["input_ids"], dtype=np.int64),
+                "tree_spans": parsed["tree_spans"],
+                "pushdown_sentence_ids": parsed["pushdown_sentence_ids"],
+            }
+        if self.transformer_grammar_type == "treereg":
+            if self.treereg_vocab is None:
+                raise RuntimeError("TreeReg XSum dataset is missing its tree vocabulary")
+            parse = lambda tokens: _parse_treereg_tree_tokens(tokens, self.treereg_vocab)
+            passage_parsed = parse(passage_tokens)
+            prompt_parsed = parse(self.prompts_tokens)
+            prefix = {
+                "input_ids": [int(self.vocab.bos)], "tree_spans": [],
+                "treereg_word_boundaries": [False], "treereg_sentence_ids": [-1],
+            }
+            suffix = {
+                "input_ids": [int(self.vocab.eos)], "tree_spans": [],
+                "treereg_word_boundaries": [False], "treereg_sentence_ids": [-1],
+            }
+            if self.train_summary is not None:
+                summary_parsed = parse(encode_TG_string(self.tokenizer, self.train_summary[index]))
+                passage_budget = self.model_ctx_len - len(summary_parsed["input_ids"]) - len(prompt_parsed["input_ids"]) - 2
+                passage_parsed = _slice_treereg_parse(passage_parsed, 0, passage_budget)
+                parsed = _join_treereg_parts(
+                    (prefix, passage_parsed, prompt_parsed, summary_parsed, suffix)
+                )
+                label_mask = torch.zeros(len(parsed["input_ids"]), dtype=torch.bool)
+                label_mask[-(len(summary_parsed["input_ids"]) + 1):] = True
+            else:
+                passage_budget = self.model_ctx_len - self.MAX_SUMMARY_LENGTH - len(prompt_parsed["input_ids"]) - 2
+                passage_parsed = _slice_treereg_parse(passage_parsed, 0, passage_budget)
+                parsed = _join_treereg_parts((prefix, passage_parsed, prompt_parsed))
+                label_mask = None
+            return {
+                "attention_bias": None, "gold_summary": self.gold_summary[index],
+                "label_mask": label_mask,
+                "input_ids": np.asarray(parsed["input_ids"], dtype=np.int64),
+                "tree_spans": parsed["tree_spans"],
+                "treereg_word_boundaries": parsed["treereg_word_boundaries"],
+                "treereg_sentence_ids": parsed["treereg_sentence_ids"],
+            }
         passage_TG_tokens = self.vocab.convert_treenpy_to_TG(passage_tokens)
         if self.transformer_grammar_type[:5] == "pause":
             passage_TG_tokens = self.vocab.convert_treenpy_to_terminal(passage_tokens)
@@ -1338,13 +1713,17 @@ class RougeMetric(Metric):
     def update(self, batch, predictions, references):
         input_ids = batch["input_ids"].cpu()
         for b in range(predictions.shape[0]):
-            # pred_summary = self.tokenizer.decode(predictions[b].tolist())
-            passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
-            prediction = self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)
-            log.log(
-                XSUM_PREDICTION_LOG_LEVEL,
-                f"[global_rank={get_global_rank()}] <New Passage>: {passage} {prediction}",
-            )
+            # Decoding and printing the complete source+150-token output for
+            # every example is expensive in a CPU-starved multi-rank Slurm job
+            # and produces multi-GB logs. Keep it as an explicit diagnostic;
+            # ROUGE state below is unchanged when logging is disabled.
+            if os.environ.get("OLMO_LOG_XSUM_PREDICTIONS", "1") != "0":
+                passage = self.tokenizer.decode(input_ids[b].tolist(), skip_special_tokens=False)
+                prediction = self.tokenizer.decode(predictions[b].tolist(), skip_special_tokens=False)
+                log.log(
+                    XSUM_PREDICTION_LOG_LEVEL,
+                    f"[global_rank={get_global_rank()}] <New Passage>: {passage} {prediction}",
+                )
             # all_gather_object restores CUDA tensors onto the GPU that receives
             # them. Keeping metric state on CPU prevents a world-size-multiplied
             # late GPU-memory spike during ROUGE aggregation.

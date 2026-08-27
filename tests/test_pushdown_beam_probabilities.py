@@ -97,3 +97,23 @@ def test_generation_starts_from_inferred_prompt_parse():
     assert output.scores.shape == (1, 2)
     assert model.seen_real_span
     assert output.scores[0, 0] <= 0
+
+
+def test_generation_uses_gold_prompt_spans_without_prompt_beam_search():
+    model = GenerationToy()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("gold prompt spans must bypass pushdown_beam_search")
+
+    model.pushdown_beam_search = fail_if_called
+    output = model.pushdown_generate(
+        torch.tensor([[0, 0, 0]]),
+        prompt_spans=torch.tensor([[[0, 1, 2], [-1, -1, -1]]]),
+        max_steps=3,
+        beam_size=2,
+        max_reduce=None,
+        eos_token_id=1,
+        pad_token_id=99,
+    )
+    assert output.token_ids.shape == (1, 2, 3)
+    assert model.seen_real_span
