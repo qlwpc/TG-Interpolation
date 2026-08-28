@@ -2469,7 +2469,13 @@ class SyntacticGeneralizationMetric(Metric):
 
         result = eval(formula)
         log.info(f"result is {result}")
-        getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device=self.device))
+        # Pin bool scalars to CPU: _gather_list (all_gather_object) does not move
+        # tensors across devices, so per-rank tensors keep their rank's device.
+        # compute() then does sum() over the gathered list, which raises
+        # "Expected all tensors to be on the same device" when ranks span
+        # multiple GPUs. Booleans are CPU-native, so keeping them on the host
+        # sidesteps the cross-device sum and costs nothing.
+        getattr(self, self.map_task_dict[task]).append(torch.tensor(result, dtype=torch.bool, device="cpu"))
 
     def compute(self) -> Dict[str, float]:
         # Reduce only additive sufficient statistics. all_gather_object would

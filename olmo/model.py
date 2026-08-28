@@ -2733,6 +2733,7 @@ class OLMo(nn.Module):
         strategy : BeamSearchType = BeamSearchType.default,
         transformer_grammar_type: str = "",
         tree_eval_type: str = "default",
+        beam_dump: Optional[Dict] = None,
     ) -> OLMoOutput | float:
         """
         Word sync beam search for the model.
@@ -2993,6 +2994,19 @@ class OLMo(nn.Module):
                     surprisal = -logprob.max().item()
                 else:
                     surprisal = -torch.logsumexp(logprob, dim=0).item()
+                if beam_dump is not None:
+                    # Snapshot the beam at this scoring checkpoint so callers can
+                    # inspect the surviving candidates (input_ids + scores) without
+                    # rerunning the search. Store CPU ints/floats for easy pickling.
+                    snap = []
+                    for beam in beams:
+                        snap.append({
+                            "input_ids": beam["input_ids"].detach().to("cpu").tolist(),
+                            "logprob": float(beam["logprob"]),
+                            "terminal_logprob": float(beam["terminal_logprob"]),
+                            "n_start_NT": int(beam["number_of_start_NT"]),
+                        })
+                    beam_dump["start" if i == tag_start else "end"] = snap
                 if i==tag_start:
                     start_surprisal = surprisal
                 elif i==tag_end:
