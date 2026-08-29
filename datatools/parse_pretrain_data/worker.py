@@ -1,5 +1,8 @@
 import os
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# benepar's Retokenizer converts the slow t5 sentencepiece tokenizer, whose
+# _pb2 generated code is incompatible with protobuf>=4 (see parse_input.py).
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 import parse_input
 import time
 import re
@@ -486,6 +489,11 @@ def _feeder_proc(ds_iterator, start_index, ds_feed_q, log_queue, total_docs=None
 
 
 def main(config):
+    try:
+        from setup_parse_deps import ensure_all  # sibling-script import
+    except ImportError:
+        from datatools.parse_pretrain_data.setup_parse_deps import ensure_all
+    ensure_all()
     mp.set_start_method("spawn", force=True)
     log_queue = mp.Queue(maxsize=10000)
     listener = setup_main_logger(

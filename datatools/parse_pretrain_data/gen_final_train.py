@@ -75,10 +75,10 @@ def extract_test_split(extract_dict, bos_token_id, base_dir, filename):
     np.save(output_path, train_tokens)
 
 if __name__ == "__main__":
-    JSON_FILE_PATH = "../dataset/bbc-news/"  # JSON文件路径
+    JSON_FILE_PATH = "../../dataset/bbc-news/"  # JSON文件路径
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tokenizer', type=str, default="../dataset/TG_GPT2_tokenizer.json")
-    parser.add_argument('--data_dir', type=str, default="../dataset/bbc-news/")
+    parser.add_argument('--tokenizer', type=str, default="../../dataset/TG_GPT2_tokenizer.json")
+    parser.add_argument('--data_dir', type=str, default="../../dataset/bbc-news/")
     args = parser.parse_args()
     tokenizer = Tokenizer.from_file(args.tokenizer)
     BOS_TOKEN_ID = tokenizer.token_to_id("<|beginoftext|>")  # 文章分隔符的token ID
