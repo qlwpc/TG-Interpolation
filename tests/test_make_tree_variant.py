@@ -20,7 +20,7 @@ import json
 import numpy as np
 import pytest
 
-from datatools.make_tree_variant import (
+from datatools.parse_pretrain_data.make_tree_variant import (
     NTRanges,
     chunk_bounds,
     nt_ranges_from_tokenizer,
@@ -167,7 +167,7 @@ class TestNtRangesFromTokenizer:
 
 class TestTransformFile:
     def test_end_to_end_chunked_compress(self, tmp_path):
-        from datatools.make_tree_variant import transform_file
+        from datatools.parse_pretrain_data.make_tree_variant import transform_file
 
         # 3 sentences; a closing run of 2 in sentence 2
         tokens = np.asarray(
@@ -199,7 +199,7 @@ class TestTransformFile:
         ]
 
     def test_end_to_end_noont(self, tmp_path):
-        from datatools.make_tree_variant import transform_file
+        from datatools.parse_pretrain_data.make_tree_variant import transform_file
 
         tokens = np.asarray(
             _sentence([10, 11, 12], opens=[100, 101, 102], closes=[103, 104, 105]),

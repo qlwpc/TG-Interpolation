@@ -267,7 +267,7 @@ class TestTokenizerConfigIntegration:
     """Verify datatools/convert_TG_and_tokenize.py has same behavior."""
 
     def test_datatools_pformat_flat_has_parameter(self):
-        from datatools.convert_TG_and_tokenize import pformat_flat as dt_pformat
+        from datatools.parse_pretrain_data.convert_TG_and_tokenize import pformat_flat as dt_pformat
 
         tree = Tree.fromstring("(qlwpcRegen (S (NP -LRB-)))")
         sig = dt_pformat.__code__.co_varnames
@@ -275,14 +275,14 @@ class TestTokenizerConfigIntegration:
             "datatools copy should accept use_bracket_mapping parameter"
 
     def test_datatools_convert_tg_format_has_parameter(self):
-        from datatools.convert_TG_and_tokenize import convert_TG_format as dt_convert
+        from datatools.parse_pretrain_data.convert_TG_and_tokenize import convert_TG_format as dt_convert
 
         sig = dt_convert.__code__.co_varnames
         assert "use_bracket_mapping" in sig, \
             "datatools convert_TG_format should accept use_bracket_mapping parameter"
 
     def test_datatools_has_helper(self):
-        from datatools.convert_TG_and_tokenize import _is_qwen3_style_tokenizer as dt_check
+        from datatools.parse_pretrain_data.convert_TG_and_tokenize import _is_qwen3_style_tokenizer as dt_check
 
         mock_tok = MagicMock()
         mock_tok.use_bracket_mapping = False

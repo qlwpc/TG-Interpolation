@@ -23,7 +23,7 @@ files (``*_sent_index.npy`` etc.) are NOT regenerated.
 
 Usage::
 
-    python -m datatools.make_tree_variant \
+    python -m datatools.parse_pretrain_data.make_tree_variant \
         --input dataset/bbc-news/tree/dev.npy \
         --output-dir dataset/bbc-news/tree_noont \
         --variant noont \
@@ -41,7 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

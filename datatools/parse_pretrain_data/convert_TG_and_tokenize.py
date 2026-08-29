@@ -77,6 +77,12 @@ def count_lines_linux_style(filename):
     reslist = result.stdout.split()
     return int(reslist[0]) if reslist!=[] else 0
 
+
+def encode_tree_document(text, tokenizer, vocab, dtype):
+    """Encode one parsed document with explicit, format-stable boundaries."""
+    token_ids = [vocab.bos, *tokenizer.encode(text).ids, vocab.eos]
+    return np.asarray(token_ids, dtype=dtype)
+
 # def convert_treenpy_to_TG(tree: ndarray, vocab):
 #     T = tree.shape[0]
 #     for token in tree:
@@ -95,12 +101,13 @@ def count_lines_linux_style(filename):
 
 if __name__=="__main__":
 
-    print(convert_TG_format("(Ċ Ċ) (S (NP (NP (DT The) (NML (NNP United) (NNP Nations)) (NML (NNP Sustainable) (NNP Development)) (NNPS Goals)) (-LRB- -LRB-) (NP (NNPS SDGs)) (-RRB- -RRB-)) (VP (VBP consist) (PP (IN of) (NP (NP (CD 17) (JJ key) (NNS commitments)) (SBAR (WHNP (WDT that)) (S (VP (VBP strive) (S (VP (TO to) (VP (VP (VB eradicate) (NP (NN poverty))) (, ,) (VP (VB protect) (NP (DT the) (NN planet))) (CC and) (VP (VB ensure) (NP (NP (NN prosperity)) (PP (IN for) (NP (DT all)))) (PP (IN by) (NP (CD 2030))))))))))))) (. .)) (Ċ Ċ)"))
     parser = argparse.ArgumentParser()
     # parser.add_argument('--list_arg', type=str)  # 接收单个字符串
-    parser.add_argument('--input_dir', type=str, default="~/TG-LLaMA/dataset/bbc-news-parsed-raw")
-    parser.add_argument('--tokenizer', type=str, default="./dataset/TG_GPT2_tokenizer.json")
-    parser.add_argument('--output_dir', type=str, default="./dataset/bbc_tokenized/")
+    parser.add_argument('--input_dir', type=str, default="../../dataset/bbc-news-parsed-raw")
+    parser.add_argument('--tokenizer', type=str, default="../../dataset/bbc-news/TG_GPT2_tokenizer.json")
+    parser.add_argument('--output_dir', type=str, default="../../dataset/bbc_tokenized/")
+    parser.add_argument('--jobs', type=int, default=16,
+                        help='parallel parsed-text shards to tokenize')
     args = parser.parse_args()
     # result_list = args.list_arg.split(',') if args.list_arg else []
     
@@ -133,8 +140,7 @@ if __name__=="__main__":
                     TG_str = convert_TG_format(line)
                     if TG_str=="":
                         continue
-                    outputid = tokenizer.encode(TG_str).ids + [vocab.eos]
-                    outputid = np.array(outputid, dtype=dtype)
+                    outputid = encode_tree_document(TG_str, tokenizer, vocab, dtype)
                     tree_seq.append(outputid)
                     terminal_ids = vocab.convert_treenpy_to_terminal(outputid)
                     terminal_seq.append(terminal_ids)
@@ -143,6 +149,9 @@ if __name__=="__main__":
                     pbar.update(1)
                     # print(tokenizer.decode(TG_ids, skip_special_tokens=False))
             
+        if not tree_seq:
+            print(f"[warn] {filename}: no line converted successfully; nothing written")
+            return
         terminal_data = np.concatenate(terminal_seq, axis=0)
         np.save(os.path.join(terminal_dir, input+".npy"), terminal_data)
         tree_data = np.concatenate(tree_seq, axis=0)
@@ -152,21 +161,24 @@ if __name__=="__main__":
         return
 
 
-    all_files = os.listdir(input_directory)
-    all_files = sorted(all_files)
-    exclude_list = os.listdir(terminal_dir)
-    exclude_list = [os.path.splitext(name)[0] for name in exclude_list]
+    all_files = sorted(name for name in os.listdir(input_directory) if name.endswith('.txt'))
+    # resume: skip a file only when ALL THREE outputs already exist
+    # (the old check looked at terminal/ alone, which could leave tree/tg
+    #  missing after an interrupted run)
+    def _done(d):
+        return {os.path.splitext(n)[0] for n in os.listdir(d)}
+    done_names = _done(tree_dir) & _done(terminal_dir) & _done(TG_dir)
 
     process_list = []
     for filename in all_files:
         full_path = os.path.join(input_directory, filename)
         main_name = os.path.splitext(filename)[0]
         if os.path.isfile(full_path):
-            if main_name not in exclude_list:
+            if main_name not in done_names:
                 process_list.append(main_name)
                 # tokenize_file(main_name)
     print(f"file to tokenize is {process_list}")
-    Parallel(n_jobs=16)(delayed(tokenize_file)(name) for name in process_list)
+    Parallel(n_jobs=args.jobs)(delayed(tokenize_file)(name) for name in process_list)
 
     # tg_exclude_list = os.listdir(TG_dir)
     # tg_exclude_list = [os.path.splitext(name)[0] for name in tg_exclude_list]
@@ -176,5 +188,5 @@ if __name__=="__main__":
     #     if os.path.isfile(full_path):
     #         if main_name not in tg_exclude_list:
     #             print(f"start tokenizing TG {main_name}")
-    #             TG_data = vocab.convert_treenpy_to_TG(np.load("./dataset/bbc_tokenized/tree/" + main_name + ".npy", mmap_mode='r'), vocab)
-    #             np.save("./dataset/bbc_tokenized/tg/"+main_name+".npy", TG_data)
+    #             TG_data = vocab.convert_treenpy_to_TG(np.load("../../dataset/bbc_tokenized/tree/" + main_name + ".npy", mmap_mode='r'), vocab)
+    #             np.save("../../dataset/bbc_tokenized/tg/"+main_name+".npy", TG_data)

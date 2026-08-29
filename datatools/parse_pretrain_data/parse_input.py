@@ -1,3 +1,9 @@
+import os
+# benepar's Retokenizer converts the slow t5 sentencepiece tokenizer, whose
+# _pb2 generated code is incompatible with protobuf>=4; the pure-Python
+# implementation avoids the downgrade.  Must be set before sentencepiece import.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import benepar
 import spacy
 from datasets import load_dataset
@@ -20,6 +26,13 @@ from benepar import retokenization
 nltk.data.path.append("/2024233198/nltk_data")
 
 logger = logging.getLogger()
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+FINEWEB_EDU_ARROW_DIR = os.environ.get("FINEWEB_EDU_ARROW_DIR")
+FINEWEB_EDU_PARSED_DIR = os.environ.get(
+    "FINEWEB_EDU_PARSED_DIR",
+    os.path.join(REPO_ROOT, "dataset", "fineweb-edu-parsed"),
+)
 
 def my_retokenize(
     tokenizer,
@@ -190,7 +203,21 @@ def split_text_into_sents(text:str):
     del doc
     return sentences
 
-tokenizer = T5TokenizerFast.from_pretrained("t5-small")
+_tokenizer = None
+def _get_split_tokenizer():
+    """Lazily load the t5-small tokenizer (word->subword budgeting).
+
+    Lazy so that ``import parse_input`` works offline before
+    datatools.setup_parse_deps has prefetched the model.
+    """
+    global _tokenizer
+    if _tokenizer is None:
+        from transformers import T5TokenizerFast
+
+        _tokenizer = T5TokenizerFast.from_pretrained("t5-small")
+    return _tokenizer
+
+
 def split_list_limit(sub_list, max_tokens=512):
     punctuations = {',', '.', '!', '?', ';', ':', '，', '。', '！', '？', '；', '：', '-'}
     final_output = []
@@ -209,14 +236,14 @@ def split_list_limit(sub_list, max_tokens=512):
             new_list.append(words)
     sub_list = new_list
     
-    encoding = tokenizer(
-        sub_list, 
-        is_split_into_words=True, 
-        return_attention_mask=False,   
-        return_token_type_ids=False,   
-        return_tensors=None,           
-        return_offsets_mapping=False,  
-        return_length=False,           
+    encoding = _get_split_tokenizer()(
+        sub_list,
+        is_split_into_words=True,
+        return_attention_mask=False,
+        return_token_type_ids=False,
+        return_tensors=None,
+        return_offsets_mapping=False,
+        return_length=False,
         add_special_tokens=False
     )
     input_ids = encoding.input_ids
@@ -371,24 +398,24 @@ def prepare_dataset(config:str):
             if doc['document']!='':
                 prepared_ds.append(doc[text])
     elif config[0:4]=="AX-b":
-        filename = f"../dataset/SuperGLUE/AX-b/sentence{config[-1]}.txt"
+        filename = f"../../dataset/SuperGLUE/AX-b/sentence{config[-1]}.txt"
         key = f"sentence{config[-1]}"
-        with open('../dataset/SuperGLUE/AX-b/AX-b.jsonl', 'r', encoding='utf-8') as file:
+        with open('../../dataset/SuperGLUE/AX-b/AX-b.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
                 prepared_ds.append(data[key])
     elif config[0:4]=="AX-g":
         key = "premise" if config[-1]=='1' else "hypothesis"
-        filename = f"../dataset/SuperGLUE/AX-g/{key}.txt"
-        with open('../dataset/SuperGLUE/AX-g/AX-g.jsonl', 'r', encoding='utf-8') as file:
+        filename = f"../../dataset/SuperGLUE/AX-g/{key}.txt"
+        with open('../../dataset/SuperGLUE/AX-g/AX-g.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
                 prepared_ds.append(data[key])
     elif config[0:6]=="ReCoRD":
         split = config.split("_")
         key = split[2]
-        filename = f"../dataset/SuperGLUE/{split[0]}/{split[1]}_{split[2]}.txt"
-        with open(f'../dataset/SuperGLUE/{split[0]}/{split[1]}.jsonl', 'r', encoding='utf-8') as file:
+        filename = f"../../dataset/SuperGLUE/{split[0]}/{split[1]}_{split[2]}.txt"
+        with open(f'../../dataset/SuperGLUE/{split[0]}/{split[1]}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
                 if key=="text":
@@ -398,7 +425,7 @@ def prepare_dataset(config:str):
     elif config[:9] == "hellaswag":
         split = config.split("_")
         key = split[1]
-        filename = f"../dataset/hellaswag/{config}.txt"
+        filename = f"../../dataset/hellaswag/{config}.txt"
         def swag_preprocess(text):
             text = text.strip()
             text = text.replace(" [title]", ". ")
@@ -407,7 +434,7 @@ def prepare_dataset(config:str):
             text = text.replace("..", ".")
             text = text.replace("  ", " ")
             return text
-        with open(f"../dataset/hellaswag/{config}.jsonl", 'r', encoding='utf-8') as file:
+        with open(f"../../dataset/hellaswag/{config}.jsonl", 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
                 prepared_ds.append(swag_preprocess(data["ctx_a"]))
@@ -415,7 +442,7 @@ def prepare_dataset(config:str):
                     prepared_ds.append(swag_preprocess(data["ctx_b"].capitalize() + " " + endings))
     elif config[:10] == "winogrande":
         ds = load_dataset("allenai/winogrande", "winogrande_xl")
-        filename = os.path.join("../dataset/winogrande/", config + ".txt")
+        filename = os.path.join("../../dataset/winogrande/", config + ".txt")
         if "train" in config:
             ds = ds["train"]
         elif "val" in config:   
@@ -426,22 +453,27 @@ def prepare_dataset(config:str):
             prepared_ds.append(doc["sentence"].replace("_", doc["option1"]))
             prepared_ds.append(doc["sentence"].replace("_", doc["option2"]))
     elif config[:10] == "finewebedu":
-        edupath = "~/.cache/huggingface/datasets/HuggingFaceFW___fineweb-edu/sample-100BT/0.0.0/87f09149ef4734204d70ed1d046ddc9ca3f2b8f9"
+        edupath = FINEWEB_EDU_ARROW_DIR or "~/.cache/huggingface/datasets/HuggingFaceFW___fineweb-edu/sample-100BT/0.0.0/87f09149ef4734204d70ed1d046ddc9ca3f2b8f9"
         file_pattern = config[10:] if len(config)>10 else None
         ds = load_shrunk_dataset(os.path.expanduser(edupath), file_pattern=file_pattern)
-        os.makedirs("../dataset/finewebedu-100BT/", exist_ok=True)
-        filename = f"../dataset/finewebedu-100BT/{file_pattern.replace('.','')}.txt"
+        if ds is None:
+            raise FileNotFoundError(
+                f"no FineWeb-Edu Arrow shards matched {file_pattern!r} in {edupath}"
+            )
+        os.makedirs(FINEWEB_EDU_PARSED_DIR, exist_ok=True)
+        output_name = (file_pattern or "all-arrow").replace('.', '')
+        filename = os.path.join(FINEWEB_EDU_PARSED_DIR, f"{output_name}.txt")
         for doc in ds:
             prepared_ds.append(doc['text'])
     elif config[:9] == "fw_edu_dl":
         dump_name = config[10:]
         ds = load_dataset("HuggingFaceFW/fineweb-edu", name=dump_name, split="train", streaming=True)
-        os.makedirs("../dataset/fineweb-edu/", exist_ok=True)
-        filename = f"../dataset/fineweb-edu/{dump_name}.txt"
+        os.makedirs("../../dataset/fineweb-edu/", exist_ok=True)
+        filename = f"../../dataset/fineweb-edu/{dump_name}.txt"
         return filename, ds
     elif config[:4] == "mmlu":
         ds = load_dataset("cais/mmlu", "all")
-        filename = os.path.join("../dataset/mmlu/", config + ".txt")
+        filename = os.path.join("../../dataset/mmlu/", config + ".txt")
         split = config[4:]
         for doc in ds[split]:
             prepared_ds.append(doc["question"])
@@ -449,7 +481,7 @@ def prepare_dataset(config:str):
                 prepared_ds.append(option)
     elif config[:9] == "MMLUREDUX":
         category = config[9:]
-        filename = os.path.join("../dataset/mmluredux/", category + ".txt")
+        filename = os.path.join("../../dataset/mmluredux/", category + ".txt")
         _subcategories = {
             "abstract_algebra": ["math"],
             "anatomy": ["health"],
@@ -547,8 +579,8 @@ def prepare_dataset(config:str):
                 prepared_ds.append(option)
     elif config[:10] == "openbookqa":
         ds = load_dataset("allenai/openbookqa", "main")
-        os.makedirs("../dataset/openbookqa/", exist_ok=True)
-        filename = os.path.join("../dataset/openbookqa/", config + ".txt")
+        os.makedirs("../../dataset/openbookqa/", exist_ok=True)
+        filename = os.path.join("../../dataset/openbookqa/", config + ".txt")
         split = config[11:]
         for doc in ds[split]:
         #    for option in doc["choices"]["text"]:
@@ -561,8 +593,8 @@ def prepare_dataset(config:str):
                 prepared_ds.append(option)
     elif config[:11] == "social_i_qa":
         ds = load_dataset("baber/social_i_qa")
-        os.makedirs("../dataset/social_i_qa/", exist_ok=True)
-        filename = os.path.join("../dataset/social_i_qa/", config + ".txt")
+        os.makedirs("../../dataset/social_i_qa/", exist_ok=True)
+        filename = os.path.join("../../dataset/social_i_qa/", config + ".txt")
         split = config[12:]
         for doc in ds[split]:
             prepared_ds.append(doc["context"])
@@ -571,8 +603,8 @@ def prepare_dataset(config:str):
                 prepared_ds.append(doc[label])
     elif config[:14] == "commonsense_qa":
         ds = load_dataset("tau/commonsense_qa")
-        os.makedirs("../dataset/commonsense_qa/", exist_ok=True)
-        filename = os.path.join("../dataset/commonsense_qa/", config + ".txt")
+        os.makedirs("../../dataset/commonsense_qa/", exist_ok=True)
+        filename = os.path.join("../../dataset/commonsense_qa/", config + ".txt")
         split = config[15:]
         for doc in ds[split]:
             prepared_ds.append(doc["question"])
@@ -586,8 +618,8 @@ def prepare_dataset(config:str):
                 prepared_ds.append(option)
     elif config[:4] == "piqa":
         ds = load_dataset("ybisk/piqa", "plain_text")
-        os.makedirs("../dataset/piqa/", exist_ok=True)
-        filename = os.path.join("../dataset/piqa/", config + ".txt")
+        os.makedirs("../../dataset/piqa/", exist_ok=True)
+        filename = os.path.join("../../dataset/piqa/", config + ".txt")
         split = config[5:]
         for doc in ds[split]:
             prepared_ds.append(doc["goal"])
@@ -597,7 +629,7 @@ def prepare_dataset(config:str):
         split = config.split("_")
         name = "ARC-"+ split[1].capitalize()
         ds = load_dataset("ai2_arc", name)
-        filename = os.path.join("../dataset/ai2_arc/", name, config + ".txt")
+        filename = os.path.join("../../dataset/ai2_arc/", name, config + ".txt")
         for doc in ds[split[2]]:
             prepared_ds.append(doc["question"])
             for option in doc["choices"]["text"]:
@@ -607,8 +639,8 @@ def prepare_dataset(config:str):
     else: # file_split_key
         split = config.split("_")
         key = split[2]
-        filename = f"../dataset/SuperGLUE/{split[0]}/{split[1]}_{split[2]}.txt"
-        with open(f'../dataset/SuperGLUE/{split[0]}/{split[1]}.jsonl', 'r', encoding='utf-8') as file:
+        filename = f"../../dataset/SuperGLUE/{split[0]}/{split[1]}_{split[2]}.txt"
+        with open(f'../../dataset/SuperGLUE/{split[0]}/{split[1]}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data = json.loads(line.strip())
                 prepared_ds.append(data[key])
@@ -616,10 +648,27 @@ def prepare_dataset(config:str):
     return filename, prepared_ds
 
 def main(args_list=None):
+    global FINEWEB_EDU_ARROW_DIR, FINEWEB_EDU_PARSED_DIR
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_list', type=str)
     parser.add_argument('--start_index', type=int, default=0)
+    parser.add_argument('--fineweb-edu-arrow-dir', type=str,
+                        help='directory containing staged sample-100BT Arrow shards')
+    parser.add_argument('--output-dir', type=str,
+                        help='directory for one-document-per-line parsed FineWeb-Edu text')
+    parser.add_argument('--skip-deps', action='store_true',
+                        help='skip the dependency bootstrap (models/tokenizers)')
     args = parser.parse_args(args_list)
+    if args.fineweb_edu_arrow_dir:
+        FINEWEB_EDU_ARROW_DIR = os.path.abspath(os.path.expanduser(args.fineweb_edu_arrow_dir))
+    if args.output_dir:
+        FINEWEB_EDU_PARSED_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
+    if not args.skip_deps:
+        try:
+            from setup_parse_deps import ensure_all  # sibling-script import
+        except ImportError:
+            from datatools.parse_pretrain_data.setup_parse_deps import ensure_all
+        ensure_all()
     logger.info(args.input_list)
     result_list = args.input_list.split(',') if args.input_list else []
     MMLUCATEGORIES = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions']

@@ -1,3 +1,8 @@
+import os
+# benepar's Retokenizer converts the slow t5 sentencepiece tokenizer, whose
+# _pb2 generated code is incompatible with protobuf>=4 (see parse_input.py).
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import benepar
 import spacy
 from datasets import load_dataset
@@ -6,8 +11,12 @@ from tqdm import tqdm
 from nltk import Tree
 import logging
 import argparse
+import os
 import re
 import subprocess
+from pathlib import Path
+
+HUB_DATASET = "permutans/fineweb-bbc-news"
 
 
 @Language.component("set_custom_boundaries")
@@ -107,11 +116,11 @@ class batch_buffer:
         self.document_end = []
     
     def write(self, sent:str, is_end:bool):
-        self.doc_to_write += sent + ("\n" if is_end else " ") 
+        self.doc_to_write += sent + ("\n" if is_end else " ")
         if is_end:
             self.file.write(self.doc_to_write)
             self.doc_to_write = ""
-            pbar.update(1)
+            self.pbar.update(1)
 
     def parse_batch(self):
         if len(self.batches)==0:
@@ -142,8 +151,26 @@ class batch_buffer:
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--list_arg', type=str)  # 接收单个字符串
+    parser.add_argument('--data_files', type=str, default=None,
+                        help='comma-separated local parquet/arrow files (or glob) to parse '
+                             'instead of resolving the Hub dataset (useful when the Hub '
+                             'resolve endpoint is unreachable/blocked)')
     parser.add_argument('--start_index', type=int, default=0)
+    parser.add_argument('--max-docs', type=int, default=None,
+                        help='stop after this many documents (smoke tests); '
+                             'default: parse the whole split')
+    parser.add_argument('--output-dir', type=Path, default=Path('dataset/bbc-news-parsed'),
+                        help='directory for one-document-per-line parsed text shards')
+    parser.add_argument('--skip-deps', action='store_true',
+                        help='skip the dependency bootstrap (models/tokenizers)')
     args = parser.parse_args()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if not args.skip_deps:
+        try:
+            from setup_parse_deps import ensure_all  # sibling-script import
+        except ImportError:
+            from datatools.parse_pretrain_data.setup_parse_deps import ensure_all
+        ensure_all()
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
     sentparser = spacy.load('en_core_web_md')
@@ -156,20 +183,42 @@ if __name__=="__main__":
     result_list = args.list_arg.split(',') if args.list_arg else []
     print("Received list:", result_list) # [ "CC-MAIN-2014-41"]
     config = result_list
+
+    if args.data_files:
+        # local-parquet mode: group files by their parent config dir name
+        import glob as _glob
+        files = []
+        for pattern in args.data_files.split(','):
+            files.extend(sorted(_glob.glob(os.path.expanduser(pattern.strip()))))
+        if not files:
+            raise SystemExit(f"--data_files matched nothing: {args.data_files}")
+        by_config = {}
+        for f in files:
+            by_config.setdefault(Path(f).parent.name, []).append(f)
+        config = sorted(by_config)
+        datasets_map = {
+            c: load_dataset("parquet", data_files=by_config[c], split="train")
+            for c in config
+        }
+    else:
+        datasets_map = {c: load_dataset(HUB_DATASET, c) for c in config}
+
     for split in config:
-        ds = load_dataset("permutans/fineweb-bbc-news", split)
-        ds = ds["train"]
+        ds = datasets_map[split]
+        if hasattr(ds, "keys"):  # DatasetDict (hub path) → take the train split
+            ds = ds["train"]
         totallen = len(ds)
         print(totallen)
         logging.info(f"start parsing {split}")
 
         pbar = tqdm(total=totallen)
-        filename = "bbc-news/" + split + ".txt"
+        filename = str(args.output_dir / f"{split}.txt")
         index = count_lines_linux_style(filename)
         pbar.update(index)
+        stop_at = len(ds) if args.max_docs is None else min(index + args.max_docs, len(ds))
         with open(filename, "a+") as output:
             Buffer = batch_buffer(output, pbar)
-            while index < len(ds):
+            while index < stop_at:
                 document = ds[index]
                 text = document['text']
                 split_sents = process_text(text, max_len=256)
