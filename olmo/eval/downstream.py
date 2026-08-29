@@ -1065,6 +1065,27 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
                             pushdown_metadata = _slice_pushdown_parse(
                                 pushdown_metadata, 0, len(query)
                             )
+                    # Grammar conversions that INFLATE the sequence (e.g.
+                    # tree_triplecnt tripling every CNT token) can push an
+                    # already-trimmed query past model_ctx_len. The collator's
+                    # pad_tokens_until_max would then silently left-truncate
+                    # the padded input while ctx_len still refers to positions
+                    # in the untruncated query, so ICLMetric.update gathers
+                    # from an empty logits slice and crashes ("expected index
+                    # [1, 1] to be no larger than self [0, vocab]"). Truncate
+                    # here instead so ctx_len, spans and the actual input stay
+                    # aligned; the continuation sits at the tail and always
+                    # survives. Pause types are unaffected: their real-token
+                    # budget was pre-shrunk and expansion happens later on
+                    # full_query, outside this path.
+                    overflow = len(query) - self.model_ctx_len
+                    if overflow > 0:
+                        query = query[overflow:]
+                        query_spans = [
+                            (left - overflow, mid - overflow, right - overflow)
+                            for left, mid, right in query_spans
+                            if left >= overflow and right < len(query)
+                        ]
                     continuation_str = self.token_decode(continuation)
                     # this will be different from len(ctx) when truncated by model_ctx_len
                     actual_ctx_len = len(query) - len(continuation) + 1
@@ -2703,7 +2724,7 @@ class BLiMPMetric(Metric):
     def __init__(
             self,
             metric_type="BLiMP",
-            dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
+            dataset_name: Optional[str] = None, # explicit terminal, tree_300, tg_300, or tree_300_qwen
             vocab_path = None,
             device_eval_batch_size = None,
             dataset_length = None,
@@ -2785,7 +2806,17 @@ class BLiMPMetric(Metric):
 
         ce_loss = ce_loss.view(batch["input_ids"].shape[0], -1).sum(dim=1)
         actual_batch = ce_loss.shape[0]
-        if self.SENT_SIZE==1:
+        flat_sent_ids = batch.get("sent_ids")
+        if flat_sent_ids is not None:
+            flat_sent_ids = flat_sent_ids.to(device=self.device, dtype=torch.long)
+            if self.SENT_SIZE == 1:
+                self.loglikelihoods[flat_sent_ids] = ce_loss
+            else:
+                self.loglikelihoods[
+                    torch.div(flat_sent_ids, self.SENT_SIZE, rounding_mode="floor"),
+                    flat_sent_ids.remainder(self.SENT_SIZE),
+                ] = ce_loss
+        elif self.SENT_SIZE==1:
             self.loglikelihoods[sent_id : sent_id + actual_batch] = ce_loss
         else:
             self.loglikelihoods[sent_id, sample_id : sample_id + actual_batch] = ce_loss
@@ -2963,7 +2994,7 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         self,
         tokenizer: Tokenizer,
         dataset_path: str,
-        dataset_name: str = "tree_300", # terminal, tree_300 or tg_300
+        dataset_name: Optional[str] = None, # explicit terminal, tree_300, tg_300, or tree_300_qwen
         model_ctx_len: int = 2048,
         split="test",
         metric_type="BLiMP",
@@ -3031,19 +3062,25 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         if pushdown_gold:
             self.dataset_name = "tree_300"
         elif force_terminal:
-            self.dataset_name = "terminal"
+            # Qwen checkpoints have a different vocabulary and therefore need
+            # their own terminal-tokenized BLiMP array. Reusing the GPT-2 file
+            # would silently score the wrong IDs.
+            self.dataset_name = "terminal_qwen" if self.is_qwen3 else "terminal"
         elif transformer_grammar_type[:8] == "terminal" or transformer_grammar_type[:5] == "pause":
             self.dataset_name = "terminal"
         elif transformer_grammar_type[:4] == "tree":
             self.dataset_name = "tree_300"
         else:
             self.dataset_name = "tg_300"
-        # Qwen3: all grammar types load from tree_300_qwen (tree format),
-        # then _convert_sequence handles format-specific conversion.  Skipped
-        # under force_terminal (beam path uses the standard terminal .npy).
+        # Qwen3: all non-beam grammar types load from tree_300_qwen (tree
+        # format), then _convert_sequence handles format-specific conversion.
+        # The beam path uses the compact terminal_qwen array selected above.
         if self.is_qwen3 and not force_terminal:
             self.dataset_name = "tree_300_qwen"
-        self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
+        if dataset_name is not None:
+            self.dataset_name = dataset_name
+        self.dataset_file = os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy")
+        self.dataset = np.load(self.dataset_file, mmap_mode="r")
         self.input_len = self.dataset.shape[1]
         self.generate_TG_attention_bias = generate_TG_attention_bias
 
@@ -3148,6 +3185,17 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     def reset(self) -> None:
         return
 
+    def __getstate__(self):
+        # DataLoader uses spawn in this project. Never pickle a multi-GB memmap:
+        # workers receive only metadata and reopen the same file read-only.
+        state = self.__dict__.copy()
+        state["dataset"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.dataset = np.load(self.dataset_file, mmap_mode="r")
+
     def collate_fn(self, data):
         sent_ids = []
         input_ids = []
@@ -3186,7 +3234,11 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
                 all_label_mask.append(label_mask)
 
         batch = {
-            "sent_id" : min(sent_ids),
+            # Keep the legacy scalar for evaluators that consume contiguous batches,
+            # and expose every flat ID so BLiMP can scatter batches spanning
+            # multiple 300-parse sentence groups without corrupting rows.
+            "sent_id": min(sent_ids),
+            "sent_ids": torch.as_tensor(sent_ids, dtype=torch.long),
             "input_ids": torch.stack(input_ids),
         }
         if all_attention_bias:

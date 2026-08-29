@@ -32,9 +32,15 @@ def normalize_prediction(text: str) -> str:
 def parse_record(body: str) -> tuple[str, str]:
     marker = body.rfind(PROMPT)
     if marker < 0:
-        raise ValueError("XSum prompt marker is missing from an evaluation record")
-    article = body[:marker]
-    prediction = body[marker + len(PROMPT) :]
+        marker = body.rfind("\n<(S><(VP> Summarize")
+        prediction_start = body.find("\n", marker + 1) if marker >= 0 else -1
+        if marker < 0 or prediction_start < 0:
+            raise ValueError("XSum prompt marker is missing from an evaluation record")
+        article = body[:marker]
+        prediction = body[prediction_start + 1 :]
+    else:
+        article = body[:marker]
+        prediction = body[marker + len(PROMPT) :]
     return article.strip(), normalize_prediction(prediction)
 
 
@@ -53,10 +59,15 @@ def main() -> None:
     eval_text = text[eval_start:]
 
     records = []
+    malformed_records = 0
     ranked_matches = list(RANKED_EVAL_RECORD.finditer(eval_text))
     matches = ranked_matches or list(EVAL_RECORD.finditer(eval_text))
     for source_order, match in enumerate(matches):
-        article, prediction = parse_record(match.group("body"))
+        try:
+            article, prediction = parse_record(match.group("body"))
+        except ValueError:
+            malformed_records += 1
+            continue
         record = {
             "source_order": source_order,
             "prediction": prediction,
@@ -83,6 +94,7 @@ def main() -> None:
         "source_log": str(args.log.resolve()),
         "world_size": args.world_size,
         "num_predictions": len(records),
+        "malformed_records": malformed_records,
         "num_unique": len(counts),
         "unique_fraction": len(counts) / len(records) if records else None,
         "rank_counts": dict(sorted(Counter(record.get("global_rank") for record in records).items()))
