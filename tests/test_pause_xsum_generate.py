@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,7 +46,7 @@ def _make_pause_model(grammar_type: str = "pause1", max_seq: int = 64):
         d_model=64, n_heads=4, n_layers=2, mlp_ratio=4, mlp_hidden_size=256,
         vocab_size=50320, embedding_size=50320, max_sequence_length=max_seq,
         block_type=BlockType.sequential, layer_norm_type=LayerNormType.rms,
-        activation_type=ActivationType.swiglu, rope=True, flash_attention=True,
+        activation_type=ActivationType.swiglu, rope=True, flash_attention=False,
         flex_attention=False, attention_dropout=0.0, init_device="cpu",
         init_fn=InitFnType.normal, init_std=0.02,
         transformer_grammar_type=grammar_type,
@@ -178,9 +179,58 @@ def test_pause_label_generate_inserts_pauses_every_q():
           f"real out len={out.shape[1]}).")
 
 
+def test_pause_generate_forces_dedicated_sep_and_returns_real_tokens_only():
+    """SEP checkpoints must continue the fixed grid without leaking SEP to ROUGE."""
+    from olmo.data.util import pause_input_ids
+
+    torch.manual_seed(3)
+    m = _make_pause_model("pause2", max_seq=128)
+    v = _vocab()
+    sep = 50261
+    real_prompt = torch.LongTensor([v.bos, 100, 200])
+    paused_prompt = pause_input_ids(real_prompt, sep, pause_num="pause2")
+    prompt = paused_prompt.unsqueeze(0)
+
+    single_token_inputs = []
+    orig_forward = m.forward
+
+    def recording_forward(input_ids, **kwargs):
+        if input_ids.shape[-1] == 1:
+            single_token_inputs.extend(input_ids.detach().reshape(-1).tolist())
+        return orig_forward(input_ids, **kwargs)
+
+    m.forward = recording_forward
+    generated = m.pause_generate(
+        prompt,
+        pause_spec=(2, 1),
+        max_real_tokens=4,
+        pause_token_id=sep,
+        vocab=v,
+        eos_token_id=50256,
+        beam_size=1,
+    )
+    m.forward = orig_forward
+
+    real = generated.token_ids[0, 0].tolist()
+    assert len(real) <= 4
+    assert sep not in real
+    assert sep in single_token_inputs, "forced SEP was not fed through the KV cache"
+
+
+def test_pause_generate_rejects_invalid_batch_size():
+    m = _make_pause_model("pause1", max_seq=128)
+    with torch.no_grad(), pytest.raises(ValueError, match="device_eval_batch_size=1"):
+        m.pause_generate(
+            torch.ones((2, 4), dtype=torch.long),
+            pause_spec=(1, 1),
+            max_real_tokens=4,
+        )
+
+
 if __name__ == "__main__":
     test_word_sync_beam_search_excludes_nt_for_pause()
     test_pause_label_generate_inserts_repeats_on_grid()
     test_pause_label_generate_deterministic()
     test_pause_label_generate_inserts_pauses_every_q()
+    test_pause_generate_forces_dedicated_sep_and_returns_real_tokens_only()
     print("\nAll pause-XSUM tests passed.")

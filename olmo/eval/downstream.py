@@ -20,6 +20,8 @@ from ..tokenizer import Tokenizer
 from ..data.util import (
     encode_TG_string,
     convert_TG_format,
+    is_pause_label,
+    pause_label_mask,
     pause_input_ids,
     pause_spec_from_grammar_type,
     pause_expanded_len,
@@ -1666,6 +1668,17 @@ class XsumDataset(metaclass=abc.ABCMeta):
                 self.prompts_TG_tokens,
             ])
             loss_tokens = None
+
+        # Build supervision in the pre-expansion coordinates.  Pause expansion
+        # must be applied to the complete article+prompt+summary stream, not to
+        # the summary suffix in isolation: for rational pause specs a q-token
+        # block can straddle the prompt/summary boundary.  Expanding this mask
+        # with repeat-mode gives a mask aligned exactly with the expanded input,
+        # including dedicated-SEP pause targets owned by the summary.
+        raw_label_mask = None
+        if loss_tokens is not None:
+            raw_label_mask = np.zeros(input_ids.shape[0], dtype=np.bool_)
+            raw_label_mask[-loss_tokens.shape[0]:] = True
         
         attention_bias, label_mask, TG_label_mask = None, None, None
         if self.transformer_grammar_type == "terminal":
@@ -1696,11 +1709,20 @@ class XsumDataset(metaclass=abc.ABCMeta):
                 loss_tokens = self.vocab.convert_TGnpy_to_tree(loss_tokens)
         elif self.transformer_grammar_type[:5] == "pause":
             input_ids = pause_input_ids(input_ids, self.pause_token_id, pause_num=self.transformer_grammar_type)
+            if raw_label_mask is not None:
+                label_mask = pause_input_ids(
+                    raw_label_mask,
+                    pause_token_id=None,
+                    pause_num=self.transformer_grammar_type,
+                ).astype(np.bool_, copy=False)
+                if is_pause_label(self.transformer_grammar_type):
+                    p, q = self.pause_spec
+                    label_mask &= pause_label_mask(len(input_ids), p, q)
         elif self.generate_TG_attention_bias is not None:
             input_ids = torch.tensor(input_ids)
             attention_bias, TG_label_mask = self.generate_TG_attention_bias(input_ids)
         
-        if loss_tokens is not None:
+        if loss_tokens is not None and label_mask is None:
             label_mask = torch.zeros((input_ids.shape[0], ), dtype=torch.bool)
             label_mask[label_mask.shape[0] - loss_tokens.shape[0]:] = True
             if TG_label_mask is not None:

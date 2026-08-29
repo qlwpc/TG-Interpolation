@@ -307,7 +307,9 @@ def build_train_dataloader(
         dataset = task_class(tokenizer=tokenizer, 
                              generate_TG_attention_bias=get_TG_generate_bias_func(train_config, train_config.model.max_sequence_length),
                              transformer_grammar_type=train_config.model.transformer_grammar_type,
+                             model_ctx_len=train_config.model.max_sequence_length,
                              vocab_path=train_config.tokenizer.vocabulary,
+                             pause_token_id=train_config.model.pause_token_id,
                              split="train",
                              **task_kwargs)  # type: ignore
         if train_config.finetune_task in Super_GLUE:

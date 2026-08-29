@@ -1,14 +1,15 @@
 # 论文实验复现登记表
 
-更新：2026-08-28。本文是本仓库的唯一人工维护登记表，用于把论文中的
+更新：2026-08-29。本文是本仓库的唯一人工维护登记表，用于把论文中的
 模型、可加载 checkpoint、论文报告值和本次重跑值放在同一张记录中。
 
 来源：
 
 - 论文：`14901_A_Scaled_Up_Empirical_St.pdf`，Table 3/4/6/7。
 - checkpoint：本机 `saved_models/` 的实际目录；均已检查目录存在。
-- `artifacts/experiment/scaleup_nonfineweb_multiseed_20260815/STATUS_AND_RESULTS.md`
-  只可用于辅助识别模型/目录，**其旧实验数值不录入本表，也不参与比较**。
+- `artifacts/experiment/scaleup_nonfineweb_multiseed_20260815/` 只在逐 run
+  `TRAIN_DONE/EVAL_DONE`、日志和 checkpoint 身份均可核验时使用；其中复制式 Pause
+  BoolQ 作为历史对照录入，旧 XSum v1 数值仅作失败审计，不参与有效比较。
 
 ## 1. 比较规则
 
@@ -51,8 +52,10 @@ terminal/pause 的 `terminal_doc_ppl` 误标为严格同一指标。
 | Tree-Shuffle | 100M / BBC | LIN1shuf, causal | `saved_models/Tree_shuffle_pretrain/step49440-unsharded` | `tree_shuffle` | 可用 |
 | TGNomask-Mix-TG | 100M / BBC | LIN2, mixed heads | `saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded` | `nomask_mix_tg` | 可用 |
 | TGTree-Mix-TG | 100M / BBC | LIN2, mixed heads | `saved_models/tgtree_mix_tg_pretrain/step69817-unsharded` | `tree_mix_tg` | 可用 |
-| Pause-1 | 100M / BBC | 1 pause/token | `saved_models/pretrain_pause1_100M/step45487-unsharded` | `pause1` | 可用 |
-| Pause-2 | 100M / BBC | 2 pauses/token | `saved_models/pretrain_pause2_100M/step52609-unsharded` | `pause2` | 可用 |
+| Pause-1（复制式历史对照） | 100M / BBC | 复制真实 token，1 slot/token | `saved_models/pretrain_pause1_100M/step45487-unsharded` | `pause1` | 可用；`pause_token_id=null`，不是论文式 learned pause token |
+| Pause-2（复制式历史对照） | 100M / BBC | 复制真实 token，2 slots/token | `saved_models/pretrain_pause2_100M/step52609-unsharded` | `pause2` | 可用；`pause_token_id=null`，不是论文式 learned pause token |
+| Pause-1（论文式 dedicated SEP） | 100M / BBC | 1 learned SEP/token | `saved_models/pretrain_pause1_100M_SEP50261_steplaw/step45487-unsharded` | `pause1` | 可用；`pause_token_id=50261` |
+| Pause-2（论文式 dedicated SEP） | 100M / BBC | 2 learned SEP/token | SIST `saved_models/pretrain_pause2_100M_SEP50261_steplaw/step54156-unsharded` | `pause2` | SIST 可用；`pause_token_id=50261`，sequence length 2049 |
 | Terminal | 500M / BBC | Terminal, causal | `saved_models/terminal_500M/step34115-unsharded` | `terminal-500M` | 可用 |
 | Tree | 500M / BBC | LIN1, causal | `saved_models/Tree_500M/step49440-unsharded` | `tree-500M` | 可用 |
 | TGTree | 500M / BBC | LIN2, causal | `saved_models/TGTree_500M/step55853-unsharded` | `tgtree-500M` | 可用 |
@@ -123,13 +126,16 @@ checkpoint 内的绝对路径、`run_name`、evaluator 和后续被覆盖的 `da
 | Tree-Shuffle | LIN1，collator 在线 shuffle NT | `tree_shuffle` | 24.706B / 49440 | 0.007000 | 244 / 28 | shuffle 不是独立 `.npy` |
 | TGNomask-Mix-TG | LIN2 | `mixing` | 32.029B / 69817 | 0.007600 | 224 / 28 | `mix_head_type=[tg:6,tgnomask:6]` |
 | TGTree-Mix-TG | LIN2 | `mixing` | 32.029B / 69817 | 0.007600 | 224 / 28 | `mix_head_type=[tgtree:6,tg:6]` |
-| Pause-1 | terminal 在线 1 pause/token | `pause1` | 20.122B / 45487 | 0.006585 | 216 / 8 | seq=2048，`pause_token_id=null`，实际重复组内 terminal token |
-| Pause-2 | terminal 在线 2 pauses/token | `pause2` | 30.183B / 52609 | 0.007595 | 280 / 15 | **seq=2049**，`pause_token_id=null`，实际重复 terminal token |
+| Pause-1（复制式） | terminal 在线复制 1 slot/token | `pause1` | 20.122B / 45487 | 0.006585 | 216 / 8 | seq=2048，`pause_token_id=null`，实际重复组内 terminal token |
+| Pause-2（复制式） | terminal 在线复制 2 slots/token | `pause2` | 30.183B / 52609 | 0.007595 | 280 / 15 | **seq=2049**，`pause_token_id=null`，实际重复 terminal token |
+| Pause-1（论文式 SEP） | terminal 在线插入 1 SEP/token | `pause1` | 20.122B / 45487 | 0.006585 | 216 / 9（accum=3） | seq=2048，`pause_token_id=50261`；SIST job 988670 |
+| Pause-2（论文式 SEP） | terminal 在线插入 2 SEP/token | `pause2` | 30.183B / 54156 | 0.007458 | 272 / 17（accum=2） | **seq=2049**，`pause_token_id=50261`；SIST job 988671 |
 
-Pause-1/2-100M 的 `pause_token_id=null` 很重要：当前实现不是插入一个独立可学习的
+旧 Pause-1/2-100M 的 `pause_token_id=null` 很重要：其实现不是插入一个独立可学习的
 共享 pause embedding，而是把每组最后一个真实 token 广播到 pause slot。论文把控制
-描述为 learned latent token，因此复现论文文字时必须明确：现有 100M checkpoint 是
-“repeat-token compute control”；不能静默改成专用 SEP，否则已经变成新实验。
+描述为 learned latent token，因此本登记表将这些旧 checkpoint 统一称为
+“复制式 Pause（repeat-token compute control）”；论文模型名称和值只对应后面的
+dedicated-SEP 重训，不再与复制式 checkpoint 混用。
 
 **Checkpoint 级复核（2026-08-28）。** 本机这两个目录各只有一个实际 final step：
 `pretrain_pause1_100M/step45487-unsharded` 与
@@ -140,17 +146,19 @@ Pause-1/2-100M 的 `pause_token_id=null` 很重要：当前实现不是插入一
 范围内候选特殊 token 50257--50263 的平均概率仅为约 1e-9--1e-6。对 held-out BBC
 片段进行协议似然比较也一致：repeat 序列的 pause NLL 为 0.0063/0.0089，而固定
 SEP-50263 序列为 28.674/12.126。因此，本机这两个 **100M 权重本身就是 repeat-token**，
-不是“SEP 训练但 YAML 漏写”；真正采用独立 SEP 的补充 checkpoint 是下文 FineWeb-Edu
-1B 的 `pause1_1B_SEP` / `pause2_1B_SEP`（id 151673）。若另有 100M SEP checkpoint，
-必须另给确切 step 路径与 pause id，不能复用当前两个 checkpoint 身份。
+不是“SEP 训练但 YAML 漏写”。真正采用独立 SEP 的 checkpoint 包括下文 FineWeb-Edu
+1B 的 `pause1_1B_SEP` / `pause2_1B_SEP`（id 151673），以及本轮重新训练的 100M
+SEP-50261 checkpoint；两类权重的身份和结果必须分开登记。
 
 为补齐这一缺口，2026-08-28 已在 SIST `ShangHAI` 分区启动独立 SEP 的 100M
 重训 campaign：`pause_sep_100m_sist_20260828`。两者都使用 terminal train stream、
 seed 6198、`pause_token_id=50261`、FlashAttention-2 和严格按实际 pause-expanded D
 重算的 Step Law。Pause-1 为 LR=0.006585、global/device/micro/accum=
-216/27/9/3（job 988670，8×RTX 6000D，RUNNING）；Pause-2 为 LR=0.007458、
-272/34/17/2（job 988671，`afterok:988670` 排队）。这是尚未完成的补充预训练，
-不能提前作为 checkpoint 或结果引用；配置、公式展开、提交脚本和 job manifest 位于
+216/27/9/3（job 988670，8×RTX 6000D，`COMPLETED/0:0`，耗时 06:49:49）；Pause-2
+为 LR=0.007458、272/34/17/2（job 988671，`COMPLETED/0:0`，耗时 11:03:04）。
+Pause-1/2 最终 checkpoint 分别为 step45487/step54156，均完成日志、SHA-256、配置和
+反序列化验收；模型哈希分别以 `a5cd2c46...` / `1f494...` 开头。配置、公式展开、
+提交脚本、job manifest 与迁移验收记录位于
 `artifacts/experiment/pause_sep_100m_sist_20260828/`。
 
 ### 2A.3 BBC 500M 与补充 BBC 1B
@@ -186,7 +194,7 @@ seed 6198、`pause_token_id=50261`、FlashAttention-2 和严格按实际 pause-e
 | 模型组 | 可参考模板 | 是否能精确重训当前 checkpoint |
 |---|---|---|
 | Terminal/Tree/TG-100M | `terminal.yaml` / `tree.yaml` / `TG.yaml` | 否；这些是 early/truncated 模板，LR、batch、stop 与正式 checkpoint 不同 |
-| TGTree、TGNomask、TGNomask-Aug、三种 Tree 数据变体、Tree-Shuffle、Pause-1/2-100M | 无独立正式模板 | 否；以对应 checkpoint 的 `config.yaml` 为唯一核心参数源，重写绝对数据路径 |
+| TGTree、TGNomask、TGNomask-Aug、三种 Tree 数据变体、Tree-Shuffle、复制式及 SEP Pause-1/2-100M | 无独立正式模板 | 否；以对应 checkpoint 的 `config.yaml` 为唯一核心参数源，重写绝对数据路径；Pause 还必须核对 `pause_token_id` |
 | 两个 mixing 模型 | `nomask_and_tg.yaml` | 否；现文件是 `stop_at=6, lr=6e-4` 的 smoke config；必须从 checkpoint 保留完整 `mix_head_type` |
 | Terminal/Tree/TGTree-500M | `terminal-500M.yaml` / `tree-500M.yaml` / `tgtree-500M.yaml` | 核心 LR/batch/架构一致；final step 仍按 checkpoint 与一 epoch数据长度 |
 | TGNomask-Aug-500M | 无独立正式模板 | 以 checkpoint config 为准 |
@@ -257,8 +265,10 @@ pushdown_attachment_weight=1, pushdown_attachment_layer=-1`。这些设定分别
 | Tree-Shuffle-100M | 21.76 | 67.77 | 76.96 | 67.67 | 13.69 | — | — | 61.59 | 71.68 | 50.91 | `SG job=3473; BLiMP job=3474; Doc-PPL job=3467; checkpoint=saved_models/Tree_shuffle_pretrain/step49440-unsharded; evaluator=terminal-only teacher-forced / terminal_doc; dataset=full SG suite / full BLiMP / BBC terminal test; protocol=model-only restore, input_format=terminal,beam_search=false; logs=artifacts/evaluation/tree_shuffle_terminal_syntax_20260823/runs/tree_shuffle_{SG,blimp}_seed6198/logs/; legacy SG 3468 and BLiMP 3469 are superseded and excluded; completed=2026-08-23. Independent terminal-only SG confirmation: job=3477, avg=61.59%, log=analysis-output/sg_100m_additional_rtx3090_20260823/logs/sg_100m_tree_shuffle_terminal_only_3477.out; completed=2026-08-23` |
 | TGNomask-Mix-TG-100M | 21.86 | 67.49 | 75.96 | 83.15 | 10.16 | — | — | 75.77 | 10.01 | — Doc-PPL: evaluator=tg_approx_doc; dataset=dataset/bbc-news/testppl_tg/ (bos/eos-normalized, transferred 2026-08-25 from this host to local H20 cluster, md5-verified); protocol=SENT_SIZE=300, batch=60, steps=744180 over 44,650,800 records, seed=6198; log=artifacts/evaluation/docppl_structural_20260825/runs/nomask_mix_tg_docppl_seed6198/logs/launch.out (local H20 cluster, log not on this host); completed=2026-08-27| `SG job=3416; checkpoint=saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded; evaluator=word_sync beam search; dataset=full SG suite; protocol=beam=300,nc=max(term_len,5),pc=3,max_len=6×term_len,2 GPU; log=analysis-output/sg_100m_rtx3090_20260820/logs/sg_100m_tgnomask_mix_tg_beam300_len6_3416.out; completed=2026-08-21` |
 | TGTree-Mix-TG-100M | 22.25 | 67.74 | 79.25 | 82.76 | 10.16 | — | — | 78.84 | 10.00 | — Doc-PPL: evaluator=tg_approx_doc; dataset=dataset/bbc-news/testppl_tg/ (bos/eos-normalized, transferred 2026-08-25 from this host to local H20 cluster, md5-verified); protocol=SENT_SIZE=300, batch=60, steps=744180 over 44,650,800 records, seed=6198; log=artifacts/evaluation/docppl_structural_20260825/runs/tree_mix_tg_docppl_seed6198/logs/launch.out (local H20 cluster, log not on this host); completed=2026-08-28| `SG job=3478; checkpoint=saved_models/tgtree_mix_tg_pretrain/step69817-unsharded; evaluator=word_sync beam search; dataset=full SG suite; protocol=beam=300,nc=max(term_len,5),pc=3,max_len=6×term_len,2 GPU, grammar=mixing; log=analysis-output/sg_100m_additional_rtx3090_20260823/logs/sg_100m_tgtree_mix_tg_beam300_len6_3478.out; completed=2026-08-24` |
-| Pause-1-100M | 19.86 | 66.06 | 78.47 | 69.99 | 10.64 | — | — | 76.29 | 72.52 | 9.83125 | `SG job=3460; BLiMP job=3461; checkpoint=saved_models/pretrain_pause1_100M/step45487-unsharded; evaluator=pause1 teacher-forced; dataset=full SG suite / full BLiMP (67×1000 pairs); BLiMP warnings=5 tied-or-non-finite pairs; logs=artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause1_{SG,blimp}_seed6198/logs/; completed=2026-08-23. Doc-PPL: job=3445; evaluator=terminal_doc/terminal_doc_ppl; dataset=dataset/bbc-news/terminal/test.npy; protocol=K1,pause1-document-phase,BOS-context,EOS-scored,pause-masked,denom=3284061` |
-| Pause-2-100M（补充） | — | — | — | — | — | — | — | 75.85 | 73.15 | 9.92898 | `SG job=3462; BLiMP job=3463; checkpoint=saved_models/pretrain_pause2_100M/step52609-unsharded; evaluator=pause2 teacher-forced; dataset=full SG suite / full BLiMP (67×1000 pairs); BLiMP warnings=3 tied-or-non-finite pairs; logs=artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause2_{SG,blimp}_seed6198/logs/; completed=2026-08-23. Doc-PPL: job=3446; evaluator=terminal_doc/terminal_doc_ppl; dataset=dataset/bbc-news/terminal/test.npy; protocol=K1,pause2-document-phase,BOS-context,EOS-scored,pause-masked,denom=3284061` |
+| Pause-1-100M（复制式；历史对照） | — | — | — | — | — | 作废（旧 v1；18.73 ± 0.09） | 67.85 ± 0.38 | 76.29 | 72.52 | 9.83125 | `checkpoint=saved_models/pretrain_pause1_100M/step45487-unsharded; pause_token_id=null; protocol=repeat previous real token. SG job=3460; BLiMP job=3461; Doc-PPL job=3445. BoolQ five-seed=artifacts/experiment/scaleup_nonfineweb_multiseed_20260815/runs/pause1_100m_boolq_seed*/. 旧 XSum 18.73 ± 0.09 使用已确认存在标签 mask/生成路径缺陷的 v1 pipeline，作废且不参与比较` |
+| Pause-2-100M（复制式；历史对照） | — | — | — | — | — | 作废（旧 v1；10.92 ± 0.57） | 68.51 ± 0.48 | 75.85 | 73.15 | 9.92898 | `checkpoint=saved_models/pretrain_pause2_100M/step52609-unsharded; pause_token_id=null; protocol=repeat previous real token. SG job=3462; BLiMP job=3463; Doc-PPL job=3446. BoolQ five-seed=artifacts/experiment/scaleup_nonfineweb_multiseed_20260815/runs/pause2_100m_boolq_seed*/. 旧 XSum 10.92 ± 0.57 使用 v1 pipeline，作废且不参与比较` |
+| Pause-1-100M（论文式 dedicated SEP） | 19.86 | 66.06 | 78.47 | 69.99 | 10.64 | **22.38 ± 0.05** | **62.04 ± 0.19** | **75.11** | **70.85** | **9.771** | `pretrain job=988670; checkpoint=saved_models/pretrain_pause1_100M_SEP50261_steplaw/step45487-unsharded; grammar=pause1; pause_token_id=50261. SG/BLiMP/Doc-PPL jobs=3610/3611/3612. XSum v2 five-seed job=989161; full test, phase-constrained KV-cache generation, eval batch=1. BoolQ five-seed train retry/eval=3642_[5-9]/3614_[5-9], microbatch=1, global batch=40. evidence=artifacts/experiment/pause1_sep50261_full_eval_20260829/ and SIST pause1_sep50261_xsum_v2_sist_20260829/` |
+| Pause-2-100M（论文式 dedicated SEP；补充） | — | — | — | — | — | **22.25 ± 0.06** | **65.70 ± 3.45** | **76.97** | **72.59** | **10.32** | `pretrain job=988671; checkpoint=SIST saved_models/pretrain_pause2_100M_SEP50261_steplaw/step54156-unsharded; grammar=pause2; pause_token_id=50261; seq=2049. SG/BLiMP/Doc-PPL jobs=989010/989011/989012. XSum v2 five-seed job=989161. BoolQ completion job=989304_[5-9], 5/5 TRAIN_DONE/EVAL_DONE, full validation, microbatch=1, global batch=40; earlier incomplete attempt 989023 is superseded. evidence=SIST artifacts/experiment/pause2_sep50261_{full_eval,xsum_v2}_sist_20260829/` |
 | Terminal-500M | 20.71 | 69.97 | 71.25 | 64.74 | 3.06 | — | — | 71.11 | 64.74 | 2.82518 | `SG job=3456; BLiMP job=3457; checkpoint=saved_models/terminal_500M/step34115-unsharded; evaluator=terminal teacher-forced; dataset=full SG suite / full BLiMP (67×1000 pairs); BLiMP warnings=7 tied-or-non-finite pairs; logs=artifacts/evaluation/terminal_pause_syntax_20260823/runs/terminal-500M_{SG,blimp}_seed6198/logs/; completed=2026-08-23. Doc-PPL: job=3447; evaluator=terminal_doc/terminal_doc_ppl; dataset=dataset/bbc-news/terminal/test.npy; protocol=K1,BOS-context,EOS-scored,denom=3284061; log=artifacts/evaluation/terminal_doc_ppl_20260823/terminal_500m/logs/slurm-terminal_500m_terminal_doc_ppl_full_20260823-3447.out` |
 | Tree-500M | 22.05 | 71.90 | 63.26 | 76.07 | 3.32 | — | — | 63.13 | 3.182 | — Doc-PPL: evaluator=txl_approx_doc; dataset=dataset/bbc-news/testppl_tree/ (bos/eos-normalized, transferred 2026-08-25 from this host to local H20 cluster, md5-verified); protocol=SENT_SIZE=300, batch=60, steps=744180 over 44,650,800 records, seed=6198; log=artifacts/evaluation/docppl_structural_20260825/runs/tree-500M_docppl_seed6198/logs/launch.out (local H20 cluster, log not on this host); completed=2026-08-27| `SG job=3437; checkpoint=saved_models/Tree_500M/step49440-unsharded; evaluator=word_sync beam search; dataset=full SG suite; protocol=beam=300,nc=max(term_len,5),pc=3,max_len=6×term_len,non-flex,2 GPU; log=analysis-output/sg_500m_nonflex_rtx3090_20260822/logs/sg_500m_tree_beam300_len6_nonflex_3437.out; completed=2026-08-22. Flex reference: A6000 job=38152, 62.89%` |
 | TGTree-500M | 21.96 | 70.86 | 66.50 | 77.63 | 3.40 | — | — | 65.95 | 3.279 | — Doc-PPL: evaluator=tg_approx_doc; dataset=dataset/bbc-news/testppl_tg/ (bos/eos-normalized, transferred 2026-08-25 from this host to local H20 cluster, md5-verified); protocol=SENT_SIZE=300, batch=60, steps=744180 over 44,650,800 records, seed=6198; log=artifacts/evaluation/docppl_structural_20260825/runs/tgtree-500M_docppl_seed6198/logs/launch.out (local H20 cluster, log not on this host); completed=2026-08-28| `SG job=3438; checkpoint=saved_models/TGTree_500M/step55853-unsharded; evaluator=word_sync beam search; dataset=full SG suite; protocol=beam=300,nc=max(term_len,5),pc=3,max_len=6×term_len,non-flex,2 GPU; log=analysis-output/sg_500m_nonflex_rtx3090_20260822/logs/sg_500m_tgtree_beam300_len6_nonflex_3438.out; completed=2026-08-22. Flex reference: A6000 job=38153, 65.59%` |
@@ -267,6 +277,58 @@ pushdown_attachment_weight=1, pushdown_attachment_layer=-1`。这些设定分别
 | TreeReg-layer9（补充；legacy FT 无辅助 loss） | — | — | — | — | — | 17.59 ± 0.10 | 63.54 ± 0.56 | 67.65 | 66.68 | 12.37 | `XSum/BoolQ five-seed mean ± sample-SD: training=3493_[0-4] / 3518_[5-9]; eval=3495_[0-4] / 3519_[5-9]; checkpoint=saved_models/treereg_layer9/step34354-unsharded; protocol=scaleup_nonfineweb_multiseed_20260815 settings, fp32 DDP 4 GPU, global batch=40, XSum 3ep LR=6e-5, BoolQ 5ep LR=3e-4; BoolQ initial microbatch=10 jobs 3493_[5-9] OOM, then completed with microbatch=1 while preserving global batch; evidence=artifacts/experiment/treereg_layer9_multiseed_20260824/runs/; completed=2026-08-25. Although config declared treereg_alpha=1, downstream batches had no tree_spans / word boundaries / sentence ids, so train.py did not execute the auxiliary branch; it also retained TG-token input rather than parse-aligned terminal input. SG job=3464; BLiMP job=3453; evaluator=terminal teacher-forced, no test-time tree input; dataset=full SG suite / full BLiMP (67×1000 pairs); logs=analysis-output/logs/eval_treereg_layer9_{SG,BLiMP}_{3464,3453}.out; completed=2026-08-23. Fresh terminal_doc confirmation: job=3561, evaluator completed all 148836 records and emitted PPL=12.37; job exit=1 only because the post-run grep used the wrong metric key, corrected in artifact script; log=artifacts/evaluation/treereg_layer9_terminal_docppl_20260825/run.log; protocol=K1,BOS-context,EOS-scored` |
 | TreeReg-layer9（parse-aligned + auxiliary loss） | — | — | — | — | — | 20.88 ± 0.03 | 65.87 ± 0.31 | — | — | — | `Five-seed parse-aligned fine-tune: train=3528_[0-9], eval=3531_[0-9], all exit=0; checkpoint=saved_models/treereg_layer9/step34354-unsharded; XSum=3ep LR=6e-5, BoolQ=5ep LR=3e-4, fp32 DDP 4 GPU, device microbatch=1, global batch=40. Loader converts local NT-token trees with right binarization + unary collapse and supplies spans, word boundaries, sentence ids; TreeReg layer=9, heads=3, alpha=1, every 10 global optimizer batches. Evidence=artifacts/experiment/treereg_layer9_auxloss_multiseed_20260825/runs/. No post-finetune SG/BLiMP/Doc-PPL run.` |
 | Pushdown-100M（gold unary spans） | — | — | — | — | — | 15.87 ± 0.17 | 65.49 ± 0.55 | — | — | — | `Five-seed Pushdown fine-tune: train=3541_[0-9]; valid eval=3576_[1-9] + 3582_0; checkpoint=saved_models/pushdown_terminalonly/step34354-unsharded; XSum=3ep LR=6e-5, BoolQ=5ep LR=3e-4, global batch=40, amp_bf16 DDP. Training converts parsed trees to terminal streams with right binarization + unary collapse and supervises both LM tokens and attachment targets from gold spans. XSum evaluation loads each source prompt's gold parse spans directly; beam search is restricted to the generated summary suffix and jointly searches completion tokens and attachment choices (beam=6,max_reduce=4). BoolQ uses terminal-format candidate scoring with gold unary spans (beam=20). Evidence=artifacts/experiment/pushdown_finetune_5seeds_20260825/runs/; completed=2026-08-28. Original eval task 3576_0 failed before evaluation because of a TCP port collision and is superseded by successful task 3582_0.` |
+
+### Pause：复制式历史对照与论文式 dedicated-SEP 重训（2026-08-29）
+
+本文从本次更新起固定使用以下命名：`pretrain_pause{1,2}_100M` 是
+`pause_token_id=null` 的**复制式 Pause**，pause slot 复制前一个真实 token；
+`pretrain_pause{1,2}_100M_SEP50261_steplaw` 是 `pause_token_id=50261` 的
+**论文式 dedicated-SEP Pause**。论文 Table 4 的 Pause-1 数值只放在后者所在行。
+复制式 checkpoint 仅作为历史 compute-control，不再冒充论文方法。
+
+论文式模型的基础评测均来自预训练 checkpoint 本身；SG 是完整 32-task suite，
+BLiMP 是完整 67×1,000 pairs，Doc-PPL 是 148,836 句、4,966 文档、
+3,284,061 个计分 terminal/EOS token 的 `terminal_doc_ppl`。XSum v2 从同一预训练
+checkpoint 重新微调，修复了 context/pause-id 传递、pause 展开后的 summary label mask
+以及 phase-constrained generation；旧 XSum finetune checkpoint 和 v1 数值全部作废。
+
+| 论文式模型 | SG | BLiMP | Doc-PPL | XSum R1 | XSum R2 | XSum RL | XSum R-AVG | BoolQ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Pause-1 SEP50261 | 75.11 | 70.85 | 9.771 | 31.276 ± 0.066 | 10.968 ± 0.022 | 24.892 ± 0.049 | **22.378 ± 0.046** | **62.036 ± 0.194** |
+| Pause-2 SEP50261 | 76.97 | 72.59 | 10.32 | 31.124 ± 0.053 | 10.856 ± 0.065 | 24.768 ± 0.072 | **22.250 ± 0.061** | **65.700 ± 3.453** |
+
+XSum 与 BoolQ 的 `±` 均为五个共享 fine-tuning seed 的样本标准差；单 seed 如下。
+Pause-2 dedicated-SEP BoolQ 的旧 SIST 尝试 989023 只完成了 seed 6198/13171 的
+训练，没有正式 validation；completion array `989304_[5-9]` 随后复用这两个完整
+step-1175 checkpoint，并完成其 validation 以及其余三个 seed 的训练和 validation。
+五个任务均为 `COMPLETED/0:0`，且有 5/5 `TRAIN_DONE/EVAL_DONE`。高低 seed 的
+config diff 只有 seed、run name 与保存路径，因此保留实际较大的跨 seed 方差，
+不借用复制式 Pause-2 的 68.51 ± 0.48。
+
+| seed | Pause-1 SEP XSum R-AVG | Pause-2 SEP XSum R-AVG | Pause-1 SEP BoolQ | Pause-2 SEP BoolQ |
+|---:|---:|---:|---:|---:|
+| 6198 | 22.30 | 22.30 | 61.80 | 61.71 |
+| 13171 | 22.39 | 22.28 | 62.23 | 62.17 |
+| 31723 | 22.39 | 22.20 | 62.02 | 68.53 |
+| 42 | 22.42 | 22.17 | 61.90 | 67.65 |
+| 2026 | 22.39 | 22.30 | 62.23 | 68.44 |
+| mean ± sample SD | 22.378 ± 0.046 | 22.250 ± 0.061 | 62.036 ± 0.194 | 65.700 ± 3.453 |
+
+XSum job `989161_[0-4]` 五个元素全部 `COMPLETED/0:0`；每个元素在同一 seed 上
+串行运行 Pause-1/Pause-2，完整评测为 `eval_subset_num_batches=-1`、每 rank
+2,834 eval steps。证据分别位于 SIST
+`artifacts/experiment/pause{1,2}_sep50261_xsum_v2_sist_20260829/runs/`。
+Pause-1 BoolQ 五个 `TRAIN_DONE/EVAL_DONE` 位于
+`artifacts/experiment/pause1_sep50261_full_eval_20260829/runs/`。
+Pause-2 BoolQ completion job `989304_[5-9]` 的五个完整 validation 日志与标记位于
+SIST `artifacts/experiment/pause2_sep50261_full_eval_sist_20260829/runs/`；日志未检出
+Traceback、OOM、NaN 或 fatal error。
+
+复制式历史对照的有效非 XSum 结果为：Pause-1 SG/BLiMP/Doc-PPL/BoolQ =
+76.29/72.52/9.83125/67.85 ± 0.38；Pause-2 =
+75.85/73.15/9.92898/68.51 ± 0.48。其旧 XSum v1 结果
+18.73 ± 0.09 / 10.92 ± 0.57 受已确认的实现缺陷影响，仅保留为失败审计信息，
+不进入主比较或论文复现结论。
 
 ### TreeReg-layer9 五 seed XSum / BoolQ（2026-08-25）
 
@@ -376,8 +438,10 @@ OOM、NaN 或 fatal error。有效评测任务为 `3576_[1-9]` 与 `3582_0`；�
 | 模型 | 最终状态 | 本次 Doc-PPL | job / 日志 |
 |---|---|---:|---|
 | Terminal-100M | COMPLETE | 9.88981 | `3444`; `artifacts/evaluation/terminal_doc_ppl_20260823/terminal/logs/slurm-terminal_terminal_doc_ppl_full_20260823-3444.out` |
-| Pause-1-100M | COMPLETE | 9.83125 | `3445`; `artifacts/evaluation/terminal_doc_ppl_20260823/pause1/logs/slurm-pause1_terminal_doc_ppl_full_20260823-3445.out` |
-| Pause-2-100M | COMPLETE | 9.92898 | `3446`; `artifacts/evaluation/terminal_doc_ppl_20260823/pause2/logs/slurm-pause2_terminal_doc_ppl_full_20260823-3446.out` |
+| Pause-1-100M（复制式） | COMPLETE | 9.83125 | `3445`; `artifacts/evaluation/terminal_doc_ppl_20260823/pause1/logs/slurm-pause1_terminal_doc_ppl_full_20260823-3445.out` |
+| Pause-2-100M（复制式） | COMPLETE | 9.92898 | `3446`; `artifacts/evaluation/terminal_doc_ppl_20260823/pause2/logs/slurm-pause2_terminal_doc_ppl_full_20260823-3446.out` |
+| Pause-1-100M（论文式 SEP50261） | COMPLETE | 9.771 | `3612`; `artifacts/experiment/pause1_sep50261_full_eval_20260829/base/pause1_sep50261_docppl/eval.log` |
+| Pause-2-100M（论文式 SEP50261） | COMPLETE | 10.32 | `989012`; SIST `artifacts/experiment/pause2_sep50261_full_eval_sist_20260829/base/pause2_sep50261_sist_docppl/eval.log` |
 | Terminal-500M | COMPLETE | 2.82518 | `3447`; `artifacts/evaluation/terminal_doc_ppl_20260823/terminal_500m/logs/slurm-terminal_500m_terminal_doc_ppl_full_20260823-3447.out` |
 | TreeReg-layer9 | COMPLETE | 12.36841 | `3451`; `artifacts/evaluation/terminal_doc_ppl_20260823/treereg_layer9/logs/slurm-treereg_layer9_terminal_doc_ppl_full_20260823-3451.out` |
 | Terminal-1B | FAILED（未进入 eval） | — | `3448`; 配置继承了缺失的 FineWeb-Edu Arrow shards：`artifacts/evaluation/terminal_doc_ppl_20260823/terminal_1b/logs/slurm-terminal_1b_terminal_doc_ppl_full_20260823-3448.out` |
@@ -431,8 +495,8 @@ Terminal-1B Doc-PPL 日志达到 `eval_step=148836`；SG/BLiMP 分别记录
 | run id | 模型 | 任务 | 状态 | 证据路径 | 结果填写位置 |
 |---|---|---|---|---|---|
 | `terminal_terminal_doc_ppl_full_20260823` | Terminal-100M | Doc-PPL | COMPLETE, PPL=9.88981 | `artifacts/evaluation/terminal_doc_ppl_20260823/terminal/logs/slurm-terminal_terminal_doc_ppl_full_20260823-3444.out` | §3 Terminal-100M |
-| `pause1_terminal_doc_ppl_full_20260823` | Pause-1-100M | Doc-PPL | COMPLETE, PPL=9.83125 | `artifacts/evaluation/terminal_doc_ppl_20260823/pause1/logs/slurm-pause1_terminal_doc_ppl_full_20260823-3445.out` | §3 Pause-1-100M |
-| `pause2_terminal_doc_ppl_full_20260823` | Pause-2-100M | Doc-PPL | COMPLETE, PPL=9.92898（Slurm 3446） | `artifacts/evaluation/terminal_doc_ppl_20260823/pause2/logs/slurm-pause2_terminal_doc_ppl_full_20260823-3446.out` | §3 本轮 Doc-PPL 结果补充 |
+| `pause1_terminal_doc_ppl_full_20260823` | Pause-1-100M（复制式） | Doc-PPL | COMPLETE, PPL=9.83125 | `artifacts/evaluation/terminal_doc_ppl_20260823/pause1/logs/slurm-pause1_terminal_doc_ppl_full_20260823-3445.out` | §3 复制式历史对照 |
+| `pause2_terminal_doc_ppl_full_20260823` | Pause-2-100M（复制式） | Doc-PPL | COMPLETE, PPL=9.92898（Slurm 3446） | `artifacts/evaluation/terminal_doc_ppl_20260823/pause2/logs/slurm-pause2_terminal_doc_ppl_full_20260823-3446.out` | §3 复制式历史对照 |
 | `terminal_500m_terminal_doc_ppl_full_20260823` | Terminal-500M | Doc-PPL | COMPLETE, PPL=2.82518（Slurm 3447） | `artifacts/evaluation/terminal_doc_ppl_20260823/terminal_500m/logs/slurm-terminal_500m_terminal_doc_ppl_full_20260823-3447.out` | §3 本轮 Doc-PPL 结果补充 |
 | `terminal_1b_terminal_doc_ppl_full_20260823` | Terminal-1B | Doc-PPL | FAILED：未开始 eval；缺失 FineWeb-Edu Arrow shards（Slurm 3448） | `artifacts/evaluation/terminal_doc_ppl_20260823/terminal_1b/logs/slurm-terminal_1b_terminal_doc_ppl_full_20260823-3448.out` | §4 Terminal；不记录数值 |
 | `treereg_terminal_doc_ppl_full_20260823` | TreeReg-layer6（作废） | Doc-PPL | FAILED：未开始 eval；训练 dataloader 错指 `terminal/train.npy` | `artifacts/evaluation/terminal_doc_ppl_20260823/treereg/logs/slurm-treereg_terminal_doc_ppl_full_20260823-3449.out` | 不记录数值 |
@@ -441,8 +505,8 @@ Terminal-1B Doc-PPL 日志达到 `eval_step=148836`；SG/BLiMP 分别记录
 | `terminal_SG_seed6198` / `terminal_blimp_seed6198` | Terminal-100M | SG / BLiMP | COMPLETE, 69.80% / 70.77%（Slurm 3454 / 3455） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/terminal_{SG,blimp}_seed6198/logs/` | §3 Terminal-100M |
 | `terminal-500M_SG_seed6198` / `terminal-500M_blimp_seed6198` | Terminal-500M | SG / BLiMP | COMPLETE, 71.11% / 64.74%（Slurm 3456 / 3457） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/terminal-500M_{SG,blimp}_seed6198/logs/` | §3 Terminal-500M |
 | `terminal-1B_SG_seed6198` / `terminal-1B_blimp_seed6198` | Terminal-1B | SG / BLiMP | FAILED：缺失 FineWeb-Edu Arrow shards（Slurm 3458 / 3459） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/terminal-1B_{SG,blimp}_seed6198/logs/` | §4 Terminal；不记录数值 |
-| `pause1_SG_seed6198` / `pause1_blimp_seed6198` | Pause-1-100M | SG / BLiMP | COMPLETE, 76.29% / 72.52%（Slurm 3460 / 3461） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause1_{SG,blimp}_seed6198/logs/` | §3 Pause-1-100M |
-| `pause2_SG_seed6198` / `pause2_blimp_seed6198` | Pause-2-100M | SG / BLiMP | COMPLETE, 75.85% / 73.15%（Slurm 3462 / 3463） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause2_{SG,blimp}_seed6198/logs/` | §3 Pause-2-100M |
+| `pause1_SG_seed6198` / `pause1_blimp_seed6198` | Pause-1-100M（复制式） | SG / BLiMP | COMPLETE, 76.29% / 72.52%（Slurm 3460 / 3461） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause1_{SG,blimp}_seed6198/logs/` | §3 复制式历史对照 |
+| `pause2_SG_seed6198` / `pause2_blimp_seed6198` | Pause-2-100M（复制式） | SG / BLiMP | COMPLETE, 75.85% / 73.15%（Slurm 3462 / 3463） | `artifacts/evaluation/terminal_pause_syntax_20260823/runs/pause2_{SG,blimp}_seed6198/logs/` | §3 复制式历史对照 |
 | `eval_treereg_layer9_SG` | TreeReg-layer9（补充） | SG | COMPLETE, accuracy=67.65%（Slurm 3464） | `analysis-output/logs/eval_treereg_layer9_SG_3464.out` | §3 TreeReg-layer9（补充） |
 | `treereg_layer9_xsum_finetune_seed6198` | TreeReg-layer9（补充） | XSum 微调 + test | CANCELLED（Slurm 3465，用户取消）；该单 seed 结果不记录，已由五 seed campaign 替代 | `artifacts/evaluation/treereg_layer9_xsum_boolq_20260823/runs/treereg_layer9_xsum_finetune_seed6198/{config.yaml,logs/}` | §3 TreeReg-layer9 五 seed XSum / BoolQ |
 | `treereg_layer9_boolq_seed6198` | TreeReg-layer9（补充） | BoolQ 微调 + eval | CANCELLED（Slurm 3466，用户取消）；该单 seed 结果不记录，已由五 seed campaign 替代 | `artifacts/evaluation/treereg_layer9_xsum_boolq_20260823/runs/treereg_layer9_boolq_seed6198/{config.yaml,logs/}` | §3 TreeReg-layer9 五 seed XSum / BoolQ |
@@ -455,7 +519,10 @@ Terminal-1B Doc-PPL 日志达到 `eval_step=148836`；SG/BLiMP 分别记录
 | `tree_shuffle_terminal_syntax_SG_seed6198` | Tree-Shuffle-100M | SG | COMPLETE，accuracy=61.59%（Slurm 3473）；terminal-only teacher-forced，替代 legacy 3468 | `artifacts/evaluation/tree_shuffle_terminal_syntax_20260823/runs/tree_shuffle_SG_seed6198/logs/slurm-tree_shuffle_SG_seed6198-3473.out` | §3 新版 model-only 结果 |
 | `tree_shuffle_terminal_syntax_blimp_seed6198` | Tree-Shuffle-100M | BLiMP | COMPLETE，accuracy=71.68%（Slurm 3474）；terminal-only teacher-forced，替代 legacy 3469 | `artifacts/evaluation/tree_shuffle_terminal_syntax_20260823/runs/tree_shuffle_blimp_seed6198/logs/slurm-tree_shuffle_blimp_seed6198-3474.out` | §3 新版 model-only 结果 |
 | `terminal-1B_{docppl,SG,blimp}_seed6198` | Terminal-1B（BBC checkpoint） | Doc-PPL / SG / BLiMP | COMPLETE：PPL=1.705、SG=67.41%、BLiMP=63.31%（3470/3471/3472）；model-only restore，已移除继承 FineWeb shards | `artifacts/evaluation/tree_shuffle_terminal1b_eval_20260823/runs/terminal-1B_{docppl,SG,blimp}_seed6198/` | §3 新版 model-only 结果 |
-| `pause_sep_100m_sist_20260828` | Pause-1/2-100M dedicated SEP | 从头预训练；terminal + SEP 50261；8 GPU | ACTIVE：Pause-1 job 988670 RUNNING；Pause-2 job 988671 PENDING (`afterok:988670`)；计算节点已通过 `FLASH_ATTN_OK 2.8.4` 与 `CONFIG_OK` | `artifacts/experiment/pause_sep_100m_sist_20260828/` | §2A checkpoint 级复核后的补充重训；完成前不填结果 |
+| `pause_sep_100m_sist_20260828` | Pause-1/2-100M（论文式 dedicated SEP） | 从头预训练；terminal + SEP 50261；8 GPU | COMPLETE：Pause-1 job 988670、Pause-2 job 988671 均 `COMPLETED/0:0`；final step=45487/54156，checkpoint 和哈希已校验 | `artifacts/experiment/pause_sep_100m_sist_20260828/` | §2A 论文式 dedicated-SEP checkpoint 身份 |
+| `pause1_sep50261_full_eval_20260829` | Pause-1-100M（论文式 dedicated SEP） | SG / BLiMP / Doc-PPL / BoolQ 五 seed | COMPLETE：SG=75.11%，BLiMP=70.85%，Doc-PPL=9.771，BoolQ=62.036 ± 0.194；base jobs=3610/3611/3612，BoolQ train/eval=3642_[5-9]/3614_[5-9] | `artifacts/experiment/pause1_sep50261_full_eval_20260829/` | §3 Pause dedicated-SEP 总表与明细 |
+| `pause2_sep50261_full_eval_sist_20260829` | Pause-2-100M（论文式 dedicated SEP） | SG / BLiMP / Doc-PPL / BoolQ | COMPLETE：SG=76.97%、BLiMP=72.59%、Doc-PPL=10.32（jobs 989010/989011/989012）；BoolQ=65.700 ± 3.453，completion array `989304_[5-9]` 全部 `COMPLETED/0:0` 且 5/5 TRAIN_DONE/EVAL_DONE；989023 已被替代 | SIST `artifacts/experiment/pause2_sep50261_full_eval_sist_20260829/` | §3 Pause dedicated-SEP 总表与明细 |
+| `pause_xsum_v2_sist_20260829` | Pause-1/2-100M（论文式 dedicated SEP） | XSum v2 五 seed重微调 + 完整 test | COMPLETE：job `989161_[0-4]` 全部 `COMPLETED/0:0`；Pause-1 R-AVG=22.378 ± 0.046，Pause-2=22.250 ± 0.061；10/10 TRAIN_DONE/EVAL_DONE/v2 contracts | SIST `artifacts/experiment/pause{1,2}_sep50261_xsum_v2_sist_20260829/` | §3 Pause dedicated-SEP 总表与明细；替代所有旧 XSum v1 结果 |
 
 每次完成后，在对应单元格填写数值，并在“重跑来源 / protocol”写成：
 

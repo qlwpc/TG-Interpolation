@@ -2325,6 +2325,198 @@ class OLMo(nn.Module):
         self.__num_bck_flops = params_flops_per_token + attn_flops_per_token
         return self.__num_bck_flops
 
+    def pause_generate(
+        self,
+        input_ids: torch.LongTensor,
+        pause_spec: "tuple[int, int]",
+        max_real_tokens: int,
+        pause_token_id: Optional[int] = None,
+        vocab: Optional[SentencepieceVocab] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        eos_token_id: Optional[int] = None,
+        beam_size: int = 6,
+        score_pause_tokens: bool = True,
+    ) -> "OLMoGenerateOutput":
+        """Constrained beam generation for pause-expanded causal LMs.
+
+        The XSum prompt is already expanded by ``pause_input_ids``.  Generation
+        must continue that *absolute* ``q real + p pause`` phase.  At a real
+        position this method searches terminal tokens; at a pause position it
+        forces either the checkpoint's dedicated pause token or, for legacy
+        repeat-mode checkpoints, the most recent real token.  The returned token
+        stream contains real positions only, so callers never have to guess the
+        phase of a generated suffix with ``extract_real_tokens``.
+
+        ``score_pause_tokens`` should be true for ordinary pause models, which
+        learned the pause targets, and false for ``*_label`` models, whose pause
+        targets were masked during training.
+
+        XSum currently evaluates pause models with device batch size one.  Keep
+        that contract explicit: variable-length left-padded prompts can have
+        different pause phases and need a grouped decoder rather than silently
+        sharing one global beam-search timestep.
+        """
+        p, q = pause_spec
+        if p < 0:
+            raise ValueError(f"pause numerator must be >= 0, got {p}")
+        if q < 1:
+            raise ValueError(f"pause denominator must be >= 1, got {q}")
+        if max_real_tokens < 1:
+            raise ValueError("max_real_tokens must be positive")
+        if input_ids.dim() != 2 or input_ids.shape[0] != 1:
+            raise ValueError(
+                "pause_generate currently requires input_ids shape (1, L); "
+                "set device_eval_batch_size=1 for pause XSum"
+            )
+        if attention_mask is not None and attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must have the same shape as input_ids")
+
+        eos = eos_token_id if eos_token_id is not None else self.config.eos_token_id
+        prompt_len = (
+            int(attention_mask[0].sum().item())
+            if attention_mask is not None
+            else int(input_ids.shape[1])
+        )
+        period = q + p
+
+        # Invert n + floor(n/q)*p.  Valid pause_input_ids outputs have exactly
+        # one solution because the expansion length is strictly increasing.
+        low, high = 0, prompt_len
+        while low <= high:
+            mid = (low + high) // 2
+            expanded = mid + (mid // q) * p
+            if expanded < prompt_len:
+                low = mid + 1
+            elif expanded > prompt_len:
+                high = mid - 1
+            else:
+                prompt_real_tokens = mid
+                break
+        else:
+            raise ValueError(
+                f"prompt length {prompt_len} is not a valid expansion for pause{p}/{q}"
+            )
+
+        final_real_tokens = prompt_real_tokens + max_real_tokens
+        final_expanded_len = final_real_tokens + (final_real_tokens // q) * p
+        expanded_steps = final_expanded_len - prompt_len
+        if input_ids.shape[1] + expanded_steps > self.config.max_sequence_length:
+            raise ValueError(
+                "pause generation exceeds model context: "
+                f"prompt={input_ids.shape[1]} expanded_steps={expanded_steps} "
+                f"max={self.config.max_sequence_length}"
+            )
+
+        beam_search = BeamSearch(
+            eos,
+            max_steps=expanded_steps,
+            beam_size=beam_size,
+        )
+        tokens_generated = 0
+
+        def flatten_past_key_values(
+            values: List[Tuple[torch.Tensor, torch.Tensor]],
+        ) -> Dict[str, torch.Tensor]:
+            state = {}
+            for layer, (key, value) in enumerate(values):
+                state[f"past_key_{layer}"] = key
+                state[f"past_value_{layer}"] = value
+            return state
+
+        def unflatten_past_key_values(
+            state: Dict[str, torch.Tensor],
+        ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+            return [
+                (state[f"past_key_{layer}"], state[f"past_value_{layer}"])
+                for layer in range(self.config.n_layers)
+            ]
+
+        def step(
+            last_predictions: torch.Tensor,
+            state: Dict[str, torch.Tensor],
+            time_step: int,
+        ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            nonlocal tokens_generated
+            current_attention_mask = state.get("attention_mask")
+            if tokens_generated == 0:
+                step_input_ids = state["input_ids"]
+                past_key_values = None
+            else:
+                step_input_ids = last_predictions.unsqueeze(1)
+                past_key_values = unflatten_past_key_values(state)
+                if current_attention_mask is not None:
+                    current_attention_mask = torch.cat(
+                        (
+                            current_attention_mask,
+                            current_attention_mask.new_ones(
+                                (step_input_ids.shape[0], 1)
+                            ),
+                        ),
+                        dim=-1,
+                    )
+
+            output = self(
+                step_input_ids,
+                attention_mask=current_attention_mask,
+                past_key_values=past_key_values,
+                use_cache=True,
+                last_logits_only=True,
+            )
+            log_probs = F.log_softmax(output.logits[:, -1, :], dim=-1)
+            tokens_generated += 1
+
+            absolute_position = prompt_len + time_step
+            is_pause_position = absolute_position % period >= q
+            if is_pause_position:
+                forced = (
+                    torch.full_like(last_predictions, int(pause_token_id))
+                    if pause_token_id is not None
+                    else last_predictions
+                )
+                forced_scores = log_probs.gather(1, forced.unsqueeze(1)).squeeze(1)
+                if not score_pause_tokens:
+                    forced_scores = torch.zeros_like(forced_scores)
+                constrained = torch.full_like(
+                    log_probs, torch.finfo(log_probs.dtype).min
+                )
+                constrained.scatter_(1, forced.unsqueeze(1), forced_scores.unsqueeze(1))
+                log_probs = constrained
+            else:
+                # Dedicated pause symbols and grammar non-terminals are format
+                # tokens, not summary words.  They are only legal when forced at
+                # a pause position.
+                if pause_token_id is not None:
+                    log_probs[:, int(pause_token_id)] = torch.finfo(log_probs.dtype).min
+                if vocab is not None:
+                    nt_start = int(vocab.opening_non_terminals[0])
+                    nt_end = int(vocab.closing_non_terminals[1])
+                    log_probs[:, nt_start:nt_end] = torch.finfo(log_probs.dtype).min
+
+            new_state = flatten_past_key_values(output.attn_key_values)
+            if current_attention_mask is not None:
+                new_state["attention_mask"] = current_attention_mask
+            return log_probs, new_state
+
+        initial_predictions = input_ids.new_zeros((1,))
+        initial_state: Dict[str, torch.Tensor] = {"input_ids": input_ids}
+        if attention_mask is not None:
+            initial_state["attention_mask"] = attention_mask
+        with torch.no_grad():
+            expanded_ids, scores = beam_search.search(
+                initial_predictions, initial_state, step
+            )
+
+        real_positions = torch.tensor(
+            [
+                (prompt_len + offset) % period < q
+                for offset in range(expanded_ids.shape[-1])
+            ],
+            dtype=torch.bool,
+            device=expanded_ids.device,
+        )
+        real_ids = expanded_ids[..., real_positions]
+        return OLMoGenerateOutput(token_ids=real_ids, scores=scores)
+
     def pause_label_generate(
         self,
         input_ids: torch.LongTensor,
@@ -2333,133 +2525,17 @@ class OLMo(nn.Module):
         eos_token_id: Optional[int] = None,
         beam_size: int = 1,
     ) -> torch.Tensor:
-        """Greedy generation for ``pause_label`` models with deterministic pauses.
-
-        ``pause_label`` models train with a label mask that zeroes the loss at
-        every position whose *next* token is a pause (``pause_label_mask``), so
-        the model never learns to emit pause tokens. Free generation therefore
-        skips pauses, which misaligns the ``(p, q)`` grid that
-        :func:`extract_real_tokens` assumes. This generator restores the training
-        input layout by deterministically inserting pauses itself.
-
-        Pause slots use the training convention ``pause_token_id=None``
-        (repeat-mode): each pause slot repeats the block's last real token. This
-        matches ``pause_input_ids(..., pause_token_id=None, ...)`` exactly, so
-        the model sees the same paused layout at inference as at training.
-
-        Generation loop (greedy, batch=1, KV-cache-backed):
-          1. Prefill the paused prompt ``input_ids`` (already pause-expanded by
-             ``XsumDataset``) → KV cache + next-token logits.
-          2. At each step, if a pause is owed at the current block boundary
-             (``real_count % q == 0`` and pauses still owed), feed ``p`` repeats of
-             the last real token WITHOUT sampling (deterministic append + KV
-             advance). Otherwise sample the next real token via argmax, append,
-             ``real_count += 1``.
-          3. Stop on EOS or when ``real_count == max_real_tokens``.
-
-        Args:
-            input_ids: paused prompt of shape ``(1, L)`` (already expanded).
-            pause_spec: ``(p, q)`` — ``p`` pauses after every ``q`` real tokens.
-            max_real_tokens: cap on the number of REAL tokens to generate.
-            eos_token_id: stop token id (falls back to ``config.eos_token_id``).
-            beam_size: reserved for future beam search; currently greedy (=1).
-
-        Returns:
-            Tensor of shape ``(1, T)`` of REAL token ids (pauses stripped, the
-            leading BOS stripped to match ``skip_first=True``). ``T <=
-            max_real_tokens``.
-        """
-        if beam_size != 1:
-            # Beam search for pauselabel is future work; greedy is correct.
-            pass
-        p, q = pause_spec
-        if q < 1:
-            raise ValueError(f"pause denominator must be >= 1, got {q}")
-        eos = eos_token_id if eos_token_id is not None else self.config.eos_token_id
-        device = input_ids.device
-
-        # Count the prompt's real tokens by walking the (p, q) grid: real token j
-        # sits at expanded position j + (j//q)*p. ``input_ids`` (1, L) is the
-        # training-layout paused prompt, so its real-token positions line up with
-        # ``pause_input_ids(..., pause_token_id=None)``.
-        prompt_len = input_ids.shape[1]
-        real_in_prompt = 0
-        j = 0
-        while True:
-            pos = j + (j // q) * p
-            if pos >= prompt_len:
-                break
-            real_in_prompt = j + 1
-            j += 1
-        # Last real token id (needed for repeat-mode pause insertion). j now points
-        # one past the last real token's grid position; the last real token is j-1.
-        last_real_pos = (real_in_prompt - 1) + ((real_in_prompt - 1) // q) * p \
-            if real_in_prompt > 0 else None
-        last_real = int(input_ids[0, last_real_pos].item()) if last_real_pos is not None else None
-
-        # Prefill the FULL paused prompt so the KV cache reflects the training
-        # input layout (pauses included). ``logits`` predicts the token at the
-        # expanded position immediately after the prompt.
-        with torch.no_grad():
-            out = self(
-                input_ids=input_ids,
-                past_key_values=None,
-                use_cache=True,
-                last_logits_only=True,
-            )
-            logits = out.logits[:, -1, :]  # (1, vocab)
-            kv = out.attn_key_values
-
-        # Expanded position of the next token to emit (0-indexed). Token at this
-        # position is either a real token ``real_count`` or a pause (repeat of the
-        # previous real token), per pause_input_ids(pause_token_id=None).
-        exp_pos = prompt_len
-        real_count = real_in_prompt          # real tokens emitted so far
-        out_real: list = []                  # generated real token ids (excl. prompt, excl. BOS)
-        n_generated = 0
-        while n_generated < max_real_tokens:
-            real_tok_pos = real_count + (real_count // q) * p   # expanded pos of real token real_count
-            if exp_pos < real_tok_pos:
-                # The next expanded position is a PAUSE slot: deterministically
-                # repeat the last real token (no sampling) and advance KV cache.
-                # This restores the training input the model was conditioned on.
-                if last_real is None:
-                    break
-                with torch.no_grad():
-                    out = self(
-                        input_ids=torch.tensor([[last_real]], dtype=torch.long, device=device),
-                        past_key_values=kv,
-                        use_cache=True,
-                        last_logits_only=True,
-                    )
-                    logits = out.logits[:, -1, :]
-                    kv = out.attn_key_values
-                exp_pos += 1
-                continue
-            # else: the next expanded position is the real token ``real_count``;
-            # sample it (greedy argmax).
-            next_tok = int(torch.argmax(logits, dim=-1).item())
-            if next_tok == eos:
-                break
-            out_real.append(next_tok)
-            n_generated += 1
-            real_count += 1
-            last_real = next_tok
-            # Feed this real token to advance the KV cache for the next step.
-            with torch.no_grad():
-                out = self(
-                    input_ids=torch.tensor([[next_tok]], dtype=torch.long, device=device),
-                    past_key_values=kv,
-                    use_cache=True,
-                    last_logits_only=True,
-                )
-                logits = out.logits[:, -1, :]
-                kv = out.attn_key_values
-            exp_pos += 1
-
-        if not out_real:
-            return torch.zeros((1, 0), dtype=torch.long, device=device)
-        return torch.tensor([out_real], dtype=torch.long, device=device)
+        """Compatibility wrapper for legacy repeat-mode ``*_label`` callers."""
+        generated = self.pause_generate(
+            input_ids=input_ids,
+            pause_spec=pause_spec,
+            max_real_tokens=max_real_tokens,
+            pause_token_id=None,
+            eos_token_id=eos_token_id,
+            beam_size=beam_size,
+            score_pause_tokens=False,
+        )
+        return generated.token_ids[:, 0, :]
 
     def generate(
         self,

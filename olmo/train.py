@@ -62,7 +62,7 @@ from .torch_util import (
 )
 from .util import upload
 from olmo.data import get_TG_generate_bias_func
-from olmo.data.util import extract_real_tokens, is_pause_label
+from olmo.data.util import is_pause_label
 
 __all__ = ["SpeedMonitor", "LRMonitor", "Trainer"]
 
@@ -1660,18 +1660,11 @@ class Trainer:
                 with self._summon_params_ctx():
                     # Decoding path selection:
                     # - terminal / pushdown / treereg: plain autoregressive generate().
-                    # - pause1_label: the model's loss was masked to real-token-
-                    #   predicting positions only, so it never learned to emit pause
-                    #   tokens. Free generation skips pauses, misaligning the (p, q)
-                    #   grid. Use pause_label_generate, which deterministically inserts
-                    #   p repeats of the last real token at every q-boundary (matches
-                    #   training's pause_token_id=None repeat-mode) and returns the
-                    #   real-token stream directly.
-                    # - non-label pause (pause1, pause1in2, ...): the model IS trained
-                    #   to emit pause repeats, so beam search works — but the tree-
-                    #   grammar decoder's NT candidates must be masked out (done in
-                    #   word_sync_beam_search via is_pause). Output is then de-paused
-                    #   via extract_real_tokens (on-grid) and terminalized.
+                    # - pause variants: constrained pause_generate continues the
+                    #   prompt's absolute pause phase, forces the checkpoint's SEP
+                    #   token (or the legacy repeated real token), and returns only
+                    #   real summary tokens.  This avoids handing a fixed-format
+                    #   causal LM to the tree-grammar word-sync decoder.
                     # - TG / tgtree: word_sync_beam_search with NT emission (unchanged).
                     gt = self.cfg.model.transformer_grammar_type
                     if gt in ("terminal", "pushdown", "treereg"):
@@ -1704,18 +1697,21 @@ class Trainer:
                                                                            max_steps=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
                                                                            beam_size=6).token_ids
                             predictions = predictions[:, 0, :].to(self.device)
-                    elif gt == "pause1_label":  # TODO: fix this branch and verify the gt circumstance
-                        # Deterministic pause insertion; returns real-token ids (BOS
-                        # stripped). No NT pollution, no extract_real_tokens needed.
+                    elif gt.startswith("pause"):
                         batch = move_to_device(batch, self.device)
                         p, q = self.cfg.model.pause_spec
-                        predictions = self.dist_model.module.pause_label_generate(
+                        generated = self.dist_model.module.pause_generate(
                             input_ids=batch["input_ids"],
                             pause_spec=(p, q),
                             max_real_tokens=evaluator.eval_loader.dataset.MAX_SUMMARY_LENGTH,
+                            pause_token_id=self.cfg.model.pause_token_id,
+                            vocab=evaluator.eval_loader.dataset.vocab,
+                            attention_mask=batch.get("attention_mask"),
                             eos_token_id=self.cfg.model.eos_token_id,
+                            beam_size=6,
+                            score_pause_tokens=not is_pause_label(gt),
                         )
-                        predictions = predictions.to(self.device)
+                        predictions = generated.token_ids[:, 0, :].to(self.device)
                     else:
                         # currently only support eval_batch_size==1
                         predictions = self.dist_model.module.word_sync_beam_search(
@@ -1729,9 +1725,6 @@ class Trainer:
                                 transformer_grammar_type = self.cfg.model.transformer_grammar_type,
                             )
                         predictions = predictions[0]["input_ids"].numpy()
-                        if self.cfg.model.transformer_grammar_type[:5]=="pause":
-                            p, q = self.cfg.model.pause_spec
-                            predictions = extract_real_tokens(predictions, p, q, skip_first=True)
                         predictions = evaluator.eval_loader.dataset.vocab.convert_treenpy_to_terminal(predictions)
                         predictions = torch.tensor(np.expand_dims(predictions, axis=0), device=self.device)
 
