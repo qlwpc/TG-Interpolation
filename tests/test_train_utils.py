@@ -6,6 +6,7 @@ Covers: get_labels, cross_entropy_loss, Trainer.split_batch,
 """
 
 import math
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -217,6 +218,35 @@ class TestSplitBatch:
         assert len(result) == 2
         assert len(result[0]["gold_summary"]) == 2
         assert len(result[1]["gold_summary"]) == 2
+
+
+def test_pushdown_attachment_loss_uses_independent_query_denominator():
+    trainer = object.__new__(Trainer)
+    trainer.cfg = SimpleNamespace(
+        softmax_auxiliary_loss=False,
+        model=SimpleNamespace(pushdown_attachment_weight=2.0),
+    )
+    trainer.model_forward = MagicMock(
+        return_value=(
+            torch.tensor(12.0),
+            None,
+            torch.empty(0),
+            None,
+            torch.tensor(20.0),
+        )
+    )
+
+    loss, ce_loss, z_loss = trainer.train_micro_batch(
+        {"input_ids": torch.tensor([[1, 2]])},
+        batch_size_in_loss_tokens=4,
+        attachment_loss_denominator=10,
+        device_loss_weight=3.0,
+    )
+
+    # LM: (12 / 4) * 3 = 9. Attachment: (20 / 10) * weight 2 = 4.
+    assert loss.item() == pytest.approx(13.0)
+    assert ce_loss.item() == pytest.approx(3.0)
+    assert z_loss is None
 
 
 # ---------------------------------------------------------------------------

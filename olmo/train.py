@@ -869,6 +869,7 @@ class Trainer:
         micro_batch: Dict[str, Any],
         batch_size_in_loss_tokens: int,
         treereg_loss_denominator: Optional[float] = None,
+        attachment_loss_denominator: Optional[float] = None,
         device_loss_weight: float = 1.0,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         ce_loss, z_loss, logits, treereg_loss, attachment_loss = self.model_forward(
@@ -893,14 +894,18 @@ class Trainer:
             loss = loss + self.cfg.model.treereg_alpha * tr
 
         # Add Pushdown attachment-head auxiliary loss (already summed over the
-        # micro-batch above).
+        # micro-batch above). Its valid queries are structurally parsed tokens,
+        # which are not the same population as label-masked LM targets in SFT.
+        # Normalize by the global attachment-query count independently; using the
+        # LM denominator makes long XSum sources overweight this term by ~8x.
         if attachment_loss is not None:
-            att = attachment_loss / batch_size_in_loss_tokens
-            loss = loss + (
-                device_loss_weight
-                * self.cfg.model.pushdown_attachment_weight
-                * att
-            )
+            if (
+                attachment_loss_denominator is None
+                or attachment_loss_denominator <= 0
+            ):
+                raise RuntimeError("missing positive Pushdown attachment denominator")
+            att = attachment_loss / attachment_loss_denominator
+            loss = loss + self.cfg.model.pushdown_attachment_weight * att
 
         # In case this helps with memory utilization.
         del micro_batch
@@ -961,6 +966,32 @@ class Trainer:
                     global_sentence_count.item() / get_world_size()
                 )
 
+        # Attachment CE is defined over parsed-token queries, not LM loss tokens.
+        # Compute its own global denominator before splitting the batch. Dividing
+        # each rank's local sum by global_count/world_size makes DDP's averaged
+        # gradient equal the global mean over valid attachment queries.
+        attachment_loss_denominator = None
+        if (
+            self.cfg.model.transformer_grammar_type == "pushdown"
+            and batch.get("tree_spans") is not None
+        ):
+            from olmo.attachment import build_attachment_query_mask
+
+            attachment_query_mask = build_attachment_query_mask(
+                batch["input_ids"],
+                batch.get("attention_mask"),
+                self.cfg.model.bos_token_id,
+                self.cfg.model.eos_token_id,
+                batch.get("pushdown_sentence_ids"),
+            )
+            global_attachment_count = attachment_query_mask.sum()
+            if get_world_size() > 1:
+                dist.all_reduce(global_attachment_count)
+            if int(global_attachment_count.item()) > 0:
+                attachment_loss_denominator = (
+                    global_attachment_count.item() / get_world_size()
+                )
+
         # In case this helps with memory utilization.
         del batch
 
@@ -990,6 +1021,7 @@ class Trainer:
                         micro_batch,
                         batch_size_in_loss_tokens,
                         treereg_loss_denominator=treereg_loss_denominator,
+                        attachment_loss_denominator=attachment_loss_denominator,
                         device_loss_weight=device_loss_weight,
                     )
 

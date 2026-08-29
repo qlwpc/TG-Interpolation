@@ -3674,27 +3674,6 @@ class OLMo(nn.Module):
                 rows.append(valid)
             return torch.tensor(rows, dtype=torch.long, device=device)
 
-        def stack_from_closed(n_tokens: int, closed: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-            maximal: List[Tuple[int, int]] = []
-            unique = sorted(set(closed), key=lambda span: (span[0], -span[1]))
-            for span in unique:
-                if not any(
-                    other != span
-                    and other[0] <= span[0]
-                    and span[1] <= other[1]
-                    for other in unique
-                ):
-                    maximal.append(span)
-            covered = set()
-            for left, right in maximal:
-                covered.update(range(left, right + 1))
-            top_level = maximal + [
-                (position, position)
-                for position in range(n_tokens)
-                if position not in covered
-            ]
-            return sorted(top_level, key=lambda span: span[0])
-
         def apply_action(state: dict, n_reduces: int) -> Tuple[dict, int]:
             stack = list(state["stack"])
             closed = list(state["closed"])
@@ -3770,7 +3749,12 @@ class OLMo(nn.Module):
                 initial = {
                     "input_ids": prompt,
                     "closed": closed,
-                    "stack": stack_from_closed(len(prompt), closed),
+                    # Prompt spans remain available to the depth-biased attention
+                    # path, but they are not legal attachment targets for the new
+                    # summary sentence. XSum training resets the oracle stack at
+                    # every sentence id and does not inject a synthetic ROOT, so
+                    # generation must start with an empty, ROOT-free sentence stack.
+                    "stack": [],
                     "generated": [],
                     "logprob": 0.0,
                     "done": False,
@@ -3799,11 +3783,20 @@ class OLMo(nn.Module):
                         break
                     word_logprobs = torch.log_softmax(beam_logits.float(), dim=-1)
                     top_k = min(beam_size, word_logprobs.shape[-1])
+                    # Select words for every parent in one launch and synchronize
+                    # once. Calling ``topk(...).tolist()`` separately for each
+                    # beam used to serialize the GPU many times per decode step.
+                    top_lps_tensor, top_tokens_tensor = torch.topk(
+                        word_logprobs, top_k, dim=-1
+                    )
+                    top_lps_rows = top_lps_tensor.tolist()
+                    top_token_rows = top_tokens_tensor.tolist()
                     shifted: List[dict] = []
                     choice_counts: List[List[int]] = []
                     for parent_idx, beam in enumerate(beams):
-                        top_lps, top_tokens = torch.topk(word_logprobs[parent_idx], top_k)
-                        for word_lp, token in zip(top_lps.tolist(), top_tokens.tolist()):
+                        for word_lp, token in zip(
+                            top_lps_rows[parent_idx], top_token_rows[parent_idx]
+                        ):
                             token = int(token)
                             if math.isnan(word_lp) or word_lp < -3e37:
                                 continue
@@ -3818,9 +3811,14 @@ class OLMo(nn.Module):
                                 "parent_idx": parent_idx,
                             })
                             if token == eos:
-                                choice_counts.append([len(beam["stack"])])
+                                # EOS has sentence id -1 in the XSum training data
+                                # and therefore no attachment target.
+                                choice_counts.append([0])
                             else:
-                                upper = max(len(beam["stack"]) - 1, 0)
+                                # ROOT-free sentence stack: every existing summary
+                                # constituent is a legal reduce target. Prompt
+                                # constituents never enter this stack.
+                                upper = len(beam["stack"])
                                 if max_reduce is not None:
                                     upper = min(upper, max(max_reduce, 0))
                                 choice_counts.append(list(range(upper + 1)))
@@ -3844,31 +3842,107 @@ class OLMo(nn.Module):
                                 self.transformer.wte.weight,
                             )
 
-                    expanded: List[dict] = []
-                    for shifted_idx, (state, counts) in enumerate(zip(shifted, choice_counts)):
-                        actions = [apply_action(state, count) for count in counts]
-                        if attachment_rows is None:
-                            action_lps = [-math.log(len(actions))] * len(actions)
-                        else:
-                            targets = torch.tensor(
-                                [target for _, target in actions],
-                                dtype=torch.long,
-                                device=device,
+                    # Score all legal attachment actions as a padded batch. The
+                    # prior loop synchronized once per shifted word and eagerly
+                    # copied every Python beam state, even though only the global
+                    # top ``beam_size`` unfinished states can survive.
+                    max_choices = max(
+                        (len(counts) for counts in choice_counts), default=0
+                    )
+                    if max_choices == 0:
+                        beams = []
+                        break
+                    if attachment_rows is None:
+                        action_lps_cpu = torch.full(
+                            (len(shifted), max_choices),
+                            -float("inf"),
+                            dtype=torch.float64,
+                        )
+                        for shifted_idx, counts in enumerate(choice_counts):
+                            action_lps_cpu[shifted_idx, : len(counts)] = -math.log(
+                                len(counts)
                             )
-                            action_lps = torch.log_softmax(
-                                attachment_rows[shifted_idx].index_select(0, targets).float(),
-                                dim=0,
-                            ).tolist()
-                        for (new_state, _), action_lp in zip(actions, action_lps):
-                            new_state["logprob"] += action_lp
-                            expanded.append(new_state)
+                    else:
+                        target_rows: List[List[int]] = []
+                        valid_rows: List[List[bool]] = []
+                        for state, counts in zip(shifted, choice_counts):
+                            targets = [
+                                state["stack"][-(count + 1)][1] for count in counts
+                            ]
+                            target_rows.append(targets + [0] * (max_choices - len(targets)))
+                            valid_rows.append(
+                                [True] * len(targets)
+                                + [False] * (max_choices - len(targets))
+                            )
+                        target_tensor = torch.tensor(
+                            target_rows, dtype=torch.long, device=device
+                        )
+                        valid_tensor = torch.tensor(
+                            valid_rows, dtype=torch.bool, device=device
+                        )
+                        action_logits = attachment_rows.gather(1, target_tensor).float()
+                        action_logits.masked_fill_(~valid_tensor, -float("inf"))
+                        # One device-to-host transfer replaces one transfer per
+                        # candidate word. float64 on the host preserves the old
+                        # Python-float accumulation and stable ranking behavior.
+                        action_lps_cpu = torch.log_softmax(action_logits, dim=1).to(
+                            device="cpu", dtype=torch.float64
+                        )
 
-                    finished.extend(state for state in expanded if state["done"])
-                    unfinished = [state for state in expanded if not state["done"]]
-                    unfinished.sort(key=lambda state: state["logprob"], reverse=True)
-                    beams = unfinished[:beam_size]
+                    base_scores = torch.tensor(
+                        [state["logprob"] for state in shifted], dtype=torch.float64
+                    )
+                    candidate_scores = base_scores[:, None] + action_lps_cpu
+
+                    # EOS admits only action zero. Preserve every completed beam,
+                    # just as the eager expansion did, but materialize it lazily.
+                    for shifted_idx, state in enumerate(shifted):
+                        if state["done"]:
+                            new_state, _ = apply_action(state, 0)
+                            new_state["logprob"] = float(candidate_scores[shifted_idx, 0])
+                            finished.append(new_state)
+
+                    # Padded and completed rows cannot enter the unfinished beam.
+                    unfinished_scores = candidate_scores.clone()
+                    for shifted_idx, (state, counts) in enumerate(
+                        zip(shifted, choice_counts)
+                    ):
+                        if state["done"]:
+                            unfinished_scores[shifted_idx].fill_(-float("inf"))
+                        elif len(counts) < max_choices:
+                            unfinished_scores[shifted_idx, len(counts) :] = -float("inf")
+
+                    # Row-major flattening has the same candidate order as the
+                    # old nested loops. Stable sorting therefore also preserves
+                    # tie behavior while avoiding thousands of Python objects.
+                    flat_scores = unfinished_scores.flatten()
+                    ranked = torch.argsort(flat_scores, descending=True, stable=True)
+                    beams = []
+                    for flat_idx in ranked[:beam_size].tolist():
+                        score = float(flat_scores[flat_idx])
+                        if not math.isfinite(score):
+                            break
+                        shifted_idx, action_idx = divmod(flat_idx, max_choices)
+                        new_state, _ = apply_action(
+                            shifted[shifted_idx], choice_counts[shifted_idx][action_idx]
+                        )
+                        new_state["logprob"] = score
+                        beams.append(new_state)
                     if not beams:
                         break
+
+                    # Every future word and attachment log-probability is <= 0.
+                    # Once the sixth-best completed hypothesis is strictly above
+                    # the best unfinished upper bound, no continuation can alter
+                    # the final top beam and the remaining decode steps are dead
+                    # work. Use a strict comparison to preserve tie ordering.
+                    if len(finished) >= beam_size:
+                        finished_cutoff = sorted(
+                            (state["logprob"] for state in finished), reverse=True
+                        )[beam_size - 1]
+                        if finished_cutoff > beams[0]["logprob"]:
+                            beams = []
+                            break
 
                     parent_indices = torch.tensor(
                         [state["parent_idx"] for state in beams],
@@ -3925,7 +3999,9 @@ class OLMo(nn.Module):
             beams: List[dict] = [{
                 "input_ids": prompt,
                 "closed": closed,
-                "stack": stack_from_closed(len(prompt), closed),
+                # Keep prompt spans only as attention history. Attachments for the
+                # generated sentence begin from an empty, ROOT-free stack.
+                "stack": [],
                 "generated": [],
                 "logprob": 0.0,
                 "done": False,
@@ -3970,9 +4046,9 @@ class OLMo(nn.Module):
                         }
                         shifted.append(state)
                         if token == eos:
-                            choice_counts.append([len(beam["stack"])])
+                            choice_counts.append([0])
                         else:
-                            upper = max(len(beam["stack"]) - 1, 0)
+                            upper = len(beam["stack"])
                             if max_reduce is not None:
                                 upper = min(upper, max(max_reduce, 0))
                             choice_counts.append(list(range(upper + 1)))
