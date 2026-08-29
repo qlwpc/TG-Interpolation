@@ -794,8 +794,8 @@ class OLMoBlock(nn.Module):
         When ``tree_spans`` is None (no parse) the depth bias is zero and the caller
         falls through to the standard attention path.
         """
-        from olmo.pushdown import compute_depth_matrix_gpu, compute_last_depth_row_gpu
-        B, nh, query_len, hs = q.shape
+        from olmo.pushdown import compute_depth_matrix_gpu, compute_last_depth_rows_gpu
+        B, nh, query_length, hs = q.shape
         # Stale depth tape over the (causal) key length. tree_spans: (B, M, 3).
         # S depends ONLY on tree_spans (layer-independent), so memoize it across
         # the 12 blocks within ONE forward pass — otherwise compute_depth_matrix_gpu
@@ -806,22 +806,20 @@ class OLMoBlock(nn.Module):
         # forward-pass entry during the backward recompute is correct.
         cache = self.__cache
         S = cache.get("pushdown_depth_matrix") if cache is not None else None
-        expected_rows = 1 if query_len == 1 and key_len > 1 else key_len
+        expected_rows = query_length if query_length < key_len else key_len
         if (S is None or S.shape != (B, expected_rows, key_len)
                 or S.device != q.device):
             spans = tree_spans.to(q.device)
-            if expected_rows == 1:
-                S = compute_last_depth_row_gpu(spans, key_len)  # (B, 1, k)
+            if query_length < key_len:
+                S = compute_last_depth_rows_gpu(spans, key_len, query_length)
             else:
-                S = compute_depth_matrix_gpu(spans, key_len)  # (B, k, k)
+                S = compute_depth_matrix_gpu(spans, key_len)  # (B, key, key) int8
             if cache is not None:
                 cache["pushdown_depth_matrix"] = S
-        # During cached decoding q contains only the newly appended token(s),
-        # while k/v contain the complete prefix. Select the bottom query rows of
-        # the full stale-depth tape. In training/prefill query_len == key_len and
-        # this is the original square matrix.
-        D = S if expected_rows == 1 else S[:, key_len - query_len : key_len, :key_len]
-        D = D.clamp(max=self.config.pushdown_max_depth).long()  # (B, q, k)
+        # With a KV cache, q contains only the new suffix while k/v contain
+        # candidate-0 prefix plus that suffix.  The depth tape is indexed in
+        # absolute sequence coordinates, so retain its final query rows.
+        D = S.clamp(max=self.config.pushdown_max_depth).long()
         # Per-head depth embedding E_l: (n_heads, max_depth+1, d_head).
         n_kv = k.shape[1]
         kv_dim = n_kv * hs
@@ -884,7 +882,7 @@ class OLMoBlock(nn.Module):
             #     the grad path is fixed (planned: detach P in score_mod + an explicit
             #     aux loss that backprops to depth_emb).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
-            _B, _nh, _n = B, nh, query_len
+            _B, _nh, _n, _key_n = B, nh, query_length, key_len
             # Bias representation. DEFAULT = fix #2 (the production path):
             #   gather-by-depth score_mod with P DETACHED (fast forward — flash-fused,
             #   77MB P, no 2.4GB materialization, no zeros_and_scatter) + a custom
@@ -941,14 +939,14 @@ class OLMoBlock(nn.Module):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
                     q_idx = q_idx.long().clamp(0, _n - 1)
-                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _key_n - 1)
                     return score + _db[b, h, q_idx, kv_idx] * inv_sqrt_hs
             else:  # fix2 (default), detach, or gather
                 def _depth_score_mod(score, b, h, q_idx, kv_idx):
                     b = b.long().clamp(0, _B - 1)
                     h = h.long().clamp(0, _nh - 1)
                     q_idx = q_idx.long().clamp(0, _n - 1)
-                    kv_idx = kv_idx.long().clamp(0, _n - 1)
+                    kv_idx = kv_idx.long().clamp(0, _key_n - 1)
                     # Gather P by the depth tape at (b,q,kv). P is (B,n_h,n,Dmax);
                     # the gather is one indexed load per cell, fused into the flex
                     # kernel. (FIX2/DETACH: P detached -> no backward scatter.
@@ -1016,9 +1014,10 @@ class OLMoBlock(nn.Module):
             # bottom rows of a square causal bias from ``attention``.
             if ab.dim() == 3:
                 ab = ab.unsqueeze(1)
-            ab = ab[..., -query_len:, :key_len]
+            if ab.shape[-2] != query_length:
+                ab = ab[:, :, key_len - query_length:key_len, :key_len]
             if ab.shape[1] == 1:
-                ab = ab.expand(B, nh, query_len, key_len)
+                ab = ab.expand(B, nh, query_length, key_len)
             ab = ab.to(dtype=torch.float32)
             # Replace any -inf (masked) kept as -inf; add depth bias elsewhere.
             mask_neg = ab.isneginf()
@@ -1027,13 +1026,8 @@ class OLMoBlock(nn.Module):
             del ab, mask_neg, depth_bias
         else:
             # No prebuilt bias: build a causal mask + depth bias (fp32).
-            q_positions = torch.arange(
-                key_len - query_len, key_len, device=q.device
-            )[:, None]
-            k_positions = torch.arange(key_len, device=q.device)[None, :]
-            causal = torch.zeros(
-                (query_len, key_len), device=q.device, dtype=torch.float32
-            ).masked_fill(k_positions > q_positions, float("-inf"))
+            causal = torch.full((query_length, key_len), float("-inf"), device=q.device, dtype=torch.float32)
+            causal = torch.triu(causal, diagonal=key_len - query_length + 1)
             attn_mask = depth_bias + causal.unsqueeze(0).unsqueeze(0)
             del depth_bias, causal
 
@@ -1716,6 +1710,9 @@ class OLMo(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         attention_bias: Optional[torch.Tensor] = None,
         past_key_values: Optional[Sequence[Tuple[torch.Tensor, torch.Tensor]]] = None,
+        past_final_hidden: Optional[torch.Tensor] = None,
+        past_input_ids: Optional[torch.Tensor] = None,
+        past_sentence_ids: Optional[torch.Tensor] = None,
         use_cache: bool = False,
         last_logits_only: bool = False,
         output_hidden_states: Optional[bool] = None,
@@ -1771,6 +1768,12 @@ class OLMo(nn.Module):
             past_length = 0
         else:
             past_length = past_key_values[0][0].size(-2)
+        if past_final_hidden is not None and past_final_hidden.shape[1] != past_length:
+            raise ValueError("past_final_hidden length must match past_key_values")
+        if past_input_ids is not None and past_input_ids.shape[1] != past_length:
+            raise ValueError("past_input_ids length must match past_key_values")
+        if past_sentence_ids is not None and past_sentence_ids.shape[1] != past_length:
+            raise ValueError("past_sentence_ids length must match past_key_values")
 
         max_doc_len: Optional[int] = None
         cu_doc_lens: Optional[torch.Tensor] = None
@@ -2078,54 +2081,78 @@ class OLMo(nn.Module):
         # Pushdown attachment head: compute the reduce-target logits from the
         # final-layer residual, captured BEFORE ln_f and BEFORE the last_logits_only
         # slice (the head needs the full (B, n, d) sequence: keys h_j^L over all
-        # prefix tokens, query h̃_k = MLP(emb(x_k), h_{k-1}^L)). Train-only at the
-        # loss site; not computed during KV-cache generation.
+        # prefix tokens, query h̃_k = MLP(emb(x_k), h_{k-1}^L)).  Cached document
+        # PPL supplies the retained candidate-0 prefix residual explicitly.
         attachment_logits = None
         final_hidden = x if return_final_hidden else None
         if (self.config.transformer_grammar_type == "pushdown"
-                and compute_attachment_logits
-                and past_key_values is None):
+                and (compute_attachment_logits or return_final_hidden)):
             _profile_attachment = bool(os.environ.get("OLMO_PUSHDOWN_PHASE_PROFILE"))
             if _profile_attachment:
                 _attachment_start = torch.cuda.Event(enable_timing=True)
                 _attachment_end = torch.cuda.Event(enable_timing=True)
                 _attachment_start.record()
-            final_hidden = x  # full (B, n, d) pre-ln_f residual
-            # Recover the 1-D valid-key bool mask from `attention_mask`. By this
-            # point OLMo.forward's else-branch may have reshaped it to a float
-            # (B,1,1,n) additive bias where 0.0 = valid and finfo.min = padded;
-            # or it may still be the raw bool (B,n) if no branch ran. Normalize.
-            am = attention_mask
-            if am is not None:
-                if am.dtype == torch.bool:
-                    am = am.view(am.shape[0], -1)
-                else:
-                    # float additive bias: valid == 0.0, pad == finfo.min (<0).
-                    am = (am.view(am.shape[0], -1) == 0.0)
-            attachment_logits = self.pushdown_attachment_head(
-                x,
-                input_ids,
-                self.transformer.wte.weight,
-                am,
-                root_token_id=self.config.bos_token_id,
-                eos_token_id=self.config.eos_token_id,
-                sentence_ids=pushdown_sentence_ids,
-                query_range=attachment_query_range,
-            )
-            if _profile_attachment:
-                _attachment_end.record()
-                torch.cuda.synchronize()
-                _profile_rank = (
-                    torch.distributed.get_rank()
-                    if torch.distributed.is_available() and torch.distributed.is_initialized()
-                    else 0
-                )
-                if _profile_rank == 0:
-                    print(
-                        f"[pushdown_attachment_forward] ms="
-                        f"{_attachment_start.elapsed_time(_attachment_end):.1f}",
-                        flush=True,
+            # Keep the *new* residual rows as the cache payload.  Attachment
+            # scoring below may concatenate them with candidate-0 prefix rows.
+            final_hidden = x  # (B, current_length, d), pre-ln_f residual
+            if compute_attachment_logits:
+                if past_final_hidden is not None:
+                    if past_input_ids is None:
+                        raise ValueError("cached attachment scoring requires past_input_ids")
+                    attachment_hidden = torch.cat((past_final_hidden, x), dim=1)
+                    attachment_input_ids = torch.cat((past_input_ids, input_ids), dim=1)
+                    attachment_sentence_ids = (
+                        None if past_sentence_ids is None or pushdown_sentence_ids is None
+                        else torch.cat((past_sentence_ids, pushdown_sentence_ids), dim=1)
                     )
+                    attachment_query_range = (
+                        past_length,
+                        past_length + x.shape[1],
+                    )
+                else:
+                    attachment_hidden = x
+                    attachment_input_ids = input_ids
+                    attachment_sentence_ids = pushdown_sentence_ids
+            if compute_attachment_logits:
+                # Recover the 1-D valid-key bool mask from `attention_mask`. By this
+                # point OLMo.forward's else-branch may have reshaped it to a float
+                # (B,1,1,n) additive bias where 0.0 = valid and finfo.min = padded;
+                # or it may still be the raw bool (B,n) if no branch ran. Normalize.
+                am = attention_mask
+                if am is not None:
+                    if am.dtype == torch.bool:
+                        am = am.view(am.shape[0], -1)
+                    else:
+                        # float additive bias: valid == 0.0, pad == finfo.min (<0).
+                        am = (am.view(am.shape[0], -1) == 0.0)
+                if past_final_hidden is not None:
+                    am = torch.ones(
+                        attachment_hidden.shape[:2], dtype=torch.bool, device=attachment_hidden.device
+                    )
+                attachment_logits = self.pushdown_attachment_head(
+                    attachment_hidden,
+                    attachment_input_ids,
+                    self.transformer.wte.weight,
+                    am,
+                    root_token_id=self.config.bos_token_id,
+                    eos_token_id=self.config.eos_token_id,
+                    sentence_ids=attachment_sentence_ids,
+                    query_range=attachment_query_range,
+                )
+                if _profile_attachment:
+                    _attachment_end.record()
+                    torch.cuda.synchronize()
+                    _profile_rank = (
+                        torch.distributed.get_rank()
+                        if torch.distributed.is_available() and torch.distributed.is_initialized()
+                        else 0
+                    )
+                    if _profile_rank == 0:
+                        print(
+                            f"[pushdown_attachment_forward] ms="
+                            f"{_attachment_start.elapsed_time(_attachment_end):.1f}",
+                            flush=True,
+                        )
 
         if last_logits_only:
             # shape: (batch_size, 1, d_model)

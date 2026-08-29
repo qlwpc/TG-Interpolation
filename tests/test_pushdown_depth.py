@@ -7,6 +7,7 @@ import pytest
 from olmo.pushdown import (
     compute_depth_matrix_gpu,
     compute_last_depth_row_gpu,
+    compute_last_depth_rows_gpu,
     PushdownDepthBias,
     _DepthBiasGradP,
 )
@@ -130,6 +131,22 @@ def test_incremental_last_depth_row_matches_full_matrix():
     )
     full = compute_depth_matrix_gpu(spans, 7)[:, -1:, :]
     incremental = compute_last_depth_row_gpu(spans, 7)
+    assert torch.equal(incremental, full)
+
+
+@pytest.mark.parametrize("query_len", [1, 2, 4, 7])
+def test_incremental_last_depth_rows_match_full_matrix(query_len):
+    spans = torch.tensor(
+        [
+            [[0, 1, 3], [1, 2, 2], [4, 4, 6], [-1, -1, -1]],
+            [[0, 2, 6], [2, 3, 5], [3, 3, 3], [3, 3, 3]],
+        ],
+        dtype=torch.long,
+    )
+    full = compute_depth_matrix_gpu(spans, 7)[:, -query_len:, :]
+
+    incremental = compute_last_depth_rows_gpu(spans, 7, query_len)
+
     assert torch.equal(incremental, full)
 
 
