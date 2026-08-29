@@ -52,6 +52,8 @@ from tokenizers import Tokenizer
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
+# helpers moved into datatools/parse_pretrain_data/ on 2026-08-25
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_pretrain_data"))
 
 from convert_TG_and_tokenize import convert_TG_format  # noqa: E402
 from benepar_parse import preprocess_text, split_long_sentence, set_custom_boundaries  # noqa: E402

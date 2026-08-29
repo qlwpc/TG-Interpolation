@@ -78,9 +78,9 @@ INPUTFORMAT = {
     # TreeReg is trained with a terminal stream and adds only a train-time
     # auxiliary regularizer, so its document PPL uses the same terminal_doc
     # protocol as terminal/pause checkpoints.
-    "terminal": ["terminal", "treereg", "treereg_layer9", "pause1", "pause1_label", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4"],
-    "tree": ["tree", "tree_shuffle", "tree_shuffle_mask"], 
-    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree"],
+    "terminal": ["terminal", "terminal-bbc-1B", "terminal-fwedu-1B", "treereg", "treereg_layer9", "pause1", "pause1_label", "pause1/2", "pause1/2_label", "pause2", "pause3", "pause1/3", "pause1/4", "pause1-fwedu-1B", "pause2-fwedu-1B"],
+    "tree": ["tree", "tree-bbc-1B", "tree-fwedu-1B", "tree_shuffle", "tree_shuffle_mask"],
+    "tg": ["tg", "mixing", "tgnomask", "tgnomask_aug", "tgtree", "tgtree-fwedu-1B"],
     "tree_compress" : ["tree_compress"],
     "tree_noont" : ["tree_noont"],
     "tree_triplecnt" : ["tree_triplecnt"],
@@ -92,8 +92,12 @@ Models = {
     "tree-500M": {"model.transformer_grammar_type": "tree"},
     "tree-100M-early" : {"model.transformer_grammar_type": "tree"},
     "tree-1B" : {"model.transformer_grammar_type": "tree"},
+    "tree-bbc-1B" : {"model.transformer_grammar_type": "tree"},
+    "tree-fwedu-1B" : {"model.transformer_grammar_type": "tree"},
     "terminal": {"model.transformer_grammar_type": "terminal"},
     "terminal-1B": {"model.transformer_grammar_type": "terminal"},
+    "terminal-bbc-1B": {"model.transformer_grammar_type": "terminal"},
+    "terminal-fwedu-1B": {"model.transformer_grammar_type": "terminal"},
     "terminal-500M": {"model.transformer_grammar_type": "terminal"},
     "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
     "treereg": {"model.transformer_grammar_type": "treereg"},
@@ -102,6 +106,7 @@ Models = {
         "model.treereg_layer": 9,
     },
     "tgtree": {"model.transformer_grammar_type": "tgtree"},
+    "tgtree-fwedu-1B": {"model.transformer_grammar_type": "tgtree"},
     "tgtree-500M": {"model.transformer_grammar_type": "tgtree"},
     "tgtree-100M-early": {"model.transformer_grammar_type": "tgtree"},
     "tgnomask_aug-500M": {"model.transformer_grammar_type": "tgnomask_aug"},
@@ -126,6 +131,8 @@ Models = {
     "pause1in3": {"model.transformer_grammar_type": "pause1/3", "model.max_sequence_length": 2048},
     "pause1in4": {"model.transformer_grammar_type": "pause1/4", "model.max_sequence_length": 2050},
     "pause1": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pause1-fwedu-1B": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pause2-fwedu-1B": {"model.transformer_grammar_type": "pause2", "model.max_sequence_length": 2049},
     "pause1label": {"model.transformer_grammar_type": "pause1_label", "model.max_sequence_length": 2048},
     "pretrain_terminal": {"model.transformer_grammar_type": "terminal", "model.max_sequence_length": 2048},
 }
@@ -490,6 +497,15 @@ model_paths = {
     "tree_shuffle_mask": "/saved_models/treeshufflemask_pretrain/step49440-unsharded",
     "terminal-1B": "/saved_models/terminal_1B/step34115-unsharded",
     "tree-1B": "/saved_models/Tree_1B/step49440-unsharded",
+    # Corpus-qualified aliases remove the BBC/FineWeb-Edu ambiguity. Keep the
+    # two legacy keys above as backward-compatible names for BBC checkpoints.
+    "terminal-bbc-1B": "/saved_models/terminal_1B/step34115-unsharded",
+    "tree-bbc-1B": "/saved_models/Tree_1B/step49440-unsharded",
+    "terminal-fwedu-1B": "/saved_models/A800_models/terminal_1B/step94299-unsharded",
+    "tree-fwedu-1B": "/saved_models/A800_models/tree_1B/step137217-unsharded",
+    "tgtree-fwedu-1B": "/saved_models/A800_models/tgtree_1B/step143658-unsharded",
+    "pause1-fwedu-1B": "/saved_models/A800_models/pause1_1B_SEP/step116061-unsharded",
+    "pause2-fwedu-1B": "/saved_models/A800_models/pause2_1B_SEP/step141380-unsharded",
     "pause2048" : "/saved_models/pause_pretrain/step40267-unsharded",
     "pauselabel2048": "/saved_models/pause_2labels_2048/step40267-unsharded",
     "pause4096" : "/saved_models/pause_pretrain_4096/step40938-unsharded",

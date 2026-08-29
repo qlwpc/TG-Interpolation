@@ -11,6 +11,8 @@ import json
 import spacy
 # from olmo.data.tg_mask import SentencepieceVocab
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "parse_pretrain_data"))
 from benepar_parse import set_custom_boundaries, preprocess_text, split_long_sentence
 
 def process_text(text, max_len=256):

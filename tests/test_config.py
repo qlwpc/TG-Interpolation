@@ -105,6 +105,43 @@ class TestModelConfig:
         )
         assert len(cfg.mix_head_type) == 1
 
+    def test_legacy_null_grammar_loads_as_terminal(self, tmp_path):
+        path = tmp_path / "legacy_terminal.yaml"
+        path.write_text("model:\n  transformer_grammar_type: null\n")
+        cfg = TrainConfig.load(path, validate_paths=False)
+        assert cfg.model.transformer_grammar_type == "terminal"
+
+    def test_legacy_self_referential_workspace_loads_relative(self, tmp_path):
+        path = tmp_path / "legacy_workspace.yaml"
+        path.write_text(
+            "workspace: ${workspace}\n"
+            "tokenizer:\n"
+            "  vocabulary: ${workspace}/tokenizer.json\n"
+        )
+        cfg = TrainConfig.load(path, validate_paths=False)
+        assert cfg.workspace == "."
+        assert cfg.tokenizer.vocabulary == "./tokenizer.json"
+
+    @pytest.mark.parametrize(
+        "mix_head_type,match",
+        [
+            ([], "requires an explicit"),
+            ([TGConfig(grammar_type="tg", n_heads=6)], "allocates 6 heads"),
+        ],
+    )
+    def test_mixing_requires_complete_head_allocation(self, mix_head_type, match):
+        from olmo.data import get_TG_generate_bias_func
+
+        cfg = TrainConfig(
+            model=ModelConfig(
+                transformer_grammar_type="mixing",
+                n_heads=12,
+                mix_head_type=mix_head_type,
+            )
+        )
+        with pytest.raises(OLMoConfigurationError, match=match):
+            get_TG_generate_bias_func(cfg)
+
     # ---- Validation ----
 
     def test_embedding_size_smaller_than_vocab_raises_in_olmo(self):

@@ -55,13 +55,14 @@ nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used
 '
 
 # SIST exposes scheduler allocation but not the other users' queue, and direct
-# nvidia-smi requires compute-node access. Limit it to the requested partitions
-# and omit all TITAN-family GPUs.
+# nvidia-smi requires compute-node access. Discover all current nodes in the
+# requested partitions (including new GPU types) and omit all TITAN-family GPUs.
 sist_query='\
 export PATH=/opt/gridview/slurm/bin:$PATH
 set -o pipefail
 partitions="critical,ShangHAI"
 mapfile -t nodes < <(sinfo -N -h -p "$partitions" -o "%N" | sort -u)
+declare -A model_total model_alloc model_nodes
 printf "%-18s %-10s %-24s %7s %7s %7s %s\\n" NODE PARTITION GPU_MODEL TOTAL ALLOC FREE STATE
 printf "%-18s %-10s %-24s %7s %7s %7s %s\\n" "------------------" "----------" "------------------------" "-------" "-------" "-------" "-----"
 for node in "${nodes[@]}"; do
@@ -78,7 +79,16 @@ for node in "${nodes[@]}"; do
   free=$((total - alloc))
   node_partitions=$(sinfo -N -h -n "$node" -p "$partitions" -o "%P" | sed "s/\*//g" | paste -sd, -)
   printf "%-18s %-10s %-24s %7d %7d %7d %s\\n" "$node" "$node_partitions" "$model" "$total" "$alloc" "$free" "$state"
+  ((model_total["$model"] += total))
+  ((model_alloc["$model"] += alloc))
+  ((model_nodes["$model"] += 1))
 done
+echo
+echo "GPU model summary"
+printf "%-24s %7s %7s %7s %7s\\n" GPU_MODEL NODES TOTAL ALLOC FREE
+for model in "${!model_total[@]}"; do
+  printf "%-24s %7d %7d %7d %7d\\n" "$model" "${model_nodes[$model]}" "${model_total[$model]}" "${model_alloc[$model]}" "$((model_total[$model] - model_alloc[$model]))"
+done | sort
 echo
 echo "SIST note: queue visibility is restricted for this account; values above are Slurm GPU allocations, not live GPU utilization."
 '

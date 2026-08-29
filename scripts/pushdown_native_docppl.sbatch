@@ -5,9 +5,7 @@
 #SBATCH --nodelist=rtx3090
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:8
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=2M
-#SBATCH --time=120:00:00
+#SBATCH --cpus-per-task=32
 #SBATCH --exclusive
 #SBATCH --output=docppl_runs/pushdown_native_sbatch_%j.driver.log
 #SBATCH --error=docppl_runs/pushdown_native_sbatch_%j.driver.log
@@ -16,11 +14,11 @@ set -euo pipefail
 cd /home/wangpch/TG-Interpolation
 mkdir -p docppl_runs
 
-# The normal QOS caps this 8-GPU job at two CPU cores. Keep BLAS single-
-# threaded; the eight lightweight mmap workers then time-share only packing.
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
+# Eight GPU workers share 32 allocated CPU cores.  Avoid unbounded BLAS/OpenMP
+# thread pools competing with the Python candidate/attachment preparation.
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
 export PYTHONPATH=.
 export PYTHON_BIN=/home/wangpch/.conda/envs/LLM/bin/python
 

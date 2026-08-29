@@ -187,6 +187,15 @@ class TestConvertGrammarInput:
         result = ds.convert_grammar_input(self._TG_INPUT)
         assert result == self._TG_INPUT.tolist()
 
+    def test_native_token_array_promotes_qwen_ids_to_uint32(self):
+        from olmo.eval.downstream import ICLMultiChoiceTaskDataset
+
+        result = ICLMultiChoiceTaskDataset._native_token_array(
+            [151700, 151701]
+        )
+        assert result.dtype == np.uint32
+        assert result.tolist() == [151700, 151701]
+
 
 # ---------------------------------------------------------------------------
 # 2. BLiMPApproximationDataset — grammar-type-specific dataset selection

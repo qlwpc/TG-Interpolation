@@ -15,6 +15,8 @@ def cartesian_product_with_underscore(sets):
         # 将元组中的字符串用下划线连接
         yield '_'.join(combination)
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "parse_pretrain_data"))
 from convert_TG_and_tokenize import convert_TG_format
 
 # 示例用法

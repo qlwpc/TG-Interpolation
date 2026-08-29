@@ -1,6 +1,8 @@
 import benepar, spacy
 from spacy.language import Language
 from tqdm import tqdm
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "parse_pretrain_data"))
 from benepar_parse import preprocess_text, split_long_sentence, set_custom_boundaries
 from tokenizers import Tokenizer
 from convert_TG_and_tokenize import convert_TG_format
