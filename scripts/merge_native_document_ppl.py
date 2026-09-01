@@ -23,10 +23,29 @@ def main() -> None:
                   "samples_per_sentence": rows[0]["samples_per_sentence"],
                   "candidate_compression_ratio": total["candidate_slots"] / total["model_candidate_forwards"]}
     elif model == "pushdown":
+        protocol_fields = (
+            "attachment_normalization",
+            "protocol_version",
+            "structure_source",
+            "candidate_aggregation",
+            "ppl_denominator",
+        )
+        protocol = {}
+        for key in protocol_fields:
+            values = {row.get(key) for row in rows}
+            if None in values:
+                raise SystemExit(
+                    f"Pushdown shard is missing required protocol metadata {key!r}"
+                )
+            if len(values) != 1:
+                raise SystemExit(
+                    f"refusing to mix Pushdown shards with different {key}: {values}"
+                )
+            protocol[key] = values.pop()
         legacy = sum(row["legacy_log_likelihood"] for row in rows)
         uniform = sum(row["uniform_mixture_log_likelihood"] for row in rows)
         token = sum(row["token_only_log_likelihood"] for row in rows)
-        output = {**total, "legacy_log_likelihood": legacy,
+        output = {**total, **protocol, "legacy_log_likelihood": legacy,
                   "uniform_mixture_log_likelihood": uniform, "token_only_log_likelihood": token,
                   "legacy_perplexity": math.exp(-legacy / total["terminal_count"]),
                   "uniform_mixture_perplexity": math.exp(-uniform / total["terminal_count"]),

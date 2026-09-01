@@ -19,6 +19,11 @@ model:
   rope: true
   flash_attention: true
   flex_attention: true
+  # RTX3090 router: short structured batches use SDPA; long repeated training
+  # uses Flex. Any selected non-divisible Flex shape is padded to a 128 block.
+  flex_attention_train_min_sequence_length: 1024
+  flex_attention_eval_min_sequence_length: 2048
+  flex_attention_pad_to_multiple: 128
   attention_dropout: 0.0
   attention_layer_norm: false
   clip_qkv: null

@@ -16,6 +16,7 @@ class NativeModelTopKSentence:
     document_id: int
     tokens: np.ndarray
     content_bounds: tuple[int, int]
+    word_starts: np.ndarray
     pushdown_valid_count: int
     pushdown_proposal_scores: np.ndarray
     pushdown_spans: np.ndarray
@@ -37,11 +38,23 @@ class NativeModelTopKShard:
         if self.run.get("status") != "complete":
             raise ValueError(f"native model top-K shard is incomplete: {self.path}")
         names = (
-            "terminal_offsets", "gpst_offsets", "pushdown_offsets",
-            "terminal_tokens", "content_bounds", "global_sentence_ids",
-            "document_ids", "pushdown_valid_counts", "pushdown_proposal_scores",
-            "pushdown_span_counts", "pushdown_spans", "gpst_valid_counts",
-            "gpst_proposal_scores", "gpst_merge_orders", "pushdown_completed",
+            "terminal_offsets",
+            "gpst_offsets",
+            "pushdown_offsets",
+            "word_offsets",
+            "word_starts",
+            "terminal_tokens",
+            "content_bounds",
+            "global_sentence_ids",
+            "document_ids",
+            "pushdown_valid_counts",
+            "pushdown_proposal_scores",
+            "pushdown_span_counts",
+            "pushdown_spans",
+            "gpst_valid_counts",
+            "gpst_proposal_scores",
+            "gpst_merge_orders",
+            "pushdown_completed",
             "gpst_completed",
         )
         for name in names:
@@ -61,6 +74,7 @@ class NativeModelTopKShard:
         token_start, token_end = map(int, self.terminal_offsets[index : index + 2])
         push_start, push_end = map(int, self.pushdown_offsets[index : index + 2])
         gpst_start, gpst_end = map(int, self.gpst_offsets[index : index + 2])
+        word_start, word_end = map(int, self.word_offsets[index : index + 2])
         content_left, content_right = map(int, self.content_bounds[index])
         push_width = (push_end - push_start) // (self.slots * 3)
         gpst_width = (gpst_end - gpst_start) // self.slots
@@ -75,8 +89,11 @@ class NativeModelTopKShard:
             document_id=int(self.document_ids[index]),
             tokens=self.terminal_tokens[token_start:token_end],
             content_bounds=(content_left, content_right),
+            word_starts=self.word_starts[word_start:word_end],
             pushdown_valid_count=pushdown_valid,
-            pushdown_proposal_scores=self.pushdown_proposal_scores[index, :pushdown_valid],
+            pushdown_proposal_scores=self.pushdown_proposal_scores[
+                index, :pushdown_valid
+            ],
             pushdown_spans=pushdown_rows[:pushdown_valid],
             pushdown_span_counts=self.pushdown_span_counts[index, :pushdown_valid],
             gpst_valid_count=gpst_valid,
@@ -101,7 +118,9 @@ class NativeModelTopKCorpus:
         )
         counts = np.asarray([len(shard) for shard in self.shards], dtype=np.int64)
         self.ends = np.cumsum(counts)
-        if not len(self.ends) or int(self.ends[-1]) != int(self.manifest["sentence_count"]):
+        if not len(self.ends) or int(self.ends[-1]) != int(
+            self.manifest["sentence_count"]
+        ):
             raise ValueError("native model top-K shard counts do not match manifest")
         # Only ~0.6 MB for BBC test-PPL. Keeping this index in RAM lets callers
         # split evaluation on document boundaries without touching large mmap
@@ -122,17 +141,24 @@ class NativeModelTopKCorpus:
         start = 0 if shard_id == 0 else int(self.ends[shard_id - 1])
         return self.shards[shard_id].sentence(index - start)
 
-    def document_sentence_range(self, start_document: int = 0, end_document: int | None = None) -> tuple[int, int]:
+    def document_sentence_range(
+        self, start_document: int = 0, end_document: int | None = None
+    ) -> tuple[int, int]:
         """Return the half-open sentence interval for complete document IDs."""
         total = int(self.manifest["document_count"])
         if end_document is None:
             end_document = total
         if not 0 <= start_document <= end_document <= total:
-            raise ValueError(f"invalid document interval [{start_document}, {end_document})")
+            raise ValueError(
+                f"invalid document interval [{start_document}, {end_document})"
+            )
         start = int(np.searchsorted(self.document_ids, start_document, side="left"))
         end = int(np.searchsorted(self.document_ids, end_document, side="left"))
         if start_document < end_document:
-            if start == len(self.document_ids) or int(self.document_ids[start]) != start_document:
+            if (
+                start == len(self.document_ids)
+                or int(self.document_ids[start]) != start_document
+            ):
                 raise ValueError(f"document {start_document} is absent")
         return start, end
 

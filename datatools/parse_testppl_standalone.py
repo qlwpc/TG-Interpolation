@@ -41,6 +41,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+# Must be set before benepar/transformers imports their generated protobuf code.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import benepar
 import spacy
 from datasets import load_dataset

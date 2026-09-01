@@ -1,0 +1,73 @@
+{
+  "cases": [
+    {
+      "gradients": [
+        {
+          "cosine": 0.9999940395355225,
+          "max_abs": 0.0234375,
+          "rel_l2": 0.003436230355873704
+        },
+        {
+          "cosine": 0.9999939799308777,
+          "max_abs": 0.03125,
+          "rel_l2": 0.0034565089736133814
+        },
+        {
+          "cosine": 0.9999999403953552,
+          "max_abs": 0.00390625,
+          "rel_l2": 2.6907700885203667e-05
+        }
+      ],
+      "gradients_finite": true,
+      "mask_density": 0.09213218092918396,
+      "mode": "tg",
+      "output": {
+        "cosine": 1.0,
+        "max_abs": 0.00048828125,
+        "rel_l2": 1.594031914464722e-06
+      },
+      "output_finite": true,
+      "padded_length": 128,
+      "padded_tail_gradients_zero": true,
+      "passed": true,
+      "sequence_length": 127
+    },
+    {
+      "gradients": [
+        {
+          "cosine": 0.9999942183494568,
+          "max_abs": 0.0234375,
+          "rel_l2": 0.003408243181183934
+        },
+        {
+          "cosine": 0.9999940991401672,
+          "max_abs": 0.03125,
+          "rel_l2": 0.0034376010298728943
+        },
+        {
+          "cosine": 1.0,
+          "max_abs": 0.0078125,
+          "rel_l2": 7.531065784860402e-05
+        }
+      ],
+      "gradients_finite": true,
+      "mask_density": 0.31480562686920166,
+      "mode": "tgnomask",
+      "output": {
+        "cosine": 1.0,
+        "max_abs": 0.000244140625,
+        "rel_l2": 9.88138481261558e-07
+      },
+      "output_finite": true,
+      "padded_length": 128,
+      "padded_tail_gradients_zero": true,
+      "passed": true,
+      "sequence_length": 127
+    }
+  ],
+  "device": "NVIDIA GeForce RTX 3090",
+  "job_id": "3919",
+  "status": "passed",
+  "torch": "2.7.1+cu126",
+  "torch_cuda": "12.6"
+}

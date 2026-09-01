@@ -1,5 +1,10 @@
 # 预训练流程与语料构建：论文 ↔ 仓库对照报告
 
+> [!NOTE]
+> 本文已按 2026-08-31 仓库状态回写：已完成项直接反映在 §1--§3，不再保留会误导的
+> 初始缺口记录。集中纠错索引见
+> [`../REPOSITORY_CLEANUP_MEMORY.md`](../REPOSITORY_CLEANUP_MEMORY.md) M-11。
+
 生成日期：2026-08-23；自动化状态更新至 2026-08-28。依据：论文 `14901_A_Scaled_Up_Empirical_St.pdf`（Table 2/3/8、§5.1、附录 A），
 仓库代码核查（datatools/、olmo/、train_configs/、saved_models/*/config.yaml、tests/）。
 本文只覆盖**预训练流程与语料构建**；评测协议与数值登记见 `EXPERIMENT_REPRODUCTION_RECORD.md`。
@@ -19,7 +24,7 @@ FineWeb(BBC 子集) ──get-bbc-fineweb.py──▶ 预览/拉取
       │ convert_TG_and_tokenize.py（joblib 并行, 按已存在文件跳过）
       ▼
 dataset/<corpus>/{tree,terminal,tg}/<split>.npy   ← 一维 uint16 token 流（无结构数组）
-      │ gen_final_train.py（BOT 边界; 从分片抽 test/dev; train.npy 拼接入口被注释→人工 cat）
+      │ build_pretrain_data assemble / assemble_streams.py（两遍 mmap，统一生成 train/dev/test 与索引）
       │ sample_testset.py（seed=42, ~10% 文档抽测, 写 test_*_index.json）
       ▼
 train/dev/test.npy + *_sent_index.npy + *_doc_index.npy
@@ -41,7 +46,7 @@ train/dev/test.npy + *_sent_index.npy + *_doc_index.npy
 | 8 | Pause-1/Pause-2 | 在线插入（`memmap_dataset.py:263`→`pause_input_ids`），支持任意 p/q | ✅（比论文更泛） |
 | 9 | LIN1-shuf 打乱 | 在线：`collator.py:65-68` 调 `random_shuffle_tree` | ✅ |
 | 10 | LIN2（tg） | 预生成 `convert_treenpy_to_TG`（.so；Python 副本 `tokenize_BLiMP_tg.py:61-74`；流式版 `parse_data/tree_to_tg.py:168-212`） | ✅ |
-| 11 | LIN3/noONT/merge | 仅 `process_bbc.py` dev 原型（硬编码/单进程/`*dev.npy`）；`tree_triplecnt/` 目录为空；无全量生成脚本 | ⚠️ 原型级 |
+| 11 | LIN3/noONT/merge | `make_tree_variant.py` 已实现 mmap 流式生成并通过真实 dev 验证；三个全量 train 变体尚未在本机生成 | 🟠 实现已验证，数据资产待生成 |
 | 12 | 变体差异承载方式 | noont/compress/triplecnt 训练时 grammar type 均为 `tree`/`tgtree`，差异全由 `.npy` 目录承载 | ⚠️ 数据承载变体 |
 
 ### 2.2 训练配置
@@ -55,22 +60,25 @@ train/dev/test.npy + *_sent_index.npy + *_doc_index.npy
 | 5 | AdamW β=(0.9,0.95) ε=1e-8 wd=0.1 | `olmo/optim.py:989-1001` + YAML 覆写 | ✅ |
 | 6 | grad clip 1.0 | 优化器 step 内全局固定裁剪 | `olmo/optim.py:229-240` ✅ |
 | 7 | cosine, 2000 warmup → 1e-5 保持 | `CosWithWarmup`（`olmo/optim.py:694-712`） | ✅ |
-| 8 | Step Law 定 lr/B | **代码零实现**（grep 系数零命中）；lr/B 硬编码于各 YAML | ❌ 不可从仓库验证 |
+| 8 | Step Law 定 lr/B | `scripts/step_law.py` + 15 个测试；三个 YAML 的 lr 与公式精确吻合，Tree 截断运行另有说明 | ✅ 已实现并核验 |
 | 9 | causal→FA2, 结构→Flex | flash+flex 双开，按 batch 是否带 bias 隐式路由 | `olmo/model.py:573-655` ✅ |
 | 10 | seq len 2048 | 所有 YAML 2048 + 训练循环强断言 | `olmo/train.py:2033-2035` ✅ |
-| 11 | 12 变体可从 train_configs 复现 | 仅 terminal/tree/TG/nomask_and_tg + 部分 500M/1B；其余变体只有 checkpoint 内 config | ⚠️ 不完整 |
+| 11 | 论文变体可形成 campaign | `paper_pretraining_manifest.json` 登记 27 个 run，`prepare_paper_pretraining.py` 从 checkpoint config 清洗生成；部分原始 YAML 仍不完整 | 🟠 campaign 可生成，原始模板不齐 |
 
-## 3. 缺口清单（按影响排序）
+## 3. 当前未关闭项（按影响排序）
 
-1. **Step Law 零实现**：论文式(8) 的 η(N,D)/B(D) 公式在仓库无任何痕迹；lr/B 为逐 YAML 硬编码常数，无法从仓库验证论文公式。
-2. **LIN3/noONT/merge 无全量生成脚本**：只有 `datatools/process_bbc.py` dev 原型（硬编码 `./dataset/bbc-news/tree/`、单进程、只处理 `*dev.npy`、fixed_token_id=50319）；`dataset/bbc-news/tree_triplecnt/` 为空；`scripts/init_cfg_and_sbatch.py:84-86` 却把三个 grammar type 指向不存在的数据目录。
-3. **train.npy 拼接无脚本入口**：`gen_final_train.py:41` 有写出能力但调用被注释（:98-99）——大流拼接是人工 cat，无脚本化。
-4. **Benepar 模型不一致**：BBC=`benepar_en3_large`，FineWeb-Edu=`benepar_en3`；论文只说 news-domain Benepar，未注明差异。
-5. **部分变体缺 train_configs YAML**：tgnomask(_aug)、mixing 双头、pause1/2、tree_shuffle、noont/compress/triplecnt 只有 `saved_models/<run>/config.yaml`。
-6. **tg_mask 源码缺席**：`olmo/data/tg_mask.py` 不在仓库（只有编译 .so），`random_shuffle_tree`/`convert_treenpy_to_*` 的权威实现不可审阅。
-7. **硬编码个人环境**：`convert_npy_to_bin.py:45`（/storage/wangpch）、rsync 脚本（集群别名/学号 sftp）、`parse_input.py:101`（旧仓库 TG-LLaMA 路径）、`terminal-1B.yaml`（scyb223 绝对路径）、`init_cfg_and_sbatch.py:291-295`（/dev/shm tar）。
-8. **死/名不符实脚本**：`save_datasets.py`（实为 MMLU-redux 构建器）、`native_binary.py`（纯转发）、`get-bbc-fineweb.py`（仅预览）、cartesian/reset_error/split_testwork 未接入主管线。
-9. **1B config 路径可能被后续评测污染**：FineWeb-Edu Terminal checkpoint 当前
+1. **三个 Tree 变体的全量 train 数据尚未生成**：生成器与真实 dev 已验证，但
+   noONT/compress/triplecnt 的全量资产仍需显式执行并登记哈希，不能仅凭目录名声称可训练。
+2. **Benepar 模型是明确的历史协议差异**：BBC=`benepar_en3_large`，FineWeb-Edu=`benepar_en3`；
+   复现应保留这一区别，不能静默统一。
+3. **部分原始 `train_configs` YAML 不齐**：当前 campaign 可由 manifest 和 checkpoint
+   config 清洗生成，但这不等于原始手写模板已经补全。
+4. **`tg_mask` 权威源码缺席**：`olmo/data/tg_mask.py` 不在仓库（只有编译 `.so`），
+   `random_shuffle_tree`/`convert_treenpy_to_*` 的权威实现仍不可审阅。
+5. **硬编码个人环境**：若干旧数据、rsync、集群和 `/dev/shm` 路径仍需参数化后再发布。
+6. **死/名不符实脚本**：`save_datasets.py`、`native_binary.py`、cartesian、reset_error、
+   split_testwork 等尚未归档或移除。
+7. **1B config 路径可能被后续评测污染**：FineWeb-Edu Terminal checkpoint 当前
    `data.paths` 指向 HellaSwag，根目录 TGTree 副本指向 `fewshot_sources.py`；训练语料须以
    论文、一 epoch处理量和 `saved_models/A800_models/` 内其余 246-shard config 交叉核验。
 
@@ -122,7 +130,7 @@ corpus/bbc-{terminal,tree}.lazy        # GPST lazy memmap
 
 新增测试：`tests/test_parse_pipeline_smoke.py`（12 用例：解析↔tokenize 契约、自举模块、离线导入、长句切分）。
 
-## 6. 建议后续动作
+## 6. 已完成修复与后续动作
 
 1. ✅ **已实现（2026-08-24）**：Step-Law 脚本化 → `scripts/step_law.py`（测试 `tests/test_step_law.py`，15 用例）。
    审计结论：terminal.yaml / terminal-500M.yaml / tree-500M.yaml 的 lr 与公式**6 位小数精确吻合**

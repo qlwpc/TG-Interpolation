@@ -2,7 +2,7 @@
 
 Self-contained reimplementation of the paper's training algorithm, supporting
 both an unsupervised (hard-EM, parser-induced tree) and a supervised
-(gold-tree) variant. See docs/PLAN_gpst.md for the design.
+(gold-tree) variant. See docs/gpst_implementation.md for the implementation record.
 
 Subpackages:
 - ``cpp_extension``  — compiled C++ pruned-CKY chart backend (``cppbackend``).

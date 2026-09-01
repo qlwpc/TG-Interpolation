@@ -1,12 +1,37 @@
 # TG-Interpolation
 
-本仓库是论文从语料构建、预训练到评测的复现总入口。预训练参数与 checkpoint 身份以
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md) 为唯一人工登记；
-数据与训练的完整自动化细则见
-[`docs/pretraining_reproduction.md`](docs/pretraining_reproduction.md)，评测见
-[`Evaluation.md`](Evaluation.md)。
+本仓库是论文 *A Scaled-Up Empirical Study of Syntactic Language Models* 从语料构建、
+预训练到评测的复现入口，包含 BBC News 实验、FineWeb-Edu-100BT 扩展实验，以及
+Terminal、Pause、Tree/TG、TreeReg、Tree-Shuffle 和 Pushdown 等模型分支。
 
-## 环境
+> [!IMPORTANT]
+> README 只负责导航和最短执行路径，不保存第二份结果表。checkpoint 身份、实际运行协议、
+> 任务状态和可引用结果统一登记在
+> [`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md)。引用任何旧结果前，
+> 先检查 [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md)。
+
+## 0. 开始前先确定口径
+
+| 要确认的内容 | 首选入口 | 使用边界 |
+|---|---|---|
+| 论文声称的方法与表格 | [`camera_ready/paper.tex`](camera_ready/paper.tex) | 表示论文口径；若与实际运行记录冲突，不做静默合并 |
+| checkpoint、实际 config、运行状态与结果 | [`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md) | 当前唯一人工总登记 |
+| 数据构建与预训练 campaign | [`docs/pretraining_reproduction.md`](docs/pretraining_reproduction.md) | 当前可执行操作说明 |
+| 已确认错误、协议差异和未关闭风险 | [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md) | 错误数值不保留；有意义的替代协议带限定条件保留 |
+| evaluator 的实现背景 | [`Evaluation.md`](Evaluation.md) | 目前是 2026-08-23 历史快照，不是当前协议或结果真源 |
+
+发生冲突时，先区分三件事：论文原本声称什么、代码实际执行什么、某个 checkpoint
+当时使用了什么。修正应回填总登记表和纠错记忆，不能直接用一种口径覆盖另一种口径。
+
+### 实验范围
+
+| 语料 / 规模 | 主要模型 | 主要评测 |
+|---|---|---|
+| BBC News 100M | Terminal、Tree/TG、Pause、结构消融、TreeReg、Tree-Shuffle、Pushdown | Doc-PPL、SG、BLiMP、XSum、BoolQ |
+| BBC News 500M / 补充 1B | Terminal、Tree、TGTree、TGNomask-Aug | 以总登记表中的已完成项为准 |
+| FineWeb-Edu-100BT 1B | Terminal、Tree、TGTree、Pause-1、Pause-2 | OLMES 11-task terminal-format 评测及待补充下游项 |
+
+## 1. 环境
 
 ```bash
 conda env create -f environment.yml
@@ -21,7 +46,7 @@ python -m datatools.parse_pretrain_data.setup_parse_deps --check
 python -m datatools.parse_pretrain_data.setup_parse_deps
 ```
 
-## 1. 构建预训练数据
+## 2. 构建预训练数据
 
 统一入口按阶段运行；下载/解析/tokenization 支持 Slurm 数组与断点续跑：
 
@@ -86,7 +111,7 @@ FineWeb-Edu 使用历史 `benepar_en3` 与 Qwen3 扩展 tokenizer；后者应为
 `<|SEP|>=151673`，因此必须保存为 `uint32`。预训练直接消费 246 个 shard pattern；
 terminal/LIN1/LIN2 约为 98B/233B/301B token。
 
-## 2. 生成全部论文预训练配置
+## 3. 生成全部论文预训练配置
 
 机器可读清单
 [`train_configs/paper_pretraining_manifest.json`](train_configs/paper_pretraining_manifest.json)
@@ -123,7 +148,7 @@ grammar、LR、global batch、dtype、pause id 与 mixing heads，并清除旧�
 才使用 SEP 151673。独立 SEP 的 100M 重训属于补充实验，入口为
 [`scripts/submit_pause_sep_pretrain.py`](scripts/submit_pause_sep_pretrain.py)，不能覆盖历史模型身份。
 
-## 3. 验证与后续评测
+## 4. 验证
 
 ```bash
 PYTHONPATH=. python -m pytest -q \
@@ -134,6 +159,42 @@ PYTHONPATH=. python -m pytest -q \
   tests/test_step_law.py
 ```
 
-预训练完成后按 [`Evaluation.md`](Evaluation.md) 运行 Doc-PPL、SG、BLiMP、XSum、BoolQ 和
-FineWeb-Edu OLMES 评测，并将 checkpoint、协议、任务状态与结果回填到
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md)。
+## 5. 评测与结果登记
+
+`Evaluation.md` 尚未完成当前协议重写，因此不要把其中的历史行号、旧结果速查表或统一分支
+描述直接当作论文复现入口。现阶段按下表选择依据：
+
+| 任务 | 当前依据 | 必须单列的协议差异 |
+|---|---|---|
+| Document PPL | 总登记表 §3；Pushdown 另见 [`docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md`](docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md) | terminal、tree marginalization、Tree-Shuffle terminal、Pushdown native top-K 不混写 |
+| SG / BLiMP | 论文方法 + 总登记表对应小节 | Tree/TG、Pause、Tree-Shuffle、Pushdown 各自的候选与计分方式 |
+| XSum / BoolQ | 论文方法 + 总登记表对应小节 | Pause 专用生成流程、Tree-Shuffle masked checkpoint、Pushdown gold-span 流程 |
+| FineWeb-Edu OLMES | 论文 terminal-format 方法 + 总登记表 §4 | task shots、Benepar 1-best、terminal score 与 full score 分开登记 |
+
+每条准备进入论文表格的结果至少记录：
+
+- corpus、split 与数据版本；
+- 模型族、规模和唯一 checkpoint 路径；
+- evaluator protocol、候选 support、归一化/分母；
+- seed、run id 或 Slurm job、artifact/log 路径和完成状态；
+- 主协议结果或 alternative-protocol diagnostic，二者不可混列。
+
+错误实现产生的数值不进入 README 或主结果表；如果错误揭示了有用的协议差异，只保留
+错误原因，并把可复核结果迁移到相应专题协议文档。
+
+## 6. 仓库地图
+
+| 路径 | 内容 |
+|---|---|
+| `datatools/parse_pretrain_data/` | BBC 与 FineWeb-Edu 数据下载、解析、tokenization、组装和验证 |
+| `train_configs/` | 预训练配置与论文模型 manifest |
+| `scripts/` | campaign 生成、提交和专用评测入口 |
+| `olmo/` | 模型、训练器、数据集和 evaluator 实现 |
+| `tests/` | 数据与预训练复现的回归测试 |
+| [`docs/`](docs/README.md) | 当前协议、实现记录和诊断材料的分类索引；引用前检查纠错记忆中的可信度分级 |
+| `reports/` | 带日期的审计与专题结果，不替代总登记表 |
+| `artifacts/`、`saved_models/` | 本机运行产物；路径存在不等于已发布或可再生资产 |
+
+建议的整理顺序是：先核对总登记表与纠错记忆，再整理数据入口和配置，随后重写
+`Evaluation.md` 的当前协议层，最后才清理历史报告和本机 artifacts。删除文档前，先把仍有
+解释力的错误原因或替代协议迁移到纠错记忆或对应专题文档。

@@ -1338,6 +1338,11 @@ class Trainer:
                                 bos_id=dataset.vocab.bos,
                                 tag=tag,
                                 use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
+                                attachment_normalization=getattr(
+                                    eval_cfg,
+                                    "pushdown_attachment_normalization",
+                                    "stack_legal",
+                                ),
                             )
                         score_dict[sent["condition_name"]] = score
                     elif (
@@ -1510,6 +1515,11 @@ class Trainer:
                                 bos_id=vocab.bos,
                                 tag=None,
                                 use_attachment_head=self.cfg.model.pushdown_use_attachment_head_inference,
+                                attachment_normalization=getattr(
+                                    eval_cfg,
+                                    "pushdown_attachment_normalization",
+                                    "stack_legal",
+                                ),
                             )
                         ll = torch.tensor(-surprisal, device=self.device)
                         ll_list.append(ll)
@@ -1596,6 +1606,11 @@ class Trainer:
                                     self.cfg.model.pushdown_use_attachment_head_inference
                                 ),
                                 return_spans=True,
+                                attachment_normalization=getattr(
+                                    eval_config,
+                                    "pushdown_attachment_normalization",
+                                    "stack_legal",
+                                ),
                             )
                     ts = spans.unsqueeze(0).to(self.device) if spans.shape[0] > 0 else None
                     with self._summon_params_ctx():

@@ -1,5 +1,12 @@
 # Evaluation 工作流程文档
 
+> [!WARNING]
+> 本文是 2026-08-23 的个人实现快照，`file:line` 随代码演进已经漂移，也不包含之后
+> Tree-Shuffle checkpoint、Pause XSum v2、Pushdown fixed-word-atom v1/v2 等完整纠错。
+> 当前实验状态先查 [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md) 和
+> [`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md)；本文主要用于
+> 理解历史 evaluator 分发，不应单独作为数值或协议依据。
+
 **代码库**: /home/wangpch/TG-Interpolation (OLMo-based)
 **更新日期**: 2026-08-23
 **用途**: 个人参考文档，记录 evaluation 系统如何运作，含 file:line 引用和关键数值。
@@ -163,7 +170,8 @@ pause 模型按其 grammar 在同一文档内连续插入 pause（下一篇文�
 | terminal | `saved_models/Terminal-lr005-bs144/step34115-unsharded` | 3444 | 完成：PPL 9.88981（148,836 句） |
 | pause1 | `saved_models/pretrain_pause1_100M/step45487-unsharded` | 3445 | 完成：PPL 9.83125（148,836 句） |
 
-首次提交 `3442/3443` 在 GPU 启动前因非交互 Slurm shell 缺少 `torchrun` 退出；已在脚本生成器中固定 `LLM` conda 环境并重提为 `3444/3445`，不产生任何 PPL 结果。
+评测脚本必须显式进入固定的 `LLM` conda 环境，避免非交互 Slurm shell 缺少
+`torchrun`。失败任务及其编号不作为实验记录保留。
 
 生成的可复现配置、脚本和日志在 `artifacts/evaluation/terminal_doc_ppl_20260823/{terminal,pause1}/`。结果从各自 `logs/slurm-*.out` 的 `eval/downstream/terminal_doc_ppl_doc_ppl` 读取；两次运行均完成于 2026-08-23。
 
@@ -178,11 +186,20 @@ Evallist = [EvaluatorConfig(label="TG-ppl-validation"), EvaluatorConfig(label="T
 Evallist[0].data.paths = [dev.npy]
 Evallist[1].data.paths = [test.npy]
 Evallist[0].data.generate_doc_lengths = Evallist[1].data.generate_doc_lengths = (input_format!="tg")
-cfg.model.flex_attention = True
+grammar_type = cfg.model.transformer_grammar_type
+cfg.model.flex_attention = (
+    grammar_type == "tg"
+    or grammar_type.startswith("tgproximal")
+    or grammar_type.startswith("tgnomask")
+)
 ```
 - type 默认 `lm` → `build_eval_dataloader` → `MemMapDataset`
 - `generate_doc_lengths=True` (非 tg 格式): `MemMapDataset` 预计算文档边界长度
-- `flex_attention=True`: 启用 PyTorch flex_attention 高效长文档 eval
+- TG/tgproximal/tgnomask 才允许进入长度感知路由：短/动态结构化输入走
+  SDPA，达到评测阈值的重复长序列才走 Flex；非 128 整数倍的 Flex 形状
+  自动补齐。mixing 在真实逐头基准完成前保持关闭
+- terminal/tree 格式不生成 TG bias，保持 `flex_attention=False`，文档边界
+  路径使用 `flash_attn_varlen_func`
 - `MeanMetric` (`olmo/eval/__init__.py:177-178`) 累积每实例 CE loss
 - `compute_metrics` (`olmo/eval/evaluator.py:51-77`) 输出 `eval/{label}/CrossEntropyLoss` 和 `Perplexity = exp(CE)`
 

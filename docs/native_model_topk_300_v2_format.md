@@ -113,7 +113,7 @@ provenance into the corpus manifest.
 
 ## Tree-to-TG conversion
 
-`datatools/parse_data/tree_to_tg.py` duplicates every closing non-terminal in
+`datatools/parse_test_docppl_data/tree_to_tg.py` duplicates every closing non-terminal in
 place, updates every candidate-record length, and preserves the document index.
 The current normalized corpus was checked exhaustively:
 

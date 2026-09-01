@@ -284,6 +284,8 @@ class ICLMetric(Metric):
         self.loglikelihoods = []
         self.labels = []
         self.loglikelihoods_term = []
+        if hasattr(self, "decomposition_stats"):
+            self.decomposition_stats = []
 
     def update(self, batch: Dict[str, Any], lm_logits: torch.Tensor, dc_lm_logits=None):
         lm_logits = F.log_softmax(lm_logits, dim=-1, dtype=torch.float32)
@@ -299,25 +301,60 @@ class ICLMetric(Metric):
             lm_cont_logits = lm_logits[idx][
                 batch["ctx_len"][idx] - 1 : batch["ctx_len"][idx] + batch["cont_len"][idx] - 1
             ]
-            lm_log_likelihood = torch.gather(lm_cont_logits, 1, cont_tokens).squeeze()
+            # Only remove the vocabulary-index axis. A one-token continuation
+            # must remain shape [1], otherwise multiplying by its continuation
+            # mask attempts an invalid scalar <- [1] in-place broadcast.
+            lm_log_likelihood = torch.gather(
+                lm_cont_logits, 1, cont_tokens
+            ).squeeze(-1)
             cont_mask = None
             if "cont_mask" in batch:
                 cont_mask = batch["cont_mask"][idx][: batch["cont_len"][idx]]
 
             # Always compute terminal mask for decomposition
-            cont_tokens_seq = cont_tokens.squeeze()
-            term_mask = (self.vocab.opening_non_terminals[0] > cont_tokens_seq) | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+            cont_tokens_seq = cont_tokens.squeeze(-1)
+            term_mask_bool = (
+                (self.vocab.opening_non_terminals[0] > cont_tokens_seq)
+                | (cont_tokens_seq > self.vocab.closing_non_terminals[1])
+            )
             # term_mask is bool; coerce masks to float so downstream arithmetic
             # (lm_log_likelihood * mask, cont_mask *= term_mask) never depends on
             # implicit bool→float promotion (fragile if a mask arrives as int/bool
             # from the collator or get_mask).
-            term_mask = term_mask.to(torch.float32)
+            term_mask = term_mask_bool.to(torch.float32)
+            task_mask = (
+                cont_mask.to(torch.float32)
+                if cont_mask is not None
+                else torch.ones_like(term_mask)
+            )
 
-            # Compute terminal-only log-likelihood BEFORE any mask is applied
-            if cont_mask is not None:
-                lm_log_likelihood_term = (lm_log_likelihood * cont_mask.float()).sum()
-            else:
-                lm_log_likelihood_term = (lm_log_likelihood).sum()
+            # Paper Eq. 4/5 decomposition. A task-specific continuation mask
+            # (HellaSwag's repeated prefix, for example) applies to both parts;
+            # the terminal mask then removes every ONT/CNT token from S_term.
+            full_log_likelihood_raw = (lm_log_likelihood * task_mask).sum()
+            lm_log_likelihood_term = (
+                lm_log_likelihood * task_mask * term_mask
+            ).sum()
+            lm_log_likelihood_nt = full_log_likelihood_raw - lm_log_likelihood_term
+            n_terminal = (task_mask * term_mask).sum()
+            n_nonterminal = (task_mask * (1.0 - term_mask)).sum()
+
+            # DecomposedICLMetric opts into the raw per-choice evidence needed
+            # to reconstruct Appendix-D-style metrics without another forward.
+            if hasattr(self, "decomposition_stats"):
+                self.decomposition_stats.append(
+                    torch.stack(
+                        (
+                            doc_id.to(torch.float32),
+                            cont_id.to(torch.float32),
+                            full_log_likelihood_raw,
+                            lm_log_likelihood_term,
+                            lm_log_likelihood_nt,
+                            n_terminal,
+                            n_nonterminal,
+                        )
+                    )
+                )
 
             if self.tree_eval_type == "terminal":
                 if cont_mask is None:
@@ -366,7 +403,7 @@ class ICLMetric(Metric):
             if hasattr(self, 'loglikelihoods_term'):
                 if self.metric_type in ("len_norm", "ce_loss", "bpb"):
                     # Decode terminal-only continuation to get correct lengths
-                    term_cont_ids = cont_tokens_seq[term_mask].tolist()
+                    term_cont_ids = cont_tokens_seq[term_mask_bool].tolist()
                     if self.tokenizer is not None and len(term_cont_ids) > 0:
                         term_cont_str = self.tokenizer.decode(term_cont_ids)
                         cont_str_len_term = len(term_cont_str) - 1  # leading blank
@@ -582,6 +619,7 @@ class DecomposedICLMetric(ICLMetric):
                          tree_eval_type=tree_eval_type, doc_group=doc_group,
                          tokenizer=tokenizer)
         self.save_per_example_path = save_per_example_path
+        self.add_state("decomposition_stats", default=[], dist_reduce_fx=None)
 
     def compute(self):
         # Temporarily null save_per_example_path so the parent's compute()
@@ -593,6 +631,7 @@ class DecomposedICLMetric(ICLMetric):
         self.save_per_example_path = None
         full_result = super().compute()
         self.save_per_example_path = _saved_path
+        self.decomposition_stats = _gather_list(self.decomposition_stats)
 
         # Rebuild terminal-only rankings
         loglikelihood_dict_term = {}
@@ -601,7 +640,10 @@ class DecomposedICLMetric(ICLMetric):
             c = int(cont_id.item())
             if d not in loglikelihood_dict_term:
                 loglikelihood_dict_term[d] = {}
-            loglikelihood_dict_term[d][c] = loglikelihood
+            # Gathered list states retain their source-rank CUDA device. Rank
+            # comparisons must use host scalars rather than comparing cuda:0,
+            # cuda:1, ... tensors directly.
+            loglikelihood_dict_term[d][c] = float(loglikelihood.item())
 
         # Rebuild full rankings from parent state
         loglikelihood_dict_full = {}
@@ -610,7 +652,7 @@ class DecomposedICLMetric(ICLMetric):
             c = int(cont_id.item())
             if d not in loglikelihood_dict_full:
                 loglikelihood_dict_full[d] = {}
-            loglikelihood_dict_full[d][c] = loglikelihood
+            loglikelihood_dict_full[d][c] = float(loglikelihood.item())
 
         # Build label dict
         label_dict = {}
@@ -620,11 +662,26 @@ class DecomposedICLMetric(ICLMetric):
                 label_dict[d] = set()
             label_dict[d].add(label_id.item())
 
+        # Raw paper Eq. 4/5 evidence, stored independently from task-specific
+        # normalization (e.g. len_norm) used by the legacy OLMES path.
+        raw_stats = {}
+        for row in self.decomposition_stats:
+            doc_id, cont_id, full_raw, term_raw, nt_raw, n_term, n_nt = row
+            d = int(doc_id.item())
+            c = int(cont_id.item())
+            raw_stats.setdefault(d, {})[c] = {
+                "full": float(full_raw.item()),
+                "term": float(term_raw.item()),
+                "nt": float(nt_raw.item()),
+                "n_term": int(n_term.item()),
+                "n_nt": int(n_nt.item()),
+            }
+
         # Every rank has the same gathered state after ``super().compute()``.
         # Only rank 0 may publish the shared output file.
         if self.save_per_example_path and get_global_rank() == 0:
             self._save_per_example(loglikelihood_dict_full, loglikelihood_dict_term,
-                                   label_dict)
+                                   label_dict, raw_stats)
 
         # Compare rankings
         correct_term = 0
@@ -669,10 +726,78 @@ class DecomposedICLMetric(ICLMetric):
         result["_flip_to_correct"] = n_flip_to_correct / total if total > 0 else 0.0
         result["_flip_to_wrong"] = n_flip_to_wrong / total if total > 0 else 0.0
         result["_total"] = float(total)
+
+        raw_full = {
+            doc_id: {cont_id: row["full"] for cont_id, row in choices.items()}
+            for doc_id, choices in raw_stats.items()
+        }
+        raw_term = {
+            doc_id: {cont_id: row["term"] for cont_id, row in choices.items()}
+            for doc_id, choices in raw_stats.items()
+        }
+        raw_summary = self._ranking_summary(raw_full, raw_term, label_dict)
+        result.update({f"_raw_{key}": value for key, value in raw_summary.items()})
+
+        terminal_logp_sum = sum(
+            row["term"] for choices in raw_stats.values() for row in choices.values()
+        )
+        nonterminal_logp_sum = sum(
+            row["nt"] for choices in raw_stats.values() for row in choices.values()
+        )
+        n_terminal_tokens = sum(
+            row["n_term"] for choices in raw_stats.values() for row in choices.values()
+        )
+        n_nonterminal_tokens = sum(
+            row["n_nt"] for choices in raw_stats.values() for row in choices.values()
+        )
+        result["_n_terminal_tokens"] = float(n_terminal_tokens)
+        result["_n_nonterminal_tokens"] = float(n_nonterminal_tokens)
+        result["_nt_logp_gap"] = (
+            nonterminal_logp_sum / n_nonterminal_tokens
+            - terminal_logp_sum / n_terminal_tokens
+            if n_terminal_tokens > 0 and n_nonterminal_tokens > 0
+            else float("nan")
+        )
         return result
 
+    @staticmethod
+    def _ranking_summary(full_scores, term_scores, label_dict):
+        correct_full = 0
+        correct_term = 0
+        flips = 0
+        flip_to_correct = 0
+        flip_to_wrong = 0
+        total = 0
+        for doc_id, full_choices in full_scores.items():
+            if doc_id not in term_scores or doc_id not in label_dict:
+                continue
+            term_choices = term_scores[doc_id]
+            if not full_choices or set(full_choices) != set(term_choices):
+                continue
+            full_best = max(full_choices, key=full_choices.get)
+            term_best = max(term_choices, key=term_choices.get)
+            labels = label_dict[doc_id]
+            full_correct = full_best in labels
+            term_correct = term_best in labels
+            correct_full += int(full_correct)
+            correct_term += int(term_correct)
+            total += 1
+            if full_best != term_best:
+                flips += 1
+                flip_to_correct += int(term_correct and not full_correct)
+                flip_to_wrong += int(full_correct and not term_correct)
+        denom = total if total else 1
+        return {
+            "full": correct_full / denom,
+            "term": correct_term / denom,
+            "flip_rate": flips / denom,
+            "flip_to_correct": flip_to_correct / denom,
+            "flip_to_wrong": flip_to_wrong / denom,
+            "total": float(total),
+        }
+
     def _save_per_example(self, loglikelihood_dict_full, loglikelihood_dict_term,
-                          label_dict):
+                          label_dict, raw_stats=None):
         """Atomically save full/terminal scores from global rank 0 only."""
         # Keep the guard inside the writer as well as at its normal call site so
         # future/direct callers cannot accidentally reintroduce a multi-rank
@@ -689,13 +814,27 @@ class DecomposedICLMetric(ICLMetric):
             term_choices = loglikelihood_dict_term[doc_id]
             label = next(iter(label_dict[doc_id]))
             for cont_id in full_choices:
-                per_example.append({
+                record = {
                     "doc_id": doc_id,
                     "cont_id": cont_id,
                     "label": label,
                     "full_score": float(full_choices.get(cont_id, float("-inf"))),
                     "term_score": float(term_choices.get(cont_id, float("-inf"))),
-                })
+                }
+                if raw_stats is not None:
+                    raw = raw_stats.get(doc_id, {}).get(cont_id)
+                    if raw is not None:
+                        record.update({
+                            "full_score_raw": raw["full"],
+                            "term_score_raw": raw["term"],
+                            "nt_score_raw": raw["nt"],
+                            "n_terminal": raw["n_term"],
+                            "n_nonterminal": raw["n_nt"],
+                            "decomposition_residual": (
+                                raw["full"] - raw["term"] - raw["nt"]
+                            ),
+                        })
+                per_example.append(record)
         output_path = os.fspath(self.save_per_example_path)
         output_dir = os.path.dirname(output_path)
         if output_dir:
@@ -825,8 +964,7 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         return self.pause_spec[0]
 
     def convert_grammar_input(self, input_ids, grammar_type=None) -> List[int]:
-        if not isinstance(input_ids, np.ndarray):
-            input_ids = np.array(input_ids)
+        input_ids = self._native_token_array(input_ids)
         if grammar_type is None:
             grammar_type = self.transformer_grammar_type
         if (
@@ -860,6 +998,16 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         elif grammar_type[:4] == "tree":
             input_ids = self.vocab.convert_TGnpy_to_tree(input_ids)
         return input_ids.tolist()
+
+    @staticmethod
+    def _native_token_array(input_ids) -> np.ndarray:
+        """Return an unsigned dtype accepted by the native tree converters."""
+        input_ids = np.asarray(input_ids)
+        if input_ids.dtype.kind == "u" and input_ids.dtype.itemsize <= 4:
+            return input_ids
+        max_token = int(input_ids.max()) if input_ids.size else 0
+        dtype = np.uint16 if max_token <= np.iinfo(np.uint16).max else np.uint32
+        return input_ids.astype(dtype, copy=False)
 
     def encode_pushdown_with_metadata(self, string: str) -> Dict[str, List[Any]]:
         """Encode a parsed string as terminals, unary spans, and tree ids."""
@@ -1390,7 +1538,9 @@ class ICLMultiChoiceTaskDataset(metaclass=abc.ABCMeta):
         return batch
 
     def token_encode(self, string: str) -> List[int]:
-        ids = encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
+        ids = self._native_token_array(
+            encode_TG_string(self.tokenizer, string, string_with_POS_tags=False)
+        )
         if self.transformer_grammar_type == "tgtree":
             # TGTree: trained on LIN2 (TG) data — convert_treenpy_to_TG duplicates
             # each closing NT (1 ONT + 2 CNT). Must happen here, BEFORE ctx+cont
@@ -5097,8 +5247,10 @@ class MMLU(ICLMultiChoiceTaskDataset):
         tree_eval_type="default",
         pause_token_id=None,
         mc_labels=False,
+        exclude_shots_from_eval=False,
     ):
         self.mc_labels = mc_labels
+        self.exclude_shots_from_eval = exclude_shots_from_eval
         super().__init__(
             tokenizer=tokenizer,
             dataset_path=dataset_path,
@@ -5131,6 +5283,36 @@ class MMLU(ICLMultiChoiceTaskDataset):
                 doc = self.shots[category][i]
                 prompt += self.doc_to_text(doc, single_shot=True) + self.doc_to_continuations(doc, single_shot=True)[self.doc_to_label(doc)] + " \n \n"
             self.shots_prompt[category] = prompt
+        if self.exclude_shots_from_eval and self.split == split:
+            shot_keys = {
+                self._record_key(doc)
+                for subject_docs in self.shots.values()
+                for doc in subject_docs[: self.shots_num]
+            }
+            before = len(self.dataset)
+            self.dataset = [
+                doc for doc in self.dataset if self._record_key(doc) not in shot_keys
+            ]
+            removed = before - len(self.dataset)
+            if removed != len(shot_keys):
+                raise ValueError(
+                    "MMLU validation holdout did not remove exactly the fixed "
+                    f"shot set: removed={removed}, unique_shots={len(shot_keys)}"
+                )
+            self.validation_holdout_metadata = {
+                "source_split": split,
+                "shots": len(shot_keys),
+                "eval_examples": len(self.dataset),
+            }
+
+    @staticmethod
+    def _record_key(doc):
+        return (
+            doc["subject"],
+            doc["question"],
+            tuple(doc["choices"]),
+            tuple(doc["answer"]) if isinstance(doc["answer"], list) else doc["answer"],
+        )
     
     def load_local_datasets(self, split=None, ret=False, dataset_path=None):
         split = self.split if split is None else split
@@ -5497,6 +5679,7 @@ label_to_task_map = {
     "piqa": PIQA,
     "winogrande": WinoGrande,
     "openbook_qa": OpenBookQA,
+    "openbook_qa_validation": (OpenBookQA, {"split": "validation"}),
     "sciq": SciQ,
     "arc_easy": ArcEasy,
     "arc_challenge": ArcChallenge,
@@ -5526,6 +5709,18 @@ label_to_task_map = {
     "social_iqa_decomp": (SocialIQa, {"tree_eval_type": "default"}),
     "commonsense_qa_decomp": (CommonsenseQA, {"tree_eval_type": "default"}),
     "openbook_qa_decomp": (OpenBookQA, {"tree_eval_type": "default"}),
+    "openbook_qa_validation_decomp": (
+        OpenBookQA,
+        {"tree_eval_type": "default", "split": "validation"},
+    ),
+    "mmlu_validation_holdout": (
+        MMLU,
+        {
+            "dataset_path": "cais/mmlu",
+            "split": "validation",
+            "exclude_shots_from_eval": True,
+        },
+    ),
     "mmlu_stem_test": (MMLU, {"dataset_name": "stem", "split": "test"}),
     "mmlu_humanities_test": (MMLU, {"dataset_name": "humanities", "split": "test"}),
     "mmlu_social_sciences_test": (MMLU, {"dataset_name": "social_sciences", "split": "test"}),

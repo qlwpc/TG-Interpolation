@@ -1,0 +1,331 @@
+\begin{thebibliography}{37}
+\providecommand{\natexlab}[1]{#1}
+
+\bibitem[{Bisk et~al.(2020)Bisk, Zellers, Le~Bras, Gao, and
+  Choi}]{bisk2020piqa}
+Yonatan Bisk, Rowan Zellers, Ronan Le~Bras, Jianfeng Gao, and Yejin Choi. 2020.
+\newblock \href {https://doi.org/10.1609/aaai.v34i05.6239} {{PIQA}: Reasoning
+  about physical commonsense in natural language}.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial
+  Intelligence}, volume~34, pages 7432--7439.
+
+\bibitem[{Clark et~al.(2019)Clark, Lee, Chang, Kwiatkowski, Collins, and
+  Toutanova}]{clark-etal-2019-boolq}
+Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael
+  Collins, and Kristina Toutanova. 2019.
+\newblock \href {https://doi.org/10.18653/v1/N19-1300} {{B}ool{Q}: Exploring
+  the surprising difficulty of natural yes/no questions}.
+\newblock In \emph{Proceedings of the 2019 Conference of the North {A}merican
+  Chapter of the Association for Computational Linguistics: Human Language
+  Technologies, Volume 1 (Long and Short Papers)}, pages 2924--2936,
+  Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem[{Clark et~al.(2018)Clark, Cowhey, Etzioni, Khot, Sabharwal, Schoenick,
+  and Tafjord}]{clark2018think}
+Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa
+  Schoenick, and Oyvind Tafjord. 2018.
+\newblock Think you have solved question answering? try {ARC}, the {AI2}
+  reasoning challenge.
+\newblock \emph{arXiv preprint arXiv:1803.05457}.
+
+\bibitem[{Dao(2024)}]{dao2023flashattention2}
+Tri Dao. 2024.
+\newblock \href
+  {https://proceedings.iclr.cc/paper_files/paper/2024/file/98ed250b203d1ac6b24bbcf263e3d4a7-Paper-Conference.pdf}
+  {Flash{A}ttention-2: Faster attention with better parallelism and work
+  partitioning}.
+\newblock In \emph{International Conference on Learning Representations},
+  volume 2024, pages 35549--35562.
+
+\bibitem[{Dong et~al.(2025)Dong, Feng, Guessous, Liang, and He}]{dong2024flex}
+Juechu Dong, Boyuan Feng, Driss Guessous, Yanbo Liang, and Horace He. 2025.
+\newblock \href
+  {https://proceedings.mlsys.org/paper_files/paper/2025/file/61a9278dfef5f871b5e472389f8d6fa1-Paper-Conference.pdf}
+  {Flex{A}ttention: A programming model for generating fused attention
+  variants.}
+\newblock In \emph{Proceedings of Machine Learning and Systems}, volume~7.
+  MLSys.
+
+\bibitem[{Gema et~al.(2025)Gema, Leang, Hong, Devoto, Mancino, Saxena, He,
+  Zhao, Du, Ghasemi~Madani, Barale, McHardy, Harris, Kaddour, Van~Krieken, and
+  Minervini}]{gema-etal-2025-done}
+Aryo~Pradipta Gema, Joshua Ong~Jun Leang, Giwon Hong, Alessio Devoto, Alberto
+  Carlo~Maria Mancino, Rohit Saxena, Xuanli He, Yu~Zhao, Xiaotang Du,
+  Mohammad~Reza Ghasemi~Madani, Claire Barale, Robert McHardy, Joshua Harris,
+  Jean Kaddour, Emile Van~Krieken, and Pasquale Minervini. 2025.
+\newblock \href {https://doi.org/10.18653/v1/2025.naacl-long.262} {Are we done
+  with {MMLU}?}
+\newblock In \emph{Proceedings of the 2025 Conference of the Nations of the
+  Americas Chapter of the Association for Computational Linguistics: Human
+  Language Technologies (Volume 1: Long Papers)}, pages 5069--5096,
+  Albuquerque, New Mexico. Association for Computational Linguistics.
+
+\bibitem[{Goyal et~al.(2024)Goyal, Ji, Rawat, Menon, Kumar, and
+  Nagarajan}]{goyal2024think}
+Sachin Goyal, Ziwei Ji, Ankit~Singh Rawat, Aditya~Krishna Menon, Sanjiv Kumar,
+  and Vaishnavh Nagarajan. 2024.
+\newblock \href
+  {https://proceedings.iclr.cc/paper_files/paper/2024/file/76917808731dae9e6d62c2a7a6afb542-Paper-Conference.pdf}
+  {Think before you speak: Training language models with pause tokens}.
+\newblock In \emph{International Conference on Learning Representations},
+  volume 2024, pages 27896--27923.
+
+\bibitem[{Groeneveld et~al.(2024)Groeneveld, Beltagy, Walsh, Bhagia, Kinney,
+  Tafjord, Jha, Ivison, Magnusson, Wang, Arora, Atkinson, Authur, Chandu,
+  Cohan, Dumas, Elazar, Gu, Hessel, Khot, Merrill, Morrison, Muennighoff, Naik,
+  Nam, Peters, Pyatkin, Ravichander, Schwenk, Shah, Smith, Strubell, Subramani,
+  Wortsman, Dasigi, Lambert, Richardson, Zettlemoyer, Dodge, Lo, Soldaini,
+  Smith, and Hajishirzi}]{groeneveld-etal-2024-olmo}
+Dirk Groeneveld, Iz~Beltagy, Evan Walsh, Akshita Bhagia, Rodney Kinney, Oyvind
+  Tafjord, Ananya Jha, Hamish Ivison, Ian Magnusson, Yizhong Wang, Shane Arora,
+  David Atkinson, Russell Authur, Khyathi Chandu, Arman Cohan, Jennifer Dumas,
+  Yanai Elazar, Yuling Gu, Jack Hessel, and 24 others. 2024.
+\newblock \href {https://doi.org/10.18653/v1/2024.acl-long.841} {{OLM}o:
+  Accelerating the science of language models}.
+\newblock In \emph{Proceedings of the 62nd Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 15789--15809,
+  Bangkok, Thailand. Association for Computational Linguistics.
+
+\bibitem[{Gu et~al.(2025)Gu, Tafjord, Kuehl, Haddad, Dodge, and
+  Hajishirzi}]{gu-etal-2025-olmes}
+Yuling Gu, Oyvind Tafjord, Bailey Kuehl, Dany Haddad, Jesse Dodge, and Hannaneh
+  Hajishirzi. 2025.
+\newblock \href {https://doi.org/10.18653/v1/2025.findings-naacl.282} {{OLMES}:
+  A standard for language model evaluations}.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  NAACL 2025}, pages 5020--5048, Albuquerque, New Mexico. Association for
+  Computational Linguistics.
+
+\bibitem[{Hale(2001)}]{hale-2001-probabilistic}
+John Hale. 2001.
+\newblock \href {https://aclanthology.org/N01-1021/} {A probabilistic {E}arley
+  parser as a psycholinguistic model}.
+\newblock In \emph{Second Meeting of the North {A}merican Chapter of the
+  Association for Computational Linguistics}.
+
+\bibitem[{Hendrycks et~al.(2021)Hendrycks, Burns, Basart, Zou, Mazeika, Song,
+  and Steinhardt}]{hendrycks2021measuring}
+Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn
+  Song, and Jacob Steinhardt. 2021.
+\newblock \href {https://openreview.net/forum?id=d7KBjmI3GmQ} {Measuring
+  massive multitask language understanding}.
+\newblock In \emph{International Conference on Learning Representations}.
+
+\bibitem[{Hu et~al.(2020)Hu, Gauthier, Qian, Wilcox, and
+  Levy}]{hu-etal-2020-systematic}
+Jennifer Hu, Jon Gauthier, Peng Qian, Ethan Wilcox, and Roger Levy. 2020.
+\newblock \href {https://doi.org/10.18653/v1/2020.acl-main.158} {A systematic
+  assessment of syntactic generalization in neural language models}.
+\newblock In \emph{Proceedings of the 58th Annual Meeting of the Association
+  for Computational Linguistics}, pages 1725--1744, Online. Association for
+  Computational Linguistics.
+
+\bibitem[{Hu et~al.(2024)Hu, Ji, Zhu, Wu, and Tu}]{hu-etal-2024-generative}
+Xiang Hu, Pengyu Ji, Qingyang Zhu, Wei Wu, and Kewei Tu. 2024.
+\newblock \href {https://doi.org/10.18653/v1/2024.acl-long.145} {Generative
+  pretrained structured transformers: Unsupervised syntactic language models at
+  scale}.
+\newblock In \emph{Proceedings of the 62nd Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 2640--2657,
+  Bangkok, Thailand. Association for Computational Linguistics.
+
+\bibitem[{Huang et~al.(2026)Huang, Zhao, Zhou, and Tu}]{huang2026GiLT}
+Tianyu Huang, Yida Zhao, Chuyan Zhou, and Kewei Tu. 2026.
+\newblock {GiLT}: Augmenting transformer language models with dependency
+  graphs.
+\newblock \emph{arXiv preprint arXiv:2605.15562}.
+
+\bibitem[{Kitaev and Klein(2018)}]{kitaev-klein-2018-constituency}
+Nikita Kitaev and Dan Klein. 2018.
+\newblock \href {https://doi.org/10.18653/v1/P18-1249} {Constituency parsing
+  with a self-attentive encoder}.
+\newblock In \emph{Proceedings of the 56th Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 2676--2686,
+  Melbourne, Australia. Association for Computational Linguistics.
+
+\bibitem[{Li et~al.(2025)Li, Zheng, Wang, Zhang, Wang, Xuyang, Fan, Ding, Wang,
+  Ding, Zhou, Zhang, and Jiang}]{li2025predictable}
+Houyi Li, Wenzhen Zheng, Qiufeng Wang, Hanshan Zhang, Zili Wang, Shijie Xuyang,
+  Yuantao Fan, Zhenyu Ding, Haoying Wang, Ning Ding, Shuigeng Zhou, Xiangyu
+  Zhang, and Daxin Jiang. 2025.
+\newblock Predictable scale: Part i, step law--optimal hyperparameter scaling
+  law in large language model pretraining.
+\newblock \emph{arXiv preprint arXiv:2503.04715}.
+
+\bibitem[{Lin(2004)}]{lin-2004-rouge}
+Chin-Yew Lin. 2004.
+\newblock \href {https://aclanthology.org/W04-1013/} {{ROUGE}: A package for
+  automatic evaluation of summaries}.
+\newblock In \emph{Text Summarization Branches Out}, pages 74--81, Barcelona,
+  Spain. Association for Computational Linguistics.
+
+\bibitem[{Loshchilov and Hutter(2019)}]{loshchilov2017decoupledADAM}
+Ilya Loshchilov and Frank Hutter. 2019.
+\newblock \href {https://openreview.net/forum?id=Bkg6RiCqY7} {Decoupled weight
+  decay regularization}.
+\newblock In \emph{International Conference on Learning Representations}.
+
+\bibitem[{Mihaylov et~al.(2018)Mihaylov, Clark, Khot, and
+  Sabharwal}]{mihaylov-etal-2018-suit}
+Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. 2018.
+\newblock \href {https://doi.org/10.18653/v1/D18-1260} {Can a suit of armor
+  conduct electricity? a new dataset for open book question answering}.
+\newblock In \emph{Proceedings of the 2018 Conference on Empirical Methods in
+  Natural Language Processing}, pages 2381--2391, Brussels, Belgium.
+  Association for Computational Linguistics.
+
+\bibitem[{Murty et~al.(2023)Murty, Sharma, Andreas, and
+  Manning}]{murty-etal-2023-pushdown}
+Shikhar Murty, Pratyusha Sharma, Jacob Andreas, and Christopher Manning. 2023.
+\newblock \href {https://doi.org/10.18653/v1/2023.emnlp-main.195} {Pushdown
+  layers: Encoding recursive structure in transformer language models}.
+\newblock In \emph{Proceedings of the 2023 Conference on Empirical Methods in
+  Natural Language Processing}, pages 3233--3247, Singapore. Association for
+  Computational Linguistics.
+
+\bibitem[{Narayan et~al.(2018)Narayan, Cohen, and
+  Lapata}]{narayan-etal-2018-dont}
+Shashi Narayan, Shay~B. Cohen, and Mirella Lapata. 2018.
+\newblock \href {https://doi.org/10.18653/v1/D18-1206} {Don{'}t give me the
+  details, just the summary! topic-aware convolutional neural networks for
+  extreme summarization}.
+\newblock In \emph{Proceedings of the 2018 Conference on Empirical Methods in
+  Natural Language Processing}, pages 1797--1807, Brussels, Belgium.
+  Association for Computational Linguistics.
+
+\bibitem[{Penedo et~al.(2024)Penedo, Kydl\'{\i}\v{c}ek, allal, Lozhkov,
+  Mitchell, Raffel, Von~Werra, and Wolf}]{penedo2024fineweb}
+Guilherme Penedo, Hynek Kydl\'{\i}\v{c}ek, Loubna~Ben allal, Anton Lozhkov,
+  Margaret Mitchell, Colin Raffel, Leandro Von~Werra, and Thomas Wolf. 2024.
+\newblock \href {https://doi.org/10.52202/079017-0970} {The fineweb datasets:
+  Decanting the web for the finest text data at scale}.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~37, pages 30811--30849. Curran Associates, Inc.
+
+\bibitem[{Radford et~al.(2019)Radford, Wu, Child, Luan, Amodei, and
+  Sutskever}]{radford2019language}
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya
+  Sutskever. 2019.
+\newblock Language models are unsupervised multitask learners.
+\newblock \emph{OpenAI blog}, 1(8):9.
+
+\bibitem[{Sakaguchi et~al.(2020)Sakaguchi, Le~Bras, Bhagavatula, and
+  Choi}]{sakaguchi2020winogrande}
+Keisuke Sakaguchi, Ronan Le~Bras, Chandra Bhagavatula, and Yejin Choi. 2020.
+\newblock \href {https://doi.org/10.1609/aaai.v34i05.6399} {{WinoGrande}: An
+  adversarial {Winograd} schema challenge at scale}.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial
+  Intelligence}, volume~34, pages 8732--8740.
+
+\bibitem[{Sap et~al.(2019)Sap, Rashkin, Chen, Le~Bras, and
+  Choi}]{sap-etal-2019-social}
+Maarten Sap, Hannah Rashkin, Derek Chen, Ronan Le~Bras, and Yejin Choi. 2019.
+\newblock \href {https://doi.org/10.18653/v1/D19-1454} {Social {IQ}a:
+  Commonsense reasoning about social interactions}.
+\newblock In \emph{Proceedings of the 2019 Conference on Empirical Methods in
+  Natural Language Processing and the 9th International Joint Conference on
+  Natural Language Processing (EMNLP-IJCNLP)}, pages 4463--4473, Hong Kong,
+  China. Association for Computational Linguistics.
+
+\bibitem[{Sartran et~al.(2022)Sartran, Barrett, Kuncoro, Stanojevi{\'c},
+  Blunsom, and Dyer}]{sartran-etal-2022-transformer}
+Laurent Sartran, Samuel Barrett, Adhiguna Kuncoro, Milo{\v{s}} Stanojevi{\'c},
+  Phil Blunsom, and Chris Dyer. 2022.
+\newblock \href {https://doi.org/10.1162/tacl_a_00526} {Transformer grammars:
+  Augmenting transformer language models with syntactic inductive biases at
+  scale}.
+\newblock \emph{Transactions of the Association for Computational Linguistics},
+  10:1423--1439.
+
+\bibitem[{Shazeer(2020)}]{shazeer2020gluSWIGLU}
+Noam Shazeer. 2020.
+\newblock {GLU} variants improve transformer.
+\newblock \emph{arXiv preprint arXiv:2002.05202}.
+
+\bibitem[{Stern et~al.(2017)Stern, Fried, and
+  Klein}]{stern-etal-2017-effective}
+Mitchell Stern, Daniel Fried, and Dan Klein. 2017.
+\newblock \href {https://doi.org/10.18653/v1/D17-1178} {Effective inference for
+  generative neural parsing}.
+\newblock In \emph{Proceedings of the 2017 Conference on Empirical Methods in
+  Natural Language Processing}, pages 1695--1700, Copenhagen, Denmark.
+  Association for Computational Linguistics.
+
+\bibitem[{Su et~al.(2024)Su, Ahmed, Lu, Pan, Bo, and Liu}]{su2024roformerROPE}
+Jianlin Su, Murtadha Ahmed, Yu~Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu.
+  2024.
+\newblock \href {https://doi.org/10.1016/j.neucom.2023.127063} {{RoFormer}:
+  Enhanced transformer with rotary position embedding}.
+\newblock \emph{Neurocomputing}, 568:127063.
+
+\bibitem[{Talmor et~al.(2019)Talmor, Herzig, Lourie, and
+  Berant}]{talmor-etal-2019-commonsenseqa}
+Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. 2019.
+\newblock \href {https://doi.org/10.18653/v1/N19-1421} {{C}ommonsense{QA}: A
+  question answering challenge targeting commonsense knowledge}.
+\newblock In \emph{Proceedings of the 2019 Conference of the North {A}merican
+  Chapter of the Association for Computational Linguistics: Human Language
+  Technologies, Volume 1 (Long and Short Papers)}, pages 4149--4158,
+  Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem[{Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones,
+  Gomez, Kaiser, and Polosukhin}]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N Gomez, \L~ukasz Kaiser, and Illia Polosukhin. 2017.
+\newblock \href
+  {https://proceedings.neurips.cc/paper_files/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf}
+  {Attention is all you need}.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~30. Curran Associates, Inc.
+
+\bibitem[{Warstadt et~al.(2020)Warstadt, Parrish, Liu, Mohananey, Peng, Wang,
+  and Bowman}]{warstadt-etal-2020-blimp-benchmark}
+Alex Warstadt, Alicia Parrish, Haokun Liu, Anhad Mohananey, Wei Peng, Sheng-Fu
+  Wang, and Samuel~R. Bowman. 2020.
+\newblock \href {https://doi.org/10.1162/tacl_a_00321} {{BL}i{MP}: The
+  benchmark of linguistic minimal pairs for {E}nglish}.
+\newblock \emph{Transactions of the Association for Computational Linguistics},
+  8:377--392.
+
+\bibitem[{Yang et~al.(2025)Yang, Li, Yang, Zhang, Hui, Zheng, Yu, Gao, Huang,
+  Lv et~al.}]{yang2025qwen3}
+An~Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo~Zheng, Bowen
+  Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025.
+\newblock {Qwen3} technical report.
+\newblock \emph{arXiv preprint arXiv:2505.09388}.
+
+\bibitem[{Zellers et~al.(2019)Zellers, Holtzman, Bisk, Farhadi, and
+  Choi}]{zellers-etal-2019-hellaswag}
+Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. 2019.
+\newblock \href {https://doi.org/10.18653/v1/P19-1472} {{H}ella{S}wag: Can a
+  machine really finish your sentence?}
+\newblock In \emph{Proceedings of the 57th Annual Meeting of the Association
+  for Computational Linguistics}, pages 4791--4800, Florence, Italy.
+  Association for Computational Linguistics.
+
+\bibitem[{Zhang and Sennrich(2019)}]{zhang2019rootRMS}
+Biao Zhang and Rico Sennrich. 2019.
+\newblock \href
+  {https://proceedings.neurips.cc/paper_files/paper/2019/file/1e8a19426224ca89e83cef47f1e7f53b-Paper.pdf}
+  {Root mean square layer normalization}.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~32. Curran Associates, Inc.
+
+\bibitem[{Zhao et~al.(2024)Zhao, Lou, and Tu}]{zhao-etal-2024-dependency}
+Yida Zhao, Chao Lou, and Kewei Tu. 2024.
+\newblock \href {https://doi.org/10.18653/v1/2024.acl-long.84} {Dependency
+  transformer grammars: Integrating dependency structures into transformer
+  language models}.
+\newblock In \emph{Proceedings of the 62nd Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 1543--1556,
+  Bangkok, Thailand. Association for Computational Linguistics.
+
+\bibitem[{Zhao et~al.(2025)Zhao, Xve, Hu, and Tu}]{zhao-etal-2025-systematic}
+Yida Zhao, Hao Xve, Xiang Hu, and Kewei Tu. 2025.
+\newblock \href {https://doi.org/10.18653/v1/2025.acl-long.350} {A systematic
+  study of compositional syntactic transformer language models}.
+\newblock In \emph{Proceedings of the 63rd Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 7070--7083,
+  Vienna, Austria. Association for Computational Linguistics.
+
+\end{thebibliography}

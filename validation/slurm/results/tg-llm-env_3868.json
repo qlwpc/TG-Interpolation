@@ -1,0 +1,114 @@
+{
+  "checks": {
+    "benepar_parser": {
+      "details": {
+        "parser": "Parser",
+        "root_label": "TOP"
+      },
+      "status": "passed"
+    },
+    "cmake": {
+      "details": {
+        "command": [
+          "/home/wangpch/.spack/opt/spack/linux-ubuntu20.04-icelake/gcc-11.5.0/cmake-3.29.6-vjbss7aibdhilmfpmerbwsjhvolnj5sb/bin/cmake",
+          "--version"
+        ],
+        "stderr": "",
+        "stdout": "cmake version 3.29.6\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake)."
+      },
+      "status": "passed"
+    },
+    "cuda_toolkit": {
+      "details": {
+        "nvcc": null,
+        "status": "not installed (runtime validation does not require nvcc)"
+      },
+      "status": "passed"
+    },
+    "extensions": {
+      "details": {
+        "cppbackend": "/home/wangpch/TG-Interpolation/olmo/gpst/cpp_extension/cppbackend.cpython-310-x86_64-linux-gnu.so",
+        "tg_mask": "/home/wangpch/TG-Interpolation/olmo/data/tg_mask.cpython-310-x86_64-linux-gnu.so"
+      },
+      "status": "passed"
+    },
+    "flash_attention_cuda": {
+      "details": {
+        "dtype": "torch.float16",
+        "shape": [
+          1,
+          16,
+          2,
+          64
+        ]
+      },
+      "status": "passed"
+    },
+    "nvidia_smi": {
+      "details": {
+        "command": [
+          "nvidia-smi"
+        ],
+        "stderr": "",
+        "stdout": "Tue Sep  1 12:16:02 2026       \n+---------------------------------------------------------------------------------------+\n| NVIDIA-SMI 535.230.02             Driver Version: 535.230.02   CUDA Version: 12.2     |\n|-----------------------------------------+----------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |\n|                                         |                      |               MIG M. |\n|=========================================+======================+======================|\n|   0  NVIDIA GeForce RTX 3090        Off | 00000000:35:00.0 Off |                  N/A |\n| 30%   23C    P8              22W / 350W |     10MiB / 24576MiB |      0%      Default |\n|                                         |                      |                  N/A |\n+-----------------------------------------+----------------------+----------------------+\n                                                                                         \n+---------------------------------------------------------------------------------------+\n| Processes:                                                                            |\n|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |\n|        ID   ID                                                             Usage      |\n|=======================================================================================|\n|    0   N/A  N/A      3127      G   /usr/lib/xorg/Xorg                            4MiB |\n+---------------------------------------------------------------------------------------+"
+      },
+      "status": "passed"
+    },
+    "package_versions": {
+      "details": {
+        "benepar": "0.2.0",
+        "flash-attn": "2.8.2",
+        "nltk": "3.9.3",
+        "numpy": "2.2.6",
+        "protobuf": "6.33.6",
+        "spacy": "3.8.11",
+        "torch": "2.7.1",
+        "torchaudio": "2.7.1",
+        "torchvision": "0.22.1",
+        "wandb": "0.24.1"
+      },
+      "status": "passed"
+    },
+    "python_stack": {
+      "details": {
+        "numpy_shape": [
+          2,
+          2
+        ],
+        "tree_leaves": [
+          "test",
+          "works"
+        ]
+      },
+      "status": "passed"
+    },
+    "torch_cuda": {
+      "details": {
+        "compute_capability": [
+          8,
+          6
+        ],
+        "device_count": 1,
+        "device_name": "NVIDIA GeForce RTX 3090",
+        "matmul_sum": 3680.0,
+        "torch": "2.7.1+cu126",
+        "torch_cuda": "12.6"
+      },
+      "status": "passed"
+    },
+    "wandb_offline": {
+      "details": {
+        "mode": "offline",
+        "version": "0.24.1"
+      },
+      "status": "passed"
+    }
+  },
+  "conda_prefix": "/home/wangpch/.conda/envs/LLM",
+  "cuda_visible_devices": "0",
+  "failed_checks": [],
+  "job_id": "3868",
+  "node": "rtx3090b",
+  "python": "/home/wangpch/.conda/envs/LLM/bin/python",
+  "status": "passed"
+}

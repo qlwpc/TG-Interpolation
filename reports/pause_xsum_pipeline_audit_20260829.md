@@ -67,8 +67,9 @@ Five-seed full-test results (mean ± sample SD, percentage scale) are:
   length from 10.0 to 23.5 words. This isolates a decoding defect, but is not a
   final model-quality claim because the checkpoint itself was trained through
   the defective data path.
-- Existing full-test R-AVG values around `0.0278`--`0.0279` are parsed evidence
-  of the failure and must not be reported as valid Pause performance.
+- Outputs produced by the affected v1 pipeline have been removed from the
+  repository's formal result documents and must not be reported as Pause
+  performance.
 
 Smoke metrics are execution-path checks, not accuracy estimates. The final
 scientific comparison is the five-seed full-test output from array `989161`.

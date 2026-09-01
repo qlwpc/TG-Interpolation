@@ -21,13 +21,13 @@ Their candidate IDs must not be joined. The mmap loader is
 `olmo.eval.native_model_topk_corpus`.
 
 ```bash
-python datatools/parse_data/generate_native_topk.py audit
-python datatools/parse_data/generate_native_topk.py reuse-pushdown \
+python datatools/parse_test_docppl_data/generate_native_topk.py audit
+python datatools/parse_test_docppl_data/generate_native_topk.py reuse-pushdown \
   --reuse-pushdown-from dataset/bbc-news/native_nary_300 \
   --shard-id 0 --num-shards 28
-python datatools/parse_data/generate_native_topk.py generate \
+python datatools/parse_test_docppl_data/generate_native_topk.py generate \
   --component gpst --shard-id 0 --num-shards 28
-python datatools/parse_data/generate_native_topk.py finalize \
+python datatools/parse_test_docppl_data/generate_native_topk.py finalize \
   --num-shards 28
 ```
 
@@ -42,8 +42,8 @@ every candidate-record length, preserves the document index, publishes files
 atomically, and writes `manifest.json`.
 
 ```bash
-python datatools/parse_data/tree_to_tg.py
-python datatools/parse_data/tree_to_tg.py --validate-only
+python datatools/parse_test_docppl_data/tree_to_tg.py
+python datatools/parse_test_docppl_data/tree_to_tg.py --validate-only
 ```
 
 `normalize_document_boundaries.py` is the one-time BOS/EOS normalization tool.

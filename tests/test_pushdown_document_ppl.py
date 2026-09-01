@@ -5,6 +5,7 @@ import torch
 
 from olmo.eval.pushdown_document_ppl import (
     PushdownGoldCandidate,
+    _attachment_nll_from_logits,
     _compress_candidates,
     _weighted_logsumexp,
 )
@@ -32,3 +33,34 @@ def test_structure_compression_preserves_original_candidate_mass():
     assert _weighted_logsumexp(unique_nll, counts).item() == pytest.approx(
         torch.logsumexp(-expanded_nll, 0).item()
     )
+
+
+def test_teacher_forced_v1_conditions_on_legal_targets_but_v2_does_not():
+    logits = torch.tensor(
+        [[
+            [0.0, -torch.inf, -torch.inf],
+            [4.0, 1.0, -torch.inf],
+        ]]
+    )
+    targets = torch.tensor([[0, 1]])
+    legal = torch.tensor(
+        [[
+            [True, False, False],
+            [False, True, False],
+        ]]
+    )
+    v1 = _attachment_nll_from_logits(logits, targets, legal, "stack_legal")
+    v2 = _attachment_nll_from_logits(logits, targets, legal, "sentence_causal")
+    assert v1.item() == pytest.approx(0.0)
+    assert v2.item() == pytest.approx(
+        -torch.log_softmax(logits[0, 1], dim=0)[1].item()
+    )
+    assert v2.item() > v1.item()
+
+
+def test_teacher_forced_protocol_rejects_illegal_gold_target():
+    logits = torch.zeros(1, 1, 2)
+    targets = torch.tensor([[1]])
+    legal = torch.tensor([[[True, False]]])
+    with pytest.raises(ValueError, match="outside its legal action set"):
+        _attachment_nll_from_logits(logits, targets, legal, "sentence_causal")

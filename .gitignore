@@ -13,6 +13,9 @@ slmmask/
 some_note.md
 some_note_new.md
 *.txt
+# These are source/evidence files despite their conventional .txt suffix.
+!olmo/data/tgmasking/CMakeLists.txt
+!validation/environment/*.txt
 
 build310/
 build/

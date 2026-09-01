@@ -39,7 +39,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from datatools.parse_data.native_topk import (  # noqa: E402
+from datatools.parse_test_docppl_data.native_topk import (  # noqa: E402
     adapt_native_binary_candidates_to_gpst,
     decode_labeled_scores_nary_topk,
     decode_labeled_scores_topk,
