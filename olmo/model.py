@@ -79,6 +79,54 @@ def _flex_attention_kernel_options() -> Optional[Dict[str, int]]:
         )
     return {"fwd_num_stages": stages, "bwd_num_stages": stages}
 
+
+def _use_flex_for_structured_attention(
+    config: ModelConfig,
+    sequence_length: int,
+    *,
+    training: bool,
+    has_attention_bias: bool,
+    has_past_key_values: bool,
+    use_cache: bool = False,
+) -> bool:
+    """Route a TG-style structured mask to Flex or the dense-mask SDPA path.
+
+    Pushdown is intentionally excluded: its score-mod path has a different
+    performance envelope and is selected separately in ``OLMo.forward``.
+    """
+    if (
+        config.transformer_grammar_type == "pushdown"
+        or not config.flex_attention
+        or not has_attention_bias
+        or has_past_key_values
+        or use_cache
+    ):
+        return False
+    threshold = (
+        config.flex_attention_train_min_sequence_length
+        if training
+        else config.flex_attention_eval_min_sequence_length
+    )
+    return sequence_length >= threshold
+
+
+def _flex_attention_pad_multiple(config: ModelConfig) -> Optional[int]:
+    """Resolve the configured padding multiple, preserving the legacy env override."""
+    raw = os.environ.get("OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE")
+    if raw is None:
+        return config.flex_attention_pad_to_multiple
+    try:
+        multiple = int(raw)
+    except ValueError as exc:
+        raise OLMoConfigurationError(
+            "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive multiple of 128"
+        ) from exc
+    if multiple <= 0 or multiple % 128 != 0:
+        raise OLMoConfigurationError(
+            "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive multiple of 128"
+        )
+    return multiple
+
 if sys.version_info.minor > 8:
     from collections.abc import MutableMapping
 elif sys.version_info.minor == 8:
@@ -794,8 +842,11 @@ class OLMoBlock(nn.Module):
         When ``tree_spans`` is None (no parse) the depth bias is zero and the caller
         falls through to the standard attention path.
         """
-        from olmo.pushdown import compute_depth_matrix_gpu, compute_last_depth_rows_gpu
-        B, nh, query_length, hs = q.shape
+        from olmo.pushdown import (
+            compute_depth_matrix_gpu,
+            compute_depth_rows_gpu,
+        )
+        B, nh, query_len, hs = q.shape
         # Stale depth tape over the (causal) key length. tree_spans: (B, M, 3).
         # S depends ONLY on tree_spans (layer-independent), so memoize it across
         # the 12 blocks within ONE forward pass — otherwise compute_depth_matrix_gpu
@@ -806,20 +857,24 @@ class OLMoBlock(nn.Module):
         # forward-pass entry during the backward recompute is correct.
         cache = self.__cache
         S = cache.get("pushdown_depth_matrix") if cache is not None else None
-        expected_rows = query_length if query_length < key_len else key_len
+        expected_rows = query_len if query_len < key_len else key_len
         if (S is None or S.shape != (B, expected_rows, key_len)
                 or S.device != q.device):
             spans = tree_spans.to(q.device)
-            if query_length < key_len:
-                S = compute_last_depth_rows_gpu(spans, key_len, query_length)
+            if query_len < key_len:
+                S = compute_depth_rows_gpu(
+                    spans, key_len, key_len - query_len, key_len
+                )
             else:
-                S = compute_depth_matrix_gpu(spans, key_len)  # (B, key, key) int8
+                S = compute_depth_matrix_gpu(spans, key_len)  # (B, k, k)
             if cache is not None:
                 cache["pushdown_depth_matrix"] = S
-        # With a KV cache, q contains only the new suffix while k/v contain
-        # candidate-0 prefix plus that suffix.  The depth tape is indexed in
-        # absolute sequence coordinates, so retain its final query rows.
-        D = S.clamp(max=self.config.pushdown_max_depth).long()
+        # During cached decoding q contains only the newly appended token(s),
+        # while k/v contain the complete prefix. Select the bottom query rows of
+        # the full stale-depth tape. In training/prefill query_len == key_len and
+        # this is the original square matrix.
+        D = S if expected_rows == query_len else S[:, key_len - query_len : key_len, :key_len]
+        D = D.clamp(max=self.config.pushdown_max_depth).long()  # (B, q, k)
         # Per-head depth embedding E_l: (n_heads, max_depth+1, d_head).
         n_kv = k.shape[1]
         kv_dim = n_kv * hs
@@ -882,7 +937,7 @@ class OLMoBlock(nn.Module):
             #     the grad path is fixed (planned: detach P in score_mod + an explicit
             #     aux loss that backprops to depth_emb).
             inv_sqrt_hs = 1.0 / (hs ** 0.5)
-            _B, _nh, _n, _key_n = B, nh, query_length, key_len
+            _B, _nh, _n, _key_n = B, nh, query_len, key_len
             # Bias representation. DEFAULT = fix #2 (the production path):
             #   gather-by-depth score_mod with P DETACHED (fast forward — flash-fused,
             #   77MB P, no 2.4GB materialization, no zeros_and_scatter) + a custom
@@ -1014,10 +1069,9 @@ class OLMoBlock(nn.Module):
             # bottom rows of a square causal bias from ``attention``.
             if ab.dim() == 3:
                 ab = ab.unsqueeze(1)
-            if ab.shape[-2] != query_length:
-                ab = ab[:, :, key_len - query_length:key_len, :key_len]
+            ab = ab[..., -query_len:, :key_len]
             if ab.shape[1] == 1:
-                ab = ab.expand(B, nh, query_length, key_len)
+                ab = ab.expand(B, nh, query_len, key_len)
             ab = ab.to(dtype=torch.float32)
             # Replace any -inf (masked) kept as -inf; add depth bias elsewhere.
             mask_neg = ab.isneginf()
@@ -1026,8 +1080,13 @@ class OLMoBlock(nn.Module):
             del ab, mask_neg, depth_bias
         else:
             # No prebuilt bias: build a causal mask + depth bias (fp32).
-            causal = torch.full((query_length, key_len), float("-inf"), device=q.device, dtype=torch.float32)
-            causal = torch.triu(causal, diagonal=key_len - query_length + 1)
+            q_positions = torch.arange(
+                key_len - query_len, key_len, device=q.device
+            )[:, None]
+            k_positions = torch.arange(key_len, device=q.device)[None, :]
+            causal = torch.zeros(
+                (query_len, key_len), device=q.device, dtype=torch.float32
+            ).masked_fill(k_positions > q_positions, float("-inf"))
             attn_mask = depth_bias + causal.unsqueeze(0).unsqueeze(0)
             del depth_bias, causal
 
@@ -1502,6 +1561,20 @@ class OLMo(nn.Module):
         if self.config.flex_attention and self.config.attention_dropout != 0.0:
             raise OLMoConfigurationError("Flex attention is currently not supported with nonzero attention dropout")
 
+        for field_name in (
+            "flex_attention_train_min_sequence_length",
+            "flex_attention_eval_min_sequence_length",
+        ):
+            if getattr(self.config, field_name) < 0:
+                raise OLMoConfigurationError(f"{field_name} must be non-negative")
+        flex_pad_multiple = self.config.flex_attention_pad_to_multiple
+        if flex_pad_multiple is not None and (
+            flex_pad_multiple <= 0 or flex_pad_multiple % 128 != 0
+        ):
+            raise OLMoConfigurationError(
+                "flex_attention_pad_to_multiple must be a positive multiple of 128 or null"
+            )
+
         if self.config.alibi and self.config.rope:
             raise OLMoConfigurationError("ALiBi and RoPE are mutually exclusive")
 
@@ -1801,77 +1874,183 @@ class OLMo(nn.Module):
         # shape: (batch_size, seq_len, d_model)
         x = self.transformer.emb_drop(x)  # type: ignore
 
-        # Opt-in workaround for FlexAttention tail-block failures. Padding
-        # happens after token embedding and is removed before logits, so the
-        # original tokens and loss shape are unchanged. Padded query rows attend
-        # only to themselves to avoid fully-masked softmax rows; original queries
-        # cannot attend to padded keys.
-        flex_unpadded_seq_len: Optional[int] = None
-        flex_pad_raw = os.environ.get("OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE")
-        if flex_pad_raw is not None and self.config.flex_attention and attention_bias is not None:
-            try:
-                flex_pad_multiple = int(flex_pad_raw)
-            except ValueError as exc:
-                raise OLMoConfigurationError(
-                    "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive integer"
-                ) from exc
-            if flex_pad_multiple <= 0:
-                raise OLMoConfigurationError(
-                    "OLMO_FLEX_ATTENTION_PAD_TO_MULTIPLE must be a positive integer"
-                )
-            if attention_mask is not None:
-                raise OLMoConfigurationError(
-                    "FlexAttention padding does not support attention_mask"
-                )
-            if attention_bias.shape[-2:] != (seq_len, seq_len):
-                raise OLMoConfigurationError(
-                    f"FlexAttention padding expected a square {seq_len}x{seq_len} bias, "
-                    f"found {tuple(attention_bias.shape[-2:])}"
-                )
-            padded_seq_len = math.ceil(seq_len / flex_pad_multiple) * flex_pad_multiple
-            if padded_seq_len != seq_len:
-                flex_unpadded_seq_len = seq_len
-                x = F.pad(x, (0, 0, 0, padded_seq_len - seq_len))
-                padded_attention_bias = torch.zeros(
-                    (*attention_bias.shape[:-2], padded_seq_len, padded_seq_len),
-                    dtype=torch.bool,
-                    device=attention_bias.device,
-                )
-                padded_attention_bias[..., :seq_len, :seq_len] = attention_bias.to(dtype=torch.bool)
-                padded_positions = torch.arange(seq_len, padded_seq_len, device=attention_bias.device)
-                padded_attention_bias[..., padded_positions, padded_positions] = True
-                attention_bias = padded_attention_bias
-                seq_len = padded_seq_len
-                log.warning(
-                    "FLEX_DIAG padded_sequence original=%d padded=%d multiple=%d",
-                    flex_unpadded_seq_len,
-                    seq_len,
-                    flex_pad_multiple,
-                )
-
-        block_mask:BlockMask = None
-        if self.config.flex_attention and attention_bias is not None:
-            if attention_bias.dtype != torch.bool:
-                attention_bias = attention_bias==1.0
-
-            flex_mask = attention_bias
-            _, H, q_len, kv_len = attention_bias.shape
-            if H == 1:
-                flex_mask = flex_mask.squeeze(1)
-                def TG_mask(b, h, q_idx, kv_idx):
-                    return flex_mask[b, q_idx, kv_idx]
-                def TG_mask_with_pad(b, h, q_idx, kv_idx):
-                    return attention_mask[kv_idx] and flex_mask[b, q_idx, kv_idx]
-                mask_mod = TG_mask if attention_mask is None else TG_mask_with_pad
-                block_mask = create_block_mask(mask_mod=mask_mod, B=batch_size, H=None, Q_LEN=q_len, KV_LEN=kv_len)
+        # Route TG-style structured masks by workload and original sequence
+        # length. Ordinary causal attention has no attention_bias here and keeps
+        # using FlashAttention (or SDPA when flash-attn is unavailable). Pushdown
+        # has its own score-mod route below.
+        original_seq_len = seq_len
+        original_has_attention_bias = attention_bias is not None
+        structured_flex = _use_flex_for_structured_attention(
+            self.config,
+            original_seq_len,
+            training=self.training,
+            has_attention_bias=attention_bias is not None,
+            has_past_key_values=past_key_values is not None,
+            use_cache=use_cache,
+        )
+        structured_route_reason = "selected"
+        flex_pad_multiple: Optional[int] = None
+        if structured_flex:
+            if attention_bias.shape[-2:] != (original_seq_len, original_seq_len):
+                # A fixed square BlockMask cannot represent cached/rectangular
+                # decoding. Preserve the exact additive mask through SDPA.
+                structured_flex = False
+                structured_route_reason = "non_square_bias"
             else:
-                def TG_mask_per_head(b, h, q_idx, kv_idx):
-                    return flex_mask[b, h, q_idx, kv_idx]
-                def TG_mask_per_head_with_pad(b, h, q_idx, kv_idx):
-                    return attention_mask[kv_idx] and flex_mask[b, h, q_idx, kv_idx]
-                mask_mod = TG_mask_per_head if attention_mask is None else TG_mask_per_head_with_pad
-                block_mask = create_block_mask(mask_mod=mask_mod, B=batch_size, H=H, Q_LEN=q_len, KV_LEN=kv_len)
+                flex_pad_multiple = _flex_attention_pad_multiple(self.config)
+                if (
+                    flex_pad_multiple is None
+                    and torch.is_grad_enabled()
+                    and original_seq_len % 128 != 0
+                ):
+                    # Never enter the known non-divisible Flex backward path
+                    # without padding. ``None`` therefore means safe SDPA
+                    # fallback, not an unsafe exact-length Flex call.
+                    structured_flex = False
+                    structured_route_reason = "unsafe_unpadded_backward"
+        elif attention_bias is not None:
+            if past_key_values is not None or use_cache:
+                structured_route_reason = "kv_cache"
+            else:
+                threshold = (
+                    self.config.flex_attention_train_min_sequence_length
+                    if self.training
+                    else self.config.flex_attention_eval_min_sequence_length
+                )
+                structured_route_reason = f"below_threshold_{threshold}"
+
+        flex_unpadded_seq_len: Optional[int] = None
+        block_mask: Optional[BlockMask] = None
+        if structured_flex:
+            if attention_bias.dtype == torch.bool:
+                flex_mask = attention_bias
+            else:
+                flex_mask = attention_bias == 1.0
+            if flex_mask.dim() == 2:
+                flex_mask = flex_mask[None, None, :, :]
+            elif flex_mask.dim() == 3:
+                flex_mask = flex_mask[:, None, :, :]
+            elif flex_mask.dim() != 4:
+                raise OLMoConfigurationError(
+                    "structured attention_bias must have 2, 3, or 4 dimensions"
+                )
+            if flex_mask.shape[0] == 1 and batch_size != 1:
+                flex_mask = flex_mask.expand(batch_size, -1, -1, -1)
+            elif flex_mask.shape[0] != batch_size:
+                raise OLMoConfigurationError(
+                    "structured attention_bias batch dimension must be 1 or match input_ids"
+                )
+
+            # Merge optional key padding into the structured mask before vmap.
+            # This replaces the old Python ``and`` closure (not vmap-safe) and
+            # correctly indexes a separate key mask for every batch element.
+            if attention_mask is not None:
+                if attention_mask.dim() == 1:
+                    if attention_mask.numel() != original_seq_len:
+                        raise OLMoConfigurationError(
+                            "1-D attention_mask length must match the structured sequence length"
+                        )
+                    valid_keys = attention_mask.unsqueeze(0).expand(batch_size, -1)
+                else:
+                    if attention_mask.numel() != batch_size * original_seq_len:
+                        raise OLMoConfigurationError(
+                            "attention_mask must contain one key-validity value per batch token"
+                        )
+                    valid_keys = attention_mask.reshape(batch_size, original_seq_len)
+                valid_keys = valid_keys.to(device=flex_mask.device, dtype=torch.bool)
+                flex_mask = flex_mask & valid_keys[:, None, None, :]
+
+            # Padding happens after embedding and is removed before logits, so
+            # the original loss shape is unchanged. Padded queries attend only
+            # to themselves; original queries cannot attend to padded keys.
+            if flex_pad_multiple is not None:
+                padded_seq_len = math.ceil(original_seq_len / flex_pad_multiple) * flex_pad_multiple
+                if padded_seq_len != original_seq_len:
+                    flex_unpadded_seq_len = original_seq_len
+                    x = F.pad(x, (0, 0, 0, padded_seq_len - original_seq_len))
+                    padded_flex_mask = torch.zeros(
+                        (*flex_mask.shape[:-2], padded_seq_len, padded_seq_len),
+                        dtype=torch.bool,
+                        device=flex_mask.device,
+                    )
+                    padded_flex_mask[..., :original_seq_len, :original_seq_len] = flex_mask
+                    padded_positions = torch.arange(
+                        original_seq_len, padded_seq_len, device=flex_mask.device
+                    )
+                    padded_flex_mask[..., padded_positions, padded_positions] = True
+                    flex_mask = padded_flex_mask
+                    seq_len = padded_seq_len
+                    log.warning(
+                        "FLEX_DIAG padded_sequence original=%d padded=%d multiple=%d",
+                        original_seq_len,
+                        seq_len,
+                        flex_pad_multiple,
+                    )
+
+            _, mask_heads, q_len, kv_len = flex_mask.shape
+            if mask_heads == 1:
+                squeezed_flex_mask = flex_mask.squeeze(1)
+
+                def tg_mask(batch, _head, q_idx, kv_idx):
+                    return squeezed_flex_mask[batch, q_idx, kv_idx]
+
+                block_mask = create_block_mask(
+                    mask_mod=tg_mask,
+                    B=batch_size,
+                    H=None,
+                    Q_LEN=q_len,
+                    KV_LEN=kv_len,
+                    device=x.device,
+                )
+            else:
+                def tg_mask_per_head(batch, head, q_idx, kv_idx):
+                    return flex_mask[batch, head, q_idx, kv_idx]
+
+                block_mask = create_block_mask(
+                    mask_mod=tg_mask_per_head,
+                    B=batch_size,
+                    H=mask_heads,
+                    Q_LEN=q_len,
+                    KV_LEN=kv_len,
+                    device=x.device,
+                )
             attention_bias = None
+
+        if (
+            os.environ.get("OLMO_ATTENTION_ROUTER_DIAGNOSTICS") == "1"
+            and self.config.flex_attention
+        ):
+            pushdown_flex = (
+                self.config.transformer_grammar_type == "pushdown"
+                and self.config.pushdown_use_flex
+                and attention_mask is not None
+                and past_key_values is None
+            )
+            if structured_flex:
+                backend = "flex_structured"
+            elif pushdown_flex:
+                backend = "flex_pushdown"
+                structured_route_reason = "pushdown_score_mod"
+            elif not original_has_attention_bias:
+                backend = "flash_or_sdpa_causal"
+                structured_route_reason = "no_structured_bias"
+            else:
+                backend = "sdpa_structured"
+            log.warning(
+                "ATTENTION_ROUTE grammar=%s training=%s original_seq=%d effective_seq=%d "
+                "backend=%s reason=%s has_bias=%s has_attention_mask=%s",
+                self.config.transformer_grammar_type,
+                self.training,
+                original_seq_len,
+                seq_len,
+                backend,
+                structured_route_reason,
+                original_has_attention_bias,
+                attention_mask is not None,
+            )
+
+        if structured_flex:
+            pass
         elif (self.config.transformer_grammar_type == "pushdown"
               and self.config.flex_attention and self.config.pushdown_use_flex
               and attention_mask is not None and past_key_values is None):
@@ -1991,6 +2170,17 @@ class OLMo(nn.Module):
                     # `F.scaled_dot_product_attention()` doesn't handle -inf like you'd expect, instead
                     # it can produce NaNs.
                     ensure_finite_(attention_bias, check_neg_inf=True, check_pos_inf=False)
+
+                # All transformer blocks use the same autocast precision. Cast
+                # a reusable SDPA mask once here instead of allocating the same
+                # float32 -> bf16/fp16 conversion independently in every layer.
+                # Pushdown's SDPA fallback deliberately keeps its merged depth
+                # bias in fp32 and is therefore excluded.
+                if (
+                    attention_bias is not None
+                    and self.config.transformer_grammar_type != "pushdown"
+                ):
+                    attention_bias = OLMoBlock._cast_attn_bias(attention_bias, x.dtype)
 
         attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = [] if use_cache else None
 
@@ -3362,6 +3552,9 @@ class OLMo(nn.Module):
         tag: Optional[List[int]] = None,
         use_attachment_head: bool = False,
         return_spans: bool = False,
+        attachment_normalization: str = "stack_legal",
+        sentence_local_stack: bool = False,
+        require_complete_parse: bool = False,
     ):
         """Approximate ``p(x)`` with a normalized attachment-action beam.
 
@@ -3371,13 +3564,39 @@ class OLMo(nn.Module):
         the stack. This is the order in Eq. 7 of Murty et al. and avoids the
         former one-token attachment lag.
 
+        ``attachment_normalization="stack_legal"`` (v1) renormalizes the head
+        over the actions reachable from the current stack.
+        ``"sentence_causal"`` (v2) first normalizes the complete causal row and
+        then retains only legal expansions without renormalizing them.
+
         When no trained attachment head is requested, valid attachment actions
         receive a normalized uniform prior. They are never free zero-score
         branches, so marginal likelihood cannot grow merely because more parses
         were enumerated. Tagged SG scores use incremental, parse-marginalized
         word surprisal at each prefix rather than the word scores of one final
         best parse.
+
+        ``sentence_local_stack`` is an opt-in evaluation mode for comparing beam
+        support with supplied sentence parses. BOS remains LM context but is not
+        a structural stack item or attachment target. With
+        ``require_complete_parse=True``, final incomplete stacks are discarded
+        before the last beam prune. Existing downstream callers keep the legacy
+        root-containing behavior by default.
         """
+        from olmo.attachment import (
+            attachment_log_probs_for_targets,
+            canonical_attachment_normalization,
+        )
+
+        attachment_normalization = canonical_attachment_normalization(
+            attachment_normalization
+        )
+        if beam_size <= 0:
+            raise ValueError("beam_size must be positive")
+        if require_complete_parse and not sentence_local_stack:
+            raise ValueError(
+                "require_complete_parse currently requires sentence_local_stack"
+            )
         device = self.device
         if eval_input_ids.dim() > 1:
             eval_input_ids = eval_input_ids[0]
@@ -3403,7 +3622,7 @@ class OLMo(nn.Module):
         beams: List[dict] = [{
             "input_ids": [seed],
             "closed": [],
-            "stack": [(0, 0)],
+            "stack": [] if sentence_local_stack else [(0, 0)],
             "logprob": 0.0,
         }]
         incremental_word_lps: List[Tuple[int, float]] = []
@@ -3426,10 +3645,17 @@ class OLMo(nn.Module):
             # The sentence-final EOS attaches to the oldest stack item, closing
             # the root, as in the reference beam search. A single attachment
             # decision can collapse an arbitrary stack suffix.
-            if is_last and token == self.config.eos_token_id:
+            if (
+                not sentence_local_stack
+                and is_last
+                and token == self.config.eos_token_id
+            ):
                 return [old_stack_len]
-            # Keep the BOS/root item inaccessible before final EOS.
-            upper = max(old_stack_len - 1, 0)
+            # The default decoder reserves its BOS/root item until final EOS.
+            # Sentence-local comparison mode has no structural root item, so
+            # every existing stack constituent is a possible reduce target.
+            reserved = 0 if sentence_local_stack else 1
+            upper = max(old_stack_len - reserved, 0)
             if max_reduce is not None:
                 upper = min(upper, max(max_reduce, 0))
             return list(range(upper + 1))
@@ -3520,11 +3746,18 @@ class OLMo(nn.Module):
                 )
                 shifted_mask = torch.ones_like(shifted_inp, dtype=torch.bool)
                 shifted_spans = collate_spans(shifted, prefix_len + 1)
+                shifted_sentence_ids = None
+                if sentence_local_stack:
+                    shifted_sentence_ids = torch.zeros_like(shifted_inp)
+                    # Position zero is the LM-only BOS context. This matches
+                    # terminal-only training, where document BOS has no tree ID.
+                    shifted_sentence_ids[:, 0] = -1
                 with torch.no_grad():
                     attachment_out = self.forward(
                         input_ids=shifted_inp,
                         attention_mask=shifted_mask,
                         tree_spans=shifted_spans,
+                        pushdown_sentence_ids=shifted_sentence_ids,
                         last_logits_only=True,
                         compute_attachment_logits=True,
                     )
@@ -3540,14 +3773,28 @@ class OLMo(nn.Module):
                 if attachment_rows is None:
                     structural_lps = [-math.log(len(attached))] * len(attached)
                 else:
-                    valid_logits = attachment_rows[
-                        bi, torch.tensor(targets_j, dtype=torch.long, device=device)
-                    ].float()
-                    structural_lps = torch.log_softmax(valid_logits, dim=0).tolist()
+                    target_tensor = torch.tensor(
+                        targets_j, dtype=torch.long, device=device
+                    )
+                    structural_lps = attachment_log_probs_for_targets(
+                        attachment_rows[bi],
+                        target_tensor,
+                        attachment_normalization,
+                    ).tolist()
                 for (new_state, _), structural_lp in zip(attached, structural_lps):
                     new_state["logprob"] += structural_lp
                     next_beams.append(new_state)
 
+            if sentence_local_stack and require_complete_parse and step == len(targets) - 1:
+                # BOS is position zero and is outside the structural stack. A
+                # complete non-empty sentence therefore has one frontier item
+                # spanning positions 1..prefix_len after the final shift.
+                next_beams = [
+                    state
+                    for state in next_beams
+                    if len(state["stack"]) == 1
+                    and state["stack"][0] == (1, prefix_len)
+                ]
             next_beams.sort(key=lambda state: state["logprob"], reverse=True)
             beams = next_beams[:beam_size]
 

@@ -1,0 +1,125 @@
+{
+  "cases": [
+    {
+      "gradients": [
+        {
+          "cosine": 0.9999940395355225,
+          "max_abs": 0.0234375,
+          "rel_l2": 0.003436230355873704
+        },
+        {
+          "cosine": 0.9999939799308777,
+          "max_abs": 0.03125,
+          "rel_l2": 0.0034565089736133814
+        },
+        {
+          "cosine": 0.9999999403953552,
+          "max_abs": 0.00390625,
+          "rel_l2": 2.6907700885203667e-05
+        }
+      ],
+      "gradients_finite": true,
+      "mask_density": 0.09213218092918396,
+      "mode": "tg",
+      "output": {
+        "cosine": 1.0,
+        "max_abs": 0.00048828125,
+        "rel_l2": 1.594031914464722e-06
+      },
+      "output_finite": true,
+      "padded_length": 128,
+      "padded_tail_gradients_zero": true,
+      "passed": true,
+      "sequence_length": 127
+    },
+    {
+      "gradients": [
+        {
+          "cosine": 0.9999942183494568,
+          "max_abs": 0.0234375,
+          "rel_l2": 0.003408243181183934
+        },
+        {
+          "cosine": 0.9999940991401672,
+          "max_abs": 0.03125,
+          "rel_l2": 0.0034376010298728943
+        },
+        {
+          "cosine": 1.0,
+          "max_abs": 0.0078125,
+          "rel_l2": 7.531065784860402e-05
+        }
+      ],
+      "gradients_finite": true,
+      "mask_density": 0.31480562686920166,
+      "mode": "tgnomask",
+      "output": {
+        "cosine": 1.0,
+        "max_abs": 0.000244140625,
+        "rel_l2": 9.88138481261558e-07
+      },
+      "output_finite": true,
+      "padded_length": 128,
+      "padded_tail_gradients_zero": true,
+      "passed": true,
+      "sequence_length": 127
+    },
+    {
+      "effective_flex_length": 128,
+      "flex_loss": 0.030241036787629128,
+      "gradients_finite": true,
+      "kind": "model_router",
+      "logits": {
+        "cosine": 0.9999953508377075,
+        "max_abs": 0.0078125,
+        "rel_l2": 0.003063337644562125
+      },
+      "loss_abs_diff": 1.0672956705093384e-06,
+      "mode": "tg",
+      "output_shape": [
+        4,
+        127,
+        256
+      ],
+      "parameter_gradients": {
+        "cosine": 0.9999960660934448,
+        "max_abs": 3.0517578125e-05,
+        "rel_l2": 0.0028567472472786903
+      },
+      "passed": true,
+      "sdpa_loss": 0.030242104083299637,
+      "sequence_length": 127
+    },
+    {
+      "effective_flex_length": 128,
+      "flex_loss": 0.030386244878172874,
+      "gradients_finite": true,
+      "kind": "model_router",
+      "logits": {
+        "cosine": 0.9999961853027344,
+        "max_abs": 0.0078125,
+        "rel_l2": 0.0027914431411772966
+      },
+      "loss_abs_diff": 5.848705768585205e-07,
+      "mode": "tgnomask",
+      "output_shape": [
+        4,
+        127,
+        256
+      ],
+      "parameter_gradients": {
+        "cosine": 0.9999949932098389,
+        "max_abs": 3.0517578125e-05,
+        "rel_l2": 0.0031590366270393133
+      },
+      "passed": true,
+      "sdpa_loss": 0.030386829748749733,
+      "sequence_length": 127
+    }
+  ],
+  "device": "NVIDIA GeForce RTX 3090",
+  "job_id": "3927",
+  "status": "passed",
+  "torch": "2.7.1+cu126",
+  "torch_cuda": "12.6"
+}

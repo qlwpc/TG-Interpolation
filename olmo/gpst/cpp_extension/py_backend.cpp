@@ -822,7 +822,7 @@ int left_most(CellTable * table, int idx, int bos_id, int eos_id) {
             return table->get(start, idx)->cache_id;
         }
     }
-    assert (false);
+    throw std::logic_error("left_most could not find a populated chart cell");
 }
 
 int right_most(CellTable * table, int idx, int bos_id, int eos_id) {
@@ -835,7 +835,7 @@ int right_most(CellTable * table, int idx, int bos_id, int eos_id) {
             return table->get(idx, end)->cache_id;
         }
     }
-    assert (false);
+    throw std::logic_error("right_most could not find a populated chart cell");
 }
 
 at::Tensor TableManager::prepare_bilm(int total_len, int bos_id, int eos_id) {

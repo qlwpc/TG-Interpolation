@@ -13,6 +13,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 import torch  # noqa: E402
+from olmo.attachment import canonical_attachment_normalization  # noqa: E402
 from olmo.eval.pushdown_document_ppl import NativePushdownTopKCorpus, evaluate_pushdown_document_ppl  # noqa: E402
 from olmo.model import OLMo  # noqa: E402
 
@@ -29,12 +30,30 @@ def main() -> None:
     parser.add_argument("--end-document", type=int)
     parser.add_argument("--max-sequence-length", type=int, default=2048)
     parser.add_argument("--token-only", action="store_true")
+    parser.add_argument(
+        "--attachment-normalization",
+        choices=("v1", "stack_legal", "v2", "sentence_causal"),
+        default="stack_legal",
+        help=(
+            "v1/stack_legal renormalizes over stack-reachable targets; "
+            "v2/sentence_causal retains probabilities from the full causal row"
+        ),
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log-every", type=int, default=10)
     args = parser.parse_args()
+    attachment_normalization = canonical_attachment_normalization(
+        args.attachment_normalization
+    )
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("pushdown-document-ppl")
-    log.info("structure_source=gold300 beam_search=false context_update=candidate0 attachment_probability=%s mixture_reporting=legacy_and_normalized", not args.token_only)
+    log.info(
+        "structure_source=gold300 beam_search=false context_update=candidate0 "
+        "attachment_probability=%s attachment_normalization=%s "
+        "mixture_reporting=legacy_and_normalized",
+        not args.token_only,
+        attachment_normalization,
+    )
     corpus = NativePushdownTopKCorpus(args.native_data, args.tokenizer_path, args.max_sentences,
                                       args.start_document, args.end_document)
     model = OLMo.from_checkpoint(args.checkpoint, device=args.device)
@@ -47,7 +66,18 @@ def main() -> None:
     def progress(done: int, total: int, doc_id: int) -> None:
         if done == total or (args.log_every > 0 and done % args.log_every == 0):
             log.info("scored %d/%d sentences (document %d)", done, total, doc_id)
-    result = evaluate_pushdown_document_ppl(model, corpus, args.device, args.eval_batch_size, args.max_sequence_length, False, not args.token_only, progress, args.max_batch_tokens)
+    result = evaluate_pushdown_document_ppl(
+        model,
+        corpus,
+        args.device,
+        args.eval_batch_size,
+        args.max_sequence_length,
+        False,
+        not args.token_only,
+        progress,
+        args.max_batch_tokens,
+        attachment_normalization=attachment_normalization,
+    )
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
 
 

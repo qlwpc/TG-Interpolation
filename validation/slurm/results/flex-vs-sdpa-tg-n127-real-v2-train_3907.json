@@ -1,0 +1,74 @@
+{
+  "block_mask_build_cold_ms": 86.80899813771248,
+  "block_mask_build_steady_ms": 3.5141240805387497,
+  "compute_capability": [
+    8,
+    6
+  ],
+  "conda_prefix": "/home/wangpch/.conda/envs/LLM",
+  "cuda_device": "NVIDIA GeForce RTX 3090",
+  "dtype": "torch.bfloat16",
+  "error": "RuntimeError: FlexAttention produced non-finite output or gradients",
+  "flex_compile_and_cold_ms": 17385.095488280058,
+  "flex_over_sdpa_ratio": 1.6814534727961328,
+  "flex_steady": {
+    "max_ms": 0.5720320224761963,
+    "median_ms": 0.5366015911102295,
+    "min_ms": 0.5330175876617431,
+    "samples_ms": [
+      0.5720320224761963,
+      0.5366015911102295,
+      0.537830400466919,
+      0.5330175876617431,
+      0.5347583770751954
+    ]
+  },
+  "gradient_max_abs_diff": [
+    NaN,
+    NaN,
+    NaN
+  ],
+  "gradients_finite": false,
+  "iterations_per_repeat": 40,
+  "job_id": "3907",
+  "label": "tg-n127-real-v2",
+  "layers": 12,
+  "mask_density": 0.09213218092918396,
+  "mode": "tg",
+  "node": "rtx3090b",
+  "output_finite": true,
+  "output_max_abs_diff": 0.0078125,
+  "python": "/home/wangpch/.conda/envs/LLM/bin/python",
+  "repeats": 5,
+  "sdpa_cold_ms": 4.485860466957092,
+  "sdpa_steady": {
+    "max_ms": 0.32268800735473635,
+    "median_ms": 0.31912961006164553,
+    "min_ms": 0.26646881103515624,
+    "samples_ms": [
+      0.26646881103515624,
+      0.32025599479675293,
+      0.32268800735473635,
+      0.31838719844818114,
+      0.31912961006164553
+    ]
+  },
+  "shape": [
+    4,
+    12,
+    127,
+    64
+  ],
+  "status": "failed",
+  "torch": "2.7.1+cu126",
+  "torch_cuda": "12.6",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/wangpch/TG-Interpolation/validation/slurm/benchmark_flex_vs_sdpa.py\", line 312, in main\n    raise RuntimeError(\"FlexAttention produced non-finite output or gradients\")\nRuntimeError: FlexAttention produced non-finite output or gradients\n",
+  "triton": "3.3.1",
+  "twelve_layer_estimate_ms": {
+    "flex_kernel_only": 6.439219093322754,
+    "flex_with_one_steady_block_mask_build": 9.953343173861505,
+    "sdpa": 3.8295553207397464
+  },
+  "warmup": 3,
+  "workload": "train"
+}

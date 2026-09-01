@@ -4,15 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-TG-Interpolation is a research codebase for training transformer LMs with **tree-grammar (TG) structured attention biases**. It extends the [OLMo](https://github.com/allenai/OLMo) training framework (AI2) to support multiple grammar-based attention patterns: `terminal`, `tg`, `tree`, `tgproximal`, `tgnomask`, `tgheight`, `tree_shuffle`, and `pause{num}`. The core TG attention bias is computed by a compiled C extension (`olmo/data/tg_mask.cpython-310-x86_64-linux-gnu.so`), which is not built from source in this repo.
+TG-Interpolation is a research codebase for training transformer LMs with **tree-grammar (TG) structured attention biases**. It extends the [OLMo](https://github.com/allenai/OLMo) training framework (AI2) to support multiple grammar-based attention patterns: `terminal`, `tg`, `tree`, `tgproximal`, `tgnomask`, `tgheight`, `tree_shuffle`, and `pause{num}`. The core TG attention bias is computed by a compiled C++ extension (`olmo/data/tg_mask.cpython-310-x86_64-linux-gnu.so`); its source and CMake build are under `olmo/data/tgmasking/`.
 
 ## Environment
 
-Create the conda environment from `environment.yml`, then install PyTorch/triton/flash-attn separately for your CUDA version.
+Create the `LLM` Conda environment from `environment.yml`. The file already
+pins PyTorch, Triton, FlashAttention and their CUDA 12.6 runtime libraries; do
+not install a second PyTorch/CUDA stack over it.
 
 ```bash
 conda env create -f environment.yml
-# Pip dependencies are also listed in req.txt
+conda activate LLM
+```
+
+The PyTorch wheel includes CUDA runtime libraries but not the CUDA compiler.
+Running the existing FlashAttention wheel does not need `nvcc`; rebuilding
+FlashAttention requires a compatible external CUDA Toolkit and `CUDA_HOME`.
+
+Build the two CPU-only C++ extensions with the target Conda Python. CMake 3.29.6
+is installed through Spack on this host:
+
+```bash
+spack load cmake@3.29.6
+cmake -S olmo/data/tgmasking -B olmo/data/tgmasking/build -G Ninja \
+    -DPython3_EXECUTABLE="$CONDA_PREFIX/bin/python"
+cmake --build olmo/data/tgmasking/build --parallel 2
+cp olmo/data/tgmasking/build/tg_mask*.so olmo/data/
+
+MAX_JOBS=2 python olmo/gpst/cpp_extension/setup.py build_ext --inplace
 ```
 
 Set `PYTHONPATH` to include the repo root (scripts do this in sbatch files):

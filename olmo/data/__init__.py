@@ -95,6 +95,23 @@ def get_TG_generate_bias_func(train_config: TrainConfig, max_length:Optional[int
             return None
 
     if TG_type == "mixing":
+        mix_heads = train_config.model.mix_head_type
+        if not mix_heads:
+            raise OLMoConfigurationError(
+                "transformer_grammar_type='mixing' requires an explicit "
+                "model.mix_head_type; the grammar key alone does not define "
+                "the per-head attention protocol"
+            )
+        if any(head.n_heads <= 0 for head in mix_heads):
+            raise OLMoConfigurationError(
+                "model.mix_head_type entries must each allocate at least one head"
+            )
+        allocated_heads = sum(head.n_heads for head in mix_heads)
+        if allocated_heads != train_config.model.n_heads:
+            raise OLMoConfigurationError(
+                "model.mix_head_type allocates "
+                f"{allocated_heads} heads, but model.n_heads={train_config.model.n_heads}"
+            )
         generate_TG_attention_bias = HeadMixingBias(train_config.model.mix_head_type, train_config, max_length)
     elif TG_type=="tg":
         generate_TG_attention_bias = TG_attention_bias(vocab_path, max_length)

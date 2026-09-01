@@ -1,5 +1,14 @@
 # 诊断报告：tree_300 评测任务失败 (Jobs 45196 / 45195)
 
+> [!CAUTION]
+> **2026-08-31 纠错：本报告原 §1.6.2、§1.6.3 和 §1.10 夸大了 `tree_spans`
+> 缺陷对 Pushdown 的影响。** 后续审计证明变化只发生在 `split`，所有已审计
+> `(left,right)` 均不变。GPST job 45196 的 merge-order 崩溃与 TreeReg split 监督污染
+> 成立；Pushdown 深度矩阵和 attachment gold action 不受这一代码缺陷影响。注意这不
+> 否定 job 45195 的**另一项独立数据错误**（候选 terminal 分组错乱）。量化证据见
+> [`../../diagnostics/results/tree_spans_contamination_summary.md`](../../diagnostics/results/tree_spans_contamination_summary.md)，
+> 纠错索引见 [`../../REPOSITORY_CLEANUP_MEMORY.md`](../../REPOSITORY_CLEANUP_MEMORY.md) M-05。
+
 **生成日期**：2026-08-20
 **代码版本**：`main` 分支 (commit f076810)
 **数据产物**：`dataset/testppl_tree/tree_300.npy` (2025-08-12 生成)
@@ -153,7 +162,7 @@ ValueError: grouped merge orders are not a global gap permutation
 ```
 **job 45196 实际崩溃点**：sentence 2, candidate 1。
 
-#### 1.6.2 Pushdown / TreeReg 训练 + 评测路径（静默错误）— 严重
+#### 1.6.2 Pushdown / TreeReg 训练 + 评测路径（原结论部分错误，已纠正）
 
 调用链：
 ```
@@ -165,16 +174,22 @@ olmo/data/parse_align.py:_binarize_segments  (line 557)
 
 | 消费者 | 用法 | 受影响？ |
 |--------|------|----------|
-| `compute_depth_matrix` / `compute_depth_matrix_gpu` | pushdown 深度偏置，仅用 `(left, right)` | **是**：错误 `(left, right)` → 错误深度矩阵 → 错误注意力偏置 |
+| `compute_depth_matrix` / `compute_depth_matrix_gpu` | pushdown 深度偏置，仅用 `(left, right)` | **否**：后续审计确认 `(left, right)` 不变 |
 | TreeReg CE loss | 用 `split` 作二分类目标 | **是**：错误 `split` → 错误监督信号 |
-| `derive_gold_attachment_actions` | attachment head 的 gold 动作 | **是**：错误 span → 错误 gold attachment |
+| `derive_gold_attachment_actions` | attachment head 的 gold 动作，只用 `(left, right)` | **否**：`split` 被忽略 |
 
-**关键**：terminals（`input_ids`）走的是另一条函数 `tree_leaves_and_word_boundaries`，且 `_binarize_segments` 第 558 行有 guard `if leaves != original_leaves: raise`。所以 **token 序列正确、但 spans 错误**——错误不会触发任何异常，模型照常训练/评测，只是 constituent 结构监督信号是错的。这是一个**已训练模型中的隐性正确性缺陷**。
+**纠正后的关键结论**：terminals（`input_ids`）正确，span 的 `left/right` 也保持不变；
+只有部分 `split` 错误。因此该缺陷是 **TreeReg 监督中的隐性污染**，不是 Pushdown
+结构输入污染。完整 dev/test 与两份独立 train 抽样中，所有差异均只出现在 `split`；
+train 抽样估计受污染 TreeReg decision 为 `0.027710%`。
 
 #### 1.6.3 影响范围总结
 
 - GPST gold-tree PPL 评测：**崩溃**（job 45196）。
-- 任何 pushdown/TreeReg 模型的训练数据：含重复小 token 的句子，span 监督信号被静默损坏。
+- TreeReg：消费 `split` 的监督信号受到稀疏污染；影响比例见污染审计。
+- Pushdown：深度偏置与 attachment action 只消费 `(left,right)`，**不受本代码缺陷影响**。
+- Pushdown job 45195 仍受 §2 的候选 terminal 分组数据错误影响；它与本节代码缺陷不是
+  同一根因。
 - 该 bug 在 `tree_300.npy`（2025-08-12 生成）的数据上是可复现的，说明**自该函数引入以来一直存在**。
 
 ### 1.7 为什么 `collapse_unary_tree` / `binarize_tree` 不受影响
@@ -240,7 +255,9 @@ while stack:
 ### 1.10 风险与注意事项
 
 - **修复仅限 `tree_spans`**，不要动 `collapse_unary_tree` / `binarize_tree`（它们无害，改了反而可能引入回归）。
-- 修复会**改变 pushdown/TreeReg 训练数据的 span**——对**新训练**的模型是正确性提升；但已训练好的 checkpoint 是在错误 span 下训练的，重评时其深度偏置语义会变，需注意新旧 span 不可混用。
+- 修复会改变 TreeReg 使用的部分 `split` 监督；已训练 TreeReg checkpoint 的污染程度应按
+  `tree_spans_contamination_summary.md` 解释。它不会改变已审计的 `(left,right)`，因此
+  不改变 Pushdown 深度偏置或 attachment action 语义。
 
 ## 附录：关键文件索引
 

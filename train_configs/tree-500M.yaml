@@ -17,7 +17,8 @@ model:
   rope: true
   rope_theta: 500000
   flash_attention: true
-  flex_attention: true
+  # Tree-format tokens still use ordinary causal attention.
+  flex_attention: false
   attention_dropout: 0.0
   include_bias: true
   block_type: sequential

@@ -1,0 +1,12 @@
+Environment Health Report for: /home/wangpch/.conda/envs/LLM
+
+✅ There are no packages with altered files.
+
+✅ No pinned specs found in /home/wangpch/.conda/envs/LLM/conda-meta/pinned.
+✅ The environment is consistent.
+
+✅ The environment is listed in the environments.txt file.
+
+✅ File locking is supported.
+
+✅ There are no packages with missing files.

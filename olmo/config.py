@@ -341,7 +341,36 @@ class ModelConfig(BaseConfig):
 
     flex_attention: bool = False
     """
-    If ``True``, use ``FlexAttention``.
+    If ``True``, make ``FlexAttention`` available for structured attention.
+    The runtime router still sends short structured masks to SDPA and ordinary
+    causal attention to FlashAttention/SDPA.
+    """
+
+    flex_attention_train_min_sequence_length: int = 1024
+    """Minimum original sequence length for TG-style FlexAttention in training.
+
+    The RTX 3090 BF16 crossover is near 1024 for the 100M architecture. Shorter
+    structured attention is faster through SDPA and avoids Flex's tail-backward
+    failure. Pushdown's dedicated score-mod path is routed independently.
+    """
+
+    flex_attention_eval_min_sequence_length: int = 2048
+    """Minimum original sequence length for TG-style FlexAttention in evaluation.
+
+    The conservative 2048 threshold accounts for roughly four seconds of cold
+    compilation and typical evaluation reuse. Large-batch steady-state kernels
+    can cross earlier, so standalone repeated evaluations may override it after
+    task-level measurement; short evaluations should set ``flex_attention:
+    false`` to avoid compilation entirely.
+    """
+
+    flex_attention_pad_to_multiple: Optional[int] = 128
+    """Pad selected TG-style FlexAttention shapes to this block multiple.
+
+    ``128`` avoids the torch 2.7/2.9 non-divisible backward failure while
+    preserving the original output shape. ``None`` disables padding, in which
+    case a non-divisible gradient-enabled shape safely falls back to SDPA.
+    Any configured value must be a positive multiple of 128.
     """
 
     attention_dropout: float = 0.1
@@ -859,6 +888,11 @@ class EvaluatorConfig(BaseConfig):
     # never learned). Defaults mirror pushdown_beam_search (olmo/model.py).
     pushdown_beam_size: int = 20
     pushdown_max_reduce: Optional[int] = None
+    # ``stack_legal`` (protocol v1) renormalizes attachment scores over
+    # stack-reachable expansions. ``sentence_causal`` (protocol v2) retains the
+    # head's full causal probabilities and masks illegal beam children only
+    # after normalization.
+    pushdown_attachment_normalization: str = "stack_legal"
     # BLiMP subset: number of minimal pairs per task to score (full BLiMP = 1000).
     # Reduces both the dataset size (2*K*SENT_SIZE per task) and the compute()
     # denominator, so a partial run reports a meaningful per-task/overall accuracy
@@ -1543,6 +1577,29 @@ class TrainConfig(BaseConfig):
         new_config = config.copy()
         if om.is_dict(new_config):
             assert isinstance(new_config, DictConfig)
+
+            # A few exported 1B checkpoint configs contain the invalid
+            # self-reference ``workspace: ${workspace}``. Resolve it to the
+            # repository-relative default so dependent paths can materialize;
+            # run generators replace workspace with their actual target later.
+            workspace_node = new_config._get_node("workspace")
+            if (
+                workspace_node is not None
+                and str(workspace_node._value()).startswith("${workspace}")
+            ):
+                new_config.workspace = "."
+
+            # The original Terminal-100M checkpoint predates the explicit
+            # grammar discriminator and serializes this field as null. Leaving
+            # it as None is unsafe because data/model dispatchers treat it as a
+            # string. Null has only represented ordinary causal terminal data.
+            if hasattr(new_config, "model") and new_config.model is not None:
+                model_config = new_config.model
+                if (
+                    hasattr(model_config, "transformer_grammar_type")
+                    and model_config.transformer_grammar_type is None
+                ):
+                    model_config.transformer_grammar_type = "terminal"
 
             if hasattr(new_config, "activation_checkpointing"):
                 if new_config.activation_checkpointing is False:

@@ -1,0 +1,32 @@
+{
+  "compute_capability": [
+    8,
+    6
+  ],
+  "conda_prefix": "/home/wangpch/.conda/envs/LLM",
+  "cuda_device": "NVIDIA GeForce RTX 3090",
+  "dtype": "torch.bfloat16",
+  "error": "RuntimeError: vmap: It looks like you're calling .item() on a Tensor. We don't support vmap over calling .item() on a Tensor, please try to rewrite what you're doing with other operations. If error is occurring somewhere inside PyTorch internals, please file a bug report.",
+  "iterations_per_repeat": 100,
+  "job_id": "3902",
+  "label": "tgnomask-n127-real",
+  "layers": 12,
+  "mask_density": 0.31480562686920166,
+  "mode": "tgnomask",
+  "node": "rtx3090b",
+  "python": "/home/wangpch/.conda/envs/LLM/bin/python",
+  "repeats": 5,
+  "shape": [
+    4,
+    12,
+    127,
+    64
+  ],
+  "status": "failed",
+  "torch": "2.7.1+cu126",
+  "torch_cuda": "12.6",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/wangpch/TG-Interpolation/validation/slurm/benchmark_flex_vs_sdpa.py\", line 190, in main\n    block_mask = create_block_mask(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/nn/attention/flex_attention.py\", line 887, in create_block_mask\n    mask_tensor = create_mask(mask_mod, B, H, Q_LEN, KV_LEN, device)\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/nn/attention/flex_attention.py\", line 818, in create_mask\n    mask = mask_mod(b, h, m, n)\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/apis.py\", line 202, in wrapped\n    return vmap_impl(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 334, in vmap_impl\n    return _flat_vmap(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 484, in _flat_vmap\n    batched_outputs = func(*batched_inputs, **kwargs)\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/apis.py\", line 202, in wrapped\n    return vmap_impl(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 334, in vmap_impl\n    return _flat_vmap(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 484, in _flat_vmap\n    batched_outputs = func(*batched_inputs, **kwargs)\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/apis.py\", line 202, in wrapped\n    return vmap_impl(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 334, in vmap_impl\n    return _flat_vmap(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 484, in _flat_vmap\n    batched_outputs = func(*batched_inputs, **kwargs)\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/apis.py\", line 202, in wrapped\n    return vmap_impl(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 334, in vmap_impl\n    return _flat_vmap(\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_functorch/vmap.py\", line 484, in _flat_vmap\n    batched_outputs = func(*batched_inputs, **kwargs)\n  File \"/home/wangpch/TG-Interpolation/validation/slurm/benchmark_flex_vs_sdpa.py\", line 177, in mask_mod\n    return dense_bool[batch, 0, q_idx, kv_idx]\n  File \"/home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/torch/_dynamo/_trace_wrapped_higher_order_op.py\", line 142, in __torch_function__\n    return func(*args, **(kwargs or {}))\nRuntimeError: vmap: It looks like you're calling .item() on a Tensor. We don't support vmap over calling .item() on a Tensor, please try to rewrite what you're doing with other operations. If error is occurring somewhere inside PyTorch internals, please file a bug report.\n",
+  "triton": "3.3.1",
+  "warmup": 3,
+  "workload": "eval"
+}

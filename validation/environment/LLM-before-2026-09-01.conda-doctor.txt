@@ -1,0 +1,22 @@
+Environment Health Report for: /home/wangpch/.conda/envs/LLM
+
+❌ Altered Files:
+
+setuptools-82.0.1-py310h06a4308_0: 132
+
+wheel-0.47.0-py310h06a4308_0: 8
+
+✅ No pinned specs found in /home/wangpch/.conda/envs/LLM/conda-meta/pinned.
+✅ The environment is consistent.
+
+✅ The environment is listed in the environments.txt file.
+
+✅ File locking is supported.
+
+❌ Missing Files:
+
+pip-26.1.2-pyhc872135_0: 45
+
+setuptools-82.0.1-py310h06a4308_0: 290
+
+wheel-0.47.0-py310h06a4308_0: 13

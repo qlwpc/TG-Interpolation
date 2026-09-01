@@ -407,7 +407,15 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         Evallist[0].data.pin_memory = Evallist[1].data.pin_memory = True
         Evallist[0].data.generate_doc_lengths = Evallist[1].data.generate_doc_lengths = (input_format!="tg")
         evaluators = Evallist
-        cfg.model.flex_attention = True
+        # TG-format evaluation has a structured bias and may use the length
+        # router. Terminal/tree formats have no TG bias and should stay on
+        # FlashAttention (including the varlen document path).
+        grammar_type = cfg.model.transformer_grammar_type
+        cfg.model.flex_attention = (
+            grammar_type == "tg"
+            or grammar_type.startswith("tgproximal")
+            or grammar_type.startswith("tgnomask")
+        )
     elif task=="docppl":
         # Tree-Shuffle's diagnostic establishes terminal-only inference on
         # terminal input, so it shares the exact terminal document protocol.

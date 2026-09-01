@@ -11,7 +11,17 @@ from .config import ModelConfig, ActivationCheckpointingStrategy, CheckpointType
 from .aliases import PathOrStr
 from .tokenizer import Tokenizer
 from .checkpoint import Checkpointer, ShardedCheckpointerType
-from transformers.models.olmo.modeling_olmo import OlmoModel, OlmoDecoderLayer
+try:
+    from transformers.models.olmo.modeling_olmo import OlmoModel, OlmoDecoderLayer
+except ImportError:
+    # A source-built FlashAttention wheel can be unavailable after upgrading
+    # the CUDA/PyTorch runtime.  The scale-up campaign uses the native OLMo
+    # class, so keep that path importable without pretending that the optional
+    # HuggingFace OLMo backend is usable in this environment.
+    OlmoModel = None  # type: ignore[assignment,misc]
+
+    class OlmoDecoderLayer(nn.Module):
+        pass
 
 __all__ = [
     "HuggingModel", 

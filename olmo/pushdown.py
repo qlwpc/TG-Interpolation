@@ -223,26 +223,16 @@ def compute_depth_matrix_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
     return S.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8)
 
 
-def compute_last_depth_rows_gpu(
-    spans: torch.Tensor, n: int, query_len: int
-) -> torch.Tensor:
-    """Compute the final ``query_len`` rows of the stale-depth tape exactly.
+def compute_last_depth_row_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
+    """Compute only ``S[:, n-1:n, :]`` for one-token cached decoding.
 
-    Cached document scoring appends one complete sentence at a time, so the
-    attention queries contain only that sentence while the keys contain the
-    retained document prefix as well.  Building the full ``(B, n, n)`` tape in
-    that case wastes both memory and work.  A 2-D rectangle-difference array
-    restricted to the requested rows produces exactly
-    ``compute_depth_matrix_gpu(spans, n)[:, n-query_len:n, :]`` in
-    ``O(B * query_len * n)`` space.
+    At the last query position every supplied closed span satisfies ``r <= n-1``.
+    Therefore its stale depth is simply the number of closed spans covering each
+    key. A 1-D difference array gives the exact final row in O(B*(M+n)), avoiding
+    the O(B*n^2) allocation and two 2-D cumulative sums used for training/prefill.
     """
     if n <= 0:
         raise ValueError(f"n must be positive, got {n}")
-    if not 0 < query_len <= n:
-        raise ValueError(f"query_len must be in [1, {n}], got {query_len}")
-    if query_len == n:
-        return compute_depth_matrix_gpu(spans, n)
-
     B, M, _ = spans.shape
     device = spans.device
     l0 = spans[..., 0]
@@ -250,35 +240,52 @@ def compute_last_depth_rows_gpu(
     valid = (l0 >= 0) & (r0 >= 0) & (l0 <= r0) & (r0 < n)
     l = l0.clamp(0, n - 1)
     r = r0.clamp(0, n - 1)
-    l = l.clamp(max=r)
-
-    # A span (l, r) contributes to keys [l, r] for every requested query
-    # k >= r. Requested row zero corresponds to absolute query n-query_len.
-    first_query = n - query_len
-    row_begin = (r - first_query).clamp(0, query_len - 1)
-    col_end = r + 1
     batch = torch.arange(B, device=device).unsqueeze(1).expand(B, M)
+    diff = torch.zeros(B, n + 1, device=device, dtype=torch.int32)
     contribution = valid.to(torch.int32)
+    diff.index_put_((batch, l), contribution, accumulate=True)
+    diff.index_put_((batch, r + 1), -contribution, accumulate=True)
+    row = torch.cumsum(diff[:, :n], dim=1)
+    return row.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8).unsqueeze(1)
 
-    # Rectangle [row_begin, query_len) x [l, r+1). Keep the extra boundary
-    # row/column so all four difference-array corner updates are in bounds.
-    diff = torch.zeros(
-        B, query_len + 1, n + 1, device=device, dtype=torch.int32
-    )
+
+def compute_depth_rows_gpu(
+    spans: torch.Tensor,
+    n: int,
+    query_start: int,
+    query_end: int,
+) -> torch.Tensor:
+    """Compute a contiguous suffix of Pushdown depth-tape query rows.
+
+    This is exactly ``compute_depth_matrix_gpu(spans, n)[:, query_start:query_end]``
+    with ``O(B * q * n)`` rather than ``O(B * n * n)`` working memory.  It is
+    used when a candidate-0 KV cache makes the current sentence the only query
+    suffix while the retained document history remains in the key axis.
+    """
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
+    if not 0 <= query_start < query_end <= n:
+        raise ValueError(
+            f"invalid query range [{query_start}, {query_end}) for n={n}"
+        )
+    B, M, _ = spans.shape
+    q = query_end - query_start
+    device = spans.device
+    l0 = spans[..., 0]
+    r0 = spans[..., 2]
+    valid = (l0 >= 0) & (r0 >= 0) & (l0 <= r0) & (r0 < n)
+    l = l0.clamp(0, n - 1)
+    r = r0.clamp(0, n - 1)
+    row_begin = (r - query_start).clamp(0, q - 1)
+    visible = valid & (r < query_end)
+    batch = torch.arange(B, device=device).unsqueeze(1).expand(B, M)
+    contribution = visible.to(torch.int32)
+    diff = torch.zeros(B, q, n + 1, device=device, dtype=torch.int32)
     diff.index_put_((batch, row_begin, l), contribution, accumulate=True)
-    diff.index_put_((batch, row_begin, col_end), -contribution, accumulate=True)
-    query_boundary = torch.full_like(row_begin, query_len)
-    diff.index_put_((batch, query_boundary, l), -contribution, accumulate=True)
-    diff.index_put_((batch, query_boundary, col_end), contribution, accumulate=True)
-
-    rows = torch.cumsum(diff[:, :query_len, :n], dim=1, dtype=torch.int32)
+    diff.index_put_((batch, row_begin, r + 1), -contribution, accumulate=True)
+    rows = torch.cumsum(diff[:, :, :n], dim=1, dtype=torch.int32)
     rows = torch.cumsum(rows, dim=2, dtype=torch.int32)
     return rows.clamp_(min=0, max=torch.iinfo(torch.int8).max).to(torch.int8)
-
-
-def compute_last_depth_row_gpu(spans: torch.Tensor, n: int) -> torch.Tensor:
-    """Compatibility wrapper for one-token cached decoding."""
-    return compute_last_depth_rows_gpu(spans, n, 1)
 
 
 class PushdownDepthBias(nn.Module):

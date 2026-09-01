@@ -1,4 +1,4 @@
-name: LLMH100
+name: LLM
 channels:
   - defaults
   - conda-forge
@@ -6,7 +6,7 @@ dependencies:
   - _libgcc_mutex=0.1=main
   - _openmp_mutex=5.1=1_gnu
   - bzip2=1.0.8=h7b6447c_0
-  - ca-certificates=2023.08.22=h06a4308_0
+  - ca-certificates=2026.5.14=h06a4308_0
   - ld_impl_linux-64=2.38=h1181459_1
   - libffi=3.3=he6710b0_2
   - libgcc-ng=11.2.0=h1234567_1
@@ -15,10 +15,16 @@ dependencies:
   - libuuid=1.41.5=h5eee18b_0
   - ncurses=6.4=h6a678d5_0
   - openssl=1.1.1w=h7f8727e_0
+  # Keep packaging tools Conda-owned. Reinstalling different pip wheels over
+  # these files makes `conda doctor` report hundreds of altered/missing files.
+  - packaging=26.0
+  - pip=26.1.2
   - python=3.10.0=h12debd9_5
   - readline=8.2=h5eee18b_0
   - sqlite=3.41.2=h5eee18b_0
   - tk=8.6.12=h1ccaba5_0
+  - setuptools=82.0.1
+  - wheel=0.47.0
   - xz=5.4.2=h5eee18b_0
   - zlib=1.2.13=h5eee18b_0
   - pip:
@@ -44,7 +50,7 @@ dependencies:
       - blis==1.3.3
       - boto3==1.35.65
       - botocore==1.35.65
-      - cached-path>=1.6.7
+      - cached-path==1.8.10
       - cachetools==5.5.0
       - captum==0.6.0
       - catalogue==2.0.10
@@ -72,20 +78,23 @@ dependencies:
       - executing==2.0.1
       - fastjsonschema==2.19.1
       - filelock==3.9.0
-      - flash-attn==2.8.2
+      # Official prebuilt wheel matching Python 3.10, torch 2.7 and CXX11 ABI.
+      # A plain flash-attn==2.8.2 requirement falls back to a source build when
+      # nvcc is absent, which makes fresh environment creation non-reproducible.
+      - flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.2/flash_attn-2.8.2%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl
       - fonttools==4.62.1
       - fqdn==1.5.1
       - frozenlist==1.5.0
       - fsspec==2024.9.0
       - gitdb==4.0.12
       - gitpython==3.1.46
-      - google-api-core>=2.23.0
-      - google-auth>=2.36.0
-      - google-cloud-core>=2.4.1
-      - google-cloud-storage>=2.18.2
-      - google-crc32c>=1.6.0
-      - google-resumable-media>=2.7.2
-      - googleapis-common-protos>=1.66.0
+      - google-api-core==2.30.3
+      - google-auth==2.55.2
+      - google-cloud-core==2.6.0
+      - google-cloud-storage==3.12.1
+      - google-crc32c==1.8.0
+      - google-resumable-media==2.10.0
+      - googleapis-common-protos==1.75.0
       - grpcio==1.71.0
       - hf-xet==1.4.3
       - huggingface==0.0.1
@@ -139,15 +148,13 @@ dependencies:
       - nltk==3.9.3
       - notebook==7.0.6
       - notebook-shim==0.2.3
+      # np.stack(..., dtype=...) in the BLiMP pipeline requires NumPy >=1.24.
+      # 2.2.6 is verified with the current SciPy/pandas/sklearn/torch wheels.
       - numpy==2.2.6
-      - nvidia-cublas-cu11==11.10.3.66
       - nvidia-cublas-cu12==12.6.4.1
       - nvidia-cuda-cupti-cu12==12.6.80
-      - nvidia-cuda-nvrtc-cu11==11.7.99
       - nvidia-cuda-nvrtc-cu12==12.6.77
-      - nvidia-cuda-runtime-cu11==11.7.99
       - nvidia-cuda-runtime-cu12==12.6.77
-      - nvidia-cudnn-cu11==8.5.0.96
       - nvidia-cudnn-cu12==9.5.1.17
       - nvidia-cufft-cu12==11.3.0.4
       - nvidia-cufile-cu12==1.11.1.6
@@ -160,14 +167,12 @@ dependencies:
       - nvidia-nvtx-cu12==12.6.77
       - omegaconf==2.3.0
       - overrides==7.4.0
-      - packaging==26.0
       - pandas==2.3.3
       - pandocfilters==1.5.0
       - parso==0.8.3
       - pastel==0.2.1
       - pexpect==4.9.0
       - pillow==12.1.1
-      - pip==26.0.1
       - platformdirs==4.5.1
       - pluggy==1.5.0
       - poethepoet==0.13.1
@@ -175,8 +180,11 @@ dependencies:
       - prometheus-client==0.19.0
       - prompt-toolkit==3.0.43
       - propcache==0.2.0
-      - proto-plus>=1.25.0
-      - protobuf>=6.33.4
+      - proto-plus==1.28.1
+      # Google packages need protobuf >=4.25.8, while benepar 0.2.0 bundles
+      # old generated protos. Parse entry points therefore select protobuf's
+      # Python implementation before importing benepar.
+      - protobuf==6.33.6
       - psutil==5.9.6
       - ptyprocess==0.7.0
       - pure-eval==0.2.2
@@ -214,7 +222,6 @@ dependencies:
       - sentencepiece==0.1.99
       - sentry-sdk==2.51.0
       - setproctitle==1.3.3
-      - setuptools==68.0.0
       - six==1.17.0
       - smart-open==7.5.0
       - smmap==5.0.2
@@ -257,7 +264,7 @@ dependencies:
       - uri-template==1.3.0
       - urllib3==2.6.3
       - uv==0.6.14
-      - wandb==0.24.0
+      - wandb==0.24.1
       - wasabi==1.1.3
       - wcwidth==0.2.12
       - weasel==0.4.3
@@ -265,7 +272,6 @@ dependencies:
       - webencodings==0.5.1
       - websocket-client==1.7.0
       - werkzeug==3.1.3
-      - wheel==0.41.2
       - widgetsnbextension==4.0.9
       - wrapt==2.0.1
       - xxhash==3.5.0

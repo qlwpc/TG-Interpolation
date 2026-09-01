@@ -1,3 +1,8 @@
+import os
+
+# Must be set before benepar/transformers imports their generated protobuf code.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import benepar, spacy
 from spacy.language import Language
 from tqdm import tqdm
@@ -8,7 +13,6 @@ from tokenizers import Tokenizer
 from convert_TG_and_tokenize import convert_TG_format
 import argparse
 import json
-import os
 
 def process_text(text, max_len=256):
     text = preprocess_text(text)

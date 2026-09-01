@@ -16,7 +16,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from olmo.attachment import derive_gold_attachment_actions
+from olmo.attachment import (
+    ATTACHMENT_NORMALIZATION_V1,
+    canonical_attachment_normalization,
+    derive_gold_attachment_actions,
+)
 from olmo.data.parse_align import TreeVocab, parse_chunk_slice
 from olmo.eval.native_model_topk_corpus import NativeModelTopKCorpus
 from olmo.model import OLMo
@@ -263,7 +267,7 @@ def _compose(prefix: Sequence[PushdownGoldCandidate], current: PushdownGoldCandi
 
 def _pack_shared_native_candidates(
     prefix: Sequence[PushdownGoldCandidate], candidates: Sequence[PushdownGoldCandidate],
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int]:
     """Pack native candidates while sharing their identical terminal stream.
 
     The old scorer called ``_compose`` once per candidate, even though only the
@@ -282,6 +286,7 @@ def _pack_shared_native_candidates(
     prefix_spans = [tuple(map(int, span)) for span in span_row.tolist() if int(span[0]) < prefix_length]
     max_spans = max(len(prefix_spans) + len(candidate.spans) for candidate in candidates)
     spans = np.full((len(candidates), max(max_spans, 1), 3), -1, dtype=np.int64)
+    legal = np.zeros((len(candidates), current_length, total_length), dtype=np.bool_)
     targets = np.full((len(candidates), current_length), -100, dtype=np.int64)
     for batch, candidate in enumerate(candidates):
         row_spans = prefix_spans + [tuple(value + prefix_length for value in span) for span in candidate.spans]
@@ -292,38 +297,51 @@ def _pack_shared_native_candidates(
         for query, (target, keys) in enumerate(zip(candidate.attachment_targets, candidate.legal_attachment_targets)):
             if not keys:
                 continue
+            key_array = np.asarray(keys, dtype=np.int64)
             if int(target) not in keys:
                 raise ValueError("gold attachment target is outside its legal action set")
+            legal[batch, query, prefix_length + key_array] = True
             targets[batch, query] = int(target) + prefix_length
-    return token_row, sid_row, torch.from_numpy(spans), torch.from_numpy(targets), prefix_length
+    return (
+        token_row,
+        sid_row,
+        torch.from_numpy(spans),
+        torch.from_numpy(legal),
+        torch.from_numpy(targets),
+        prefix_length,
+    )
 
 
 def _attachment_nll_from_logits(
-    logits: torch.Tensor, targets: torch.Tensor,
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    legal_mask: torch.Tensor,
+    normalization: str,
 ) -> torch.Tensor:
-    """Score gold attachments with the head's trained sentence-causal softmax.
-
-    Stack legality constrains which actions can extend a decoding beam, but the
-    released Pushdown objective normalizes each attachment prediction over all
-    causal positions in the current sentence.  In particular, do not mask
-    already-reduced positions before this softmax: doing so would instead score
-    ``p(r_k | r_k is stack-legal)`` and would not match training.
-
-    Invalid query rows are selected out before cross-entropy because the
-    sentence-local attachment head intentionally returns all ``-inf`` there.
-    """
+    """Sum attachment NLL per candidate under stack-legal v1 or causal v2."""
+    normalization = canonical_attachment_normalization(normalization)
     if logits.ndim != 3 or targets.shape != logits.shape[:2]:
         raise ValueError(
             f"attachment logits/targets must be (B,q,k)/(B,q), got "
             f"{tuple(logits.shape)} and {tuple(targets.shape)}"
         )
+    if legal_mask.shape != logits.shape or legal_mask.dtype != torch.bool:
+        raise ValueError("legal attachment mask must be bool with the logits shape")
     valid = targets != -100
     result = torch.zeros(logits.shape[0], dtype=torch.float64, device=logits.device)
     if not bool(valid.any()):
         return result.cpu()
+    safe_targets = targets.to(device=logits.device, dtype=torch.long).clamp(
+        0, logits.shape[-1] - 1
+    )
+    gold_is_legal = legal_mask.gather(-1, safe_targets.unsqueeze(-1)).squeeze(-1)
+    if not bool(gold_is_legal[valid].all()):
+        raise ValueError("gold attachment target is outside its legal action set")
+    scoring_logits = logits.float()
+    if normalization == ATTACHMENT_NORMALIZATION_V1:
+        scoring_logits = scoring_logits.masked_fill(~legal_mask, float("-inf"))
     losses = F.cross_entropy(
-        logits.float()[valid], targets.to(device=logits.device, dtype=torch.long)[valid],
-        reduction="none",
+        scoring_logits[valid], safe_targets[valid], reduction="none"
     ).to(torch.float64)
     batch_ids = torch.arange(logits.shape[0], device=logits.device)[:, None]
     batch_ids = batch_ids.expand_as(targets)[valid]
@@ -337,10 +355,11 @@ def score_pushdown_native_candidates(
     device: torch.device | str, include_attachment_probability: bool = True,
     prefix_cache: Optional[PushdownPrefixKVCache] = None,
     return_candidate0_cache: bool = False,
+    attachment_normalization: str = ATTACHMENT_NORMALIZATION_V1,
 ) -> PushdownCandidateScores | Tuple[PushdownCandidateScores, PushdownPrefixKVCache]:
     """Score one native candidate batch without repeated CPU composition."""
     device = torch.device(device)
-    token_row, sid_row, spans, targets, prefix_length = _pack_shared_native_candidates(prefix, candidates)
+    token_row, sid_row, spans, legal, targets, prefix_length = _pack_shared_native_candidates(prefix, candidates)
     batch_size = len(candidates)
     use_cache = prefix_cache is not None
     if use_cache:
@@ -393,7 +412,10 @@ def score_pushdown_native_candidates(
         if out.attachment_logits is None:
             raise RuntimeError("joint Pushdown PPL requires attachment logits")
         attachment_nll = _attachment_nll_from_logits(
-            out.attachment_logits, targets.to(device, non_blocking=True)
+            out.attachment_logits,
+            targets.to(device, non_blocking=True),
+            legal.to(device, non_blocking=True),
+            attachment_normalization,
         )
         scores = PushdownCandidateScores(token_nll + attachment_nll, token_nll, attachment_nll)
     if not return_candidate0_cache:
@@ -419,6 +441,7 @@ def score_pushdown_gold_candidates(
     model: OLMo, prefix: Sequence[PushdownGoldCandidate], candidates: Sequence[PushdownGoldCandidate],
     device: torch.device | str, eval_batch_size: int = 4, include_attachment_probability: bool = True,
     max_batch_tokens: int = 65536,
+    attachment_normalization: str = ATTACHMENT_NORMALIZATION_V1,
 ) -> PushdownCandidateScores:
     if not candidates or max_batch_tokens <= 0:
         raise ValueError("candidates cannot be empty")
@@ -450,15 +473,24 @@ def score_pushdown_gold_candidates(
         if out.attachment_logits is None:
             raise RuntimeError("joint Pushdown PPL requires attachment logits")
         q = total_length - prefix_length
+        legal_mask = torch.zeros((len(packed), q, total_length), dtype=torch.bool, device=device)
         targets = torch.full((len(packed), q), -100, dtype=torch.long, device=device)
         for b, row in enumerate(packed):
             for global_q in range(prefix_length, total_length):
                 keys = row[4][global_q]
                 if keys:
+                    legal_mask[b, global_q - prefix_length, torch.tensor(keys, device=device)] = True
                     target = int(row[3][global_q])
                     if target not in keys: raise ValueError("gold attachment target is outside its legal action set")
                     targets[b, global_q - prefix_length] = target
-        attachment_losses.append(_attachment_nll_from_logits(out.attachment_logits, targets))
+        attachment_losses.append(
+            _attachment_nll_from_logits(
+                out.attachment_logits,
+                targets,
+                legal_mask,
+                attachment_normalization,
+            )
+        )
     token_nll = torch.cat(token_losses); attachment_nll = torch.cat(attachment_losses)
     return PushdownCandidateScores(token_nll + attachment_nll, token_nll, attachment_nll)
 
@@ -477,6 +509,8 @@ class PushdownDocumentPPLResult:
     attachment_normalization: str = ""
     prefix_policy: str = "candidate0"
     max_sequence_length: int = 0
+    candidate_aggregation: str = "truncated_joint_sum"
+    ppl_denominator: str = "terminal_count"
     def as_dict(self) -> dict:
         result = dict(self.__dict__)
         result["candidate_compression_ratio"] = (
@@ -494,7 +528,11 @@ def evaluate_pushdown_document_ppl(
     max_batch_attention_elements: int = 16777216,
     document_complete: Optional[Callable[[int, dict], None]] = None,
     completed_document_ids: Optional[set[int]] = None,
+    attachment_normalization: str = ATTACHMENT_NORMALIZATION_V1,
 ) -> PushdownDocumentPPLResult:
+    attachment_normalization = canonical_attachment_normalization(
+        attachment_normalization
+    )
     if eval_batch_size <= 0 or max_batch_attention_elements <= 0:
         raise ValueError("batch limits must be positive")
     if include_attachment_probability and not hasattr(model, "pushdown_attachment_head"):
@@ -510,15 +548,19 @@ def evaluate_pushdown_document_ppl(
         if isinstance(corpus, NativePushdownTopKCorpus)
         else "gold300_right_cnf"
     )
-    attachment_normalization = (
-        "sentence_causal" if include_attachment_probability else "none"
+    effective_attachment_normalization = (
+        attachment_normalization if include_attachment_probability else "none"
     )
     protocol_metadata = {
-        "protocol_version": PUSHDOWN_DOCUMENT_PPL_PROTOCOL_VERSION,
+        "protocol_version": (
+            1 if attachment_normalization == ATTACHMENT_NORMALIZATION_V1 else 2
+        ),
         "structure_source": structure_source,
-        "attachment_normalization": attachment_normalization,
+        "attachment_normalization": effective_attachment_normalization,
         "prefix_policy": "candidate0",
         "max_sequence_length": max_sequence_length,
+        "candidate_aggregation": "truncated_joint_sum",
+        "ppl_denominator": "terminal_count",
     }
 
     def emit_document(doc_id: int) -> None:
@@ -599,12 +641,14 @@ def evaluate_pushdown_document_ppl(
                             first_scores, next_cache = score_fn(
                                 model, context, scored[:batch_size], device,
                                 include_attachment_probability, active_cache, True,
+                                attachment_normalization,
                             )
                             parts.append(first_scores)
                         else:
                             parts.append(score_fn(
                                 model, context, scored[start:start + batch_size], device,
                                 include_attachment_probability, active_cache, False,
+                                attachment_normalization,
                             ))
                     break
                 except torch.OutOfMemoryError:
@@ -616,7 +660,8 @@ def evaluate_pushdown_document_ppl(
                                                for field in ("joint_nll", "token_nll", "attachment_nll")))
         else:
             scores = score_fn(model, context, scored, device, eval_batch_size,
-                              include_attachment_probability, max_batch_tokens)
+                              include_attachment_probability, max_batch_tokens,
+                              attachment_normalization)
         joint_ll = _weighted_logsumexp(scores.joint_nll, multiplicities)
         token_sentence_ll = _weighted_logsumexp(scores.token_nll, multiplicities)
         legacy_ll += joint_ll.item()
@@ -638,6 +683,7 @@ def evaluate_pushdown_document_ppl(
         ppl(legacy_ll), ppl(mixture_ll), ppl(token_ll), legacy_ll, mixture_ll, token_ll,
         terminals, len(corpus), documents, corpus.samples_per_sentence,
         deduplicate_trees, False, candidate_slots, model_candidate_forwards, cache_hits, cache_rebuilds,
-        PUSHDOWN_DOCUMENT_PPL_PROTOCOL_VERSION, structure_source,
-        attachment_normalization, "candidate0", max_sequence_length,
+        1 if attachment_normalization == ATTACHMENT_NORMALIZATION_V1 else 2,
+        structure_source, effective_attachment_normalization, "candidate0",
+        max_sequence_length, "truncated_joint_sum", "terminal_count",
     )

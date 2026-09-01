@@ -1,0 +1,66 @@
+{
+  "block_mask_build_cold_ms": 87.42808178067207,
+  "block_mask_build_steady_ms": 3.508254885673523,
+  "compute_capability": [
+    8,
+    6
+  ],
+  "conda_prefix": "/home/wangpch/.conda/envs/LLM",
+  "cuda_device": "NVIDIA GeForce RTX 3090",
+  "dtype": "torch.bfloat16",
+  "flex_compile_and_cold_ms": 4090.0985300540924,
+  "flex_over_sdpa_ratio": 1.2277749902947122,
+  "flex_steady": {
+    "max_ms": 0.1782476806640625,
+    "median_ms": 0.1763532829284668,
+    "min_ms": 0.17634304046630858,
+    "samples_ms": [
+      0.1782476806640625,
+      0.176363525390625,
+      0.17634304046630858,
+      0.1763532829284668,
+      0.17634304046630858
+    ]
+  },
+  "iterations_per_repeat": 100,
+  "job_id": "3923",
+  "label": "tg-b100-n128-eval",
+  "layers": 12,
+  "mask_density": 0.08627502620220184,
+  "mode": "tg",
+  "node": "rtx3090b",
+  "output_finite": true,
+  "output_max_abs_diff": 0.0078125,
+  "python": "/home/wangpch/.conda/envs/LLM/bin/python",
+  "repeats": 5,
+  "sdpa_cold_ms": 1.9816122949123383,
+  "sdpa_steady": {
+    "max_ms": 0.14373888015747072,
+    "median_ms": 0.14363648414611815,
+    "min_ms": 0.1435852813720703,
+    "samples_ms": [
+      0.14373888015747072,
+      0.1437177562713623,
+      0.14359519958496095,
+      0.14363648414611815,
+      0.1435852813720703
+    ]
+  },
+  "shape": [
+    100,
+    12,
+    128,
+    64
+  ],
+  "status": "passed",
+  "torch": "2.7.1+cu126",
+  "torch_cuda": "12.6",
+  "triton": "3.3.1",
+  "twelve_layer_estimate_ms": {
+    "flex_kernel_only": 2.1162393951416014,
+    "flex_with_one_steady_block_mask_build": 5.624494280815124,
+    "sdpa": 1.7236378097534177
+  },
+  "warmup": 3,
+  "workload": "eval"
+}

@@ -1,5 +1,12 @@
 # Pushdown Gold-300 Document-Level Perplexity 设计方案
 
+> [!WARNING]
+> **设计阶段历史文档，不是当前正式运行协议。** 其中接口和假设可用于追溯设计，但
+> checkpoint-training representation、v1/v2 attachment normalization 与完整结果以
+> [`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](pushdown_word_atom_strict_binary_document_ppl_protocol.md)
+> 为准；已废弃的 BPE-spliced 方案见本仓库纠错索引
+> [`../REPOSITORY_CLEANUP_MEMORY.md`](../REPOSITORY_CLEANUP_MEMORY.md) M-06/M-07。
+
 ## 1. 目标
 
 为本仓库的 Pushdown OLMo 模型实现一个 document-level perplexity evaluator。评估时不运行 beam search，而是直接使用测试集为每个句子提供的 300 棵 gold parse tree，对固定结构下的 token 概率和 attachment 概率进行 teacher-forced 评分。
@@ -55,9 +62,7 @@ attachment_nll
 - ordinary whitespace/newline tokens 计入 token NLL；
 - tree 外部的 whitespace/newline 不产生 attachment target；
 - attachment target 只在 `pushdown_sentence_ids >= 0` 的位置计算；
-- attachment softmax 与训练目标及原作者实现一致，在当前句全部 causal positions
-  中归一化；stack-legal actions 只用于校验 gold target 和约束 beam 扩展，不在
-  teacher-forced likelihood 中重新归一化；
+- attachment softmax 只在当前 stack 状态允许的合法 actions 中归一化；
 - 不加入训练时的 `pushdown_attachment_weight`；该参数是优化目标权重，不是概率指数；
 - 不加入其他训练辅助 loss；
 - 所有候选 NLL 使用 float64 聚合。
@@ -204,22 +209,25 @@ def derive_gold_attachment_actions(
     """Return gold targets and ragged legal targets for every query."""
 ```
 
-ragged legal targets 仅用于验证每个 gold target 都是合法的 stack transition。
-结构 NLL 直接使用 attachment head 已经施加 causal、padding 和 sentence-local
-mask 后的 logits：
+collator 再将当前 batch 的 ragged legal targets 转换成仅覆盖当前句 query range 的 bool mask：
+
+```text
+(batch, current_query_length, full_context_length)
+```
+
+结构 NLL：
 
 ```python
+legal_logits = attachment_logits.masked_fill(~legal_action_mask, -torch.inf)
 attachment_nll = F.cross_entropy(
-    attachment_logits.transpose(1, 2),
+    legal_logits.transpose(1, 2),
     gold_attachment_targets,
-    ignore_index=-100,
     reduction="none",
 )
 attachment_nll = (attachment_nll * current_attachment_query_mask).sum(dim=1)
 ```
 
-不能在 CE 前屏蔽已经归约的位置，否则计算的是条件概率
-`p(r_k | r_k is stack-legal)`，与该 checkpoint 的训练目标不是同一个概率。
+需要验证每个非忽略 gold target 都位于 legal mask 中。
 
 ## 7. 文档上下文
 
@@ -626,8 +634,7 @@ tests/test_pushdown_document_cache_parity.py  # 第二阶段
 - 固定读取每句 300 个 gold parses；
 - 没有 beam search 调用；
 - token 与 attachment 概率均按 Pushdown 联合模型计算；
-- attachment 按训练时的 causal、sentence-local action support 归一化，并验证
-  gold target 属于当前 stack-legal actions；
+- attachment 只在合法 stack actions 内归一化；
 - candidate 0 正确维护文档上下文；
 - legacy 公式与现有 OLMo metric 一致；
 - 同时报告 normalized mixture，避免指标解释歧义；

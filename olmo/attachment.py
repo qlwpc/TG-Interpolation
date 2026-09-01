@@ -30,6 +30,72 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+ATTACHMENT_NORMALIZATION_V1 = "stack_legal"
+ATTACHMENT_NORMALIZATION_V2 = "sentence_causal"
+PUSHDOWN_ATTACHMENT_NORMALIZATIONS = (
+    ATTACHMENT_NORMALIZATION_V1,
+    ATTACHMENT_NORMALIZATION_V2,
+)
+
+
+def canonical_attachment_normalization(value: str) -> str:
+    """Return the canonical Pushdown attachment-probability protocol name.
+
+    ``v1`` renormalizes over the targets reachable from the current stack.
+    ``v2`` keeps the probability assigned by the head's full sentence-causal
+    softmax and merely prevents illegal targets from becoming search children.
+    The short aliases are accepted at CLI boundaries, while result metadata
+    always uses the descriptive canonical names.
+    """
+    aliases = {
+        "v1": ATTACHMENT_NORMALIZATION_V1,
+        ATTACHMENT_NORMALIZATION_V1: ATTACHMENT_NORMALIZATION_V1,
+        "v2": ATTACHMENT_NORMALIZATION_V2,
+        ATTACHMENT_NORMALIZATION_V2: ATTACHMENT_NORMALIZATION_V2,
+    }
+    try:
+        return aliases[str(value).strip().lower()]
+    except KeyError as exc:
+        choices = ", ".join(PUSHDOWN_ATTACHMENT_NORMALIZATIONS)
+        raise ValueError(
+            f"unknown Pushdown attachment normalization {value!r}; expected {choices}"
+        ) from exc
+
+
+def attachment_log_probs_for_targets(
+    logits: torch.Tensor,
+    target_indices: torch.Tensor,
+    normalization: str,
+) -> torch.Tensor:
+    """Return log probabilities for legal attachment targets in one query row.
+
+    Args:
+        logits: one sentence-causal attachment row ``(num_keys,)``. Positions
+            outside its causal/sentence support may already be ``-inf``.
+        target_indices: distinct stack-legal target positions ``(num_legal,)``.
+        normalization: ``stack_legal``/``v1`` or
+            ``sentence_causal``/``v2``.
+
+    v1 applies softmax after selecting legal targets. v2 applies softmax to the
+    complete causal row and then selects the legal expansions, exactly matching
+    the distinction needed by both teacher forcing and beam search.
+    """
+    normalization = canonical_attachment_normalization(normalization)
+    if logits.ndim != 1 or target_indices.ndim != 1:
+        raise ValueError("logits and target_indices must both be one-dimensional")
+    if target_indices.numel() == 0:
+        raise ValueError("at least one legal attachment target is required")
+    targets = target_indices.to(device=logits.device, dtype=torch.long)
+    if bool(((targets < 0) | (targets >= logits.numel())).any()):
+        raise ValueError("attachment target index is outside the logit row")
+    if targets.unique().numel() != targets.numel():
+        raise ValueError("attachment target indices must be distinct")
+    row = logits.float()
+    if normalization == ATTACHMENT_NORMALIZATION_V1:
+        return torch.log_softmax(row.index_select(0, targets), dim=0)
+    return torch.log_softmax(row, dim=0).index_select(0, targets)
+
+
 def build_attachment_query_mask(
     input_ids: torch.Tensor,
     attention_mask: Optional[torch.Tensor],
