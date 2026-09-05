@@ -22,6 +22,9 @@ from scripts.prepare_paper_pretraining import (
     data_paths,
     load_manifest,
     materialize_config,
+    main as prepare_pretraining,
+    select_runs,
+    sha256_file,
     validate_training_inputs,
 )
 
@@ -107,13 +110,15 @@ def test_stream_assembly_preserves_format_alignment(tmp_path):
 def test_paper_manifest_covers_all_audited_model_groups():
     manifest = load_manifest(MANIFEST_PATH)
     runs = manifest["runs"]
-    assert len(runs) == 27
-    assert len({run["id"] for run in runs}) == 27
+    assert len(runs) == 29
+    assert len({run["id"] for run in runs}) == 29
+    assert len(select_runs(runs, ["all"], [])) == 27
     assert sum(run["group"] == "bbc-100m" for run in runs) == 14
     assert sum(run["group"] == "bbc-100m-baselines" for run in runs) == 2
     assert sum(run["group"] == "bbc-500m" for run in runs) == 4
     assert sum(run["group"] == "bbc-1b-supplementary" for run in runs) == 2
     assert sum(run["group"] == "fineweb-edu-1b" for run in runs) == 5
+    assert sum(run["group"] == "bbc-100m-historical" for run in runs) == 2
     bbc_100m = {run["model"] for run in runs if run["group"] == "bbc-100m"}
     assert {
         "Terminal",
@@ -152,6 +157,88 @@ def test_every_checkpoint_source_matches_the_audited_protocol():
 
     for run in load_manifest(MANIFEST_PATH)["runs"]:
         audit_source_config(run, OmegaConf.load(REPO_ROOT / run["source_config"]))
+
+
+def test_paper_pause_selection_excludes_repeat_token_controls():
+    runs = load_manifest()["runs"]
+    for groups in (["all"], [], ["bbc-100m"]):
+        selected = select_runs(runs, groups, [])
+        bbc_pause = [run for run in selected if run["corpus"] == "bbc" and run["grammar"].startswith("pause")]
+        assert {run["id"] for run in bbc_pause} == {"bbc_100m_pause1_sep", "bbc_100m_pause2_sep"}
+        assert all(run["pause_token_id"] == 50261 for run in bbc_pause)
+    historical = select_runs(runs, ["bbc-100m-historical"], [])
+    assert {run["id"] for run in historical} == {"bbc_100m_pause1_repeat", "bbc_100m_pause2_repeat"}
+    assert all(run["pause_token_id"] is None for run in historical)
+    assert select_runs(runs, ["all"], ["bbc_100m_pause1_repeat"])[0] == historical[0]
+
+
+@pytest.mark.parametrize("drift", ["sep_id", "historical_default"])
+def test_manifest_rejects_pause_protocol_drift(tmp_path, drift):
+    manifest = load_manifest()
+    target_id = "bbc_100m_pause1_sep" if drift == "sep_id" else "bbc_100m_pause1_repeat"
+    run = next(run for run in manifest["runs"] if run["id"] == target_id)
+    if drift == "sep_id":
+        run["pause_token_id"] = None
+    else:
+        run["default_enabled"] = True
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="dedicated SEP|explicit historical"):
+        load_manifest(path)
+
+
+def test_paper_sep_campaign_preserves_actual_training_and_launch_protocol(tmp_path):
+    from olmo.config import TrainConfig
+
+    assert prepare_pretraining([
+        "--models", "bbc_100m_pause1_sep", "bbc_100m_pause2_sep",
+        "--campaign-dir", str(tmp_path),
+    ]) == 0
+    manifest = json.loads((tmp_path / "run_manifest.json").read_text())
+    assert len(manifest["runs"]) == 2
+    for run, expected in zip(manifest["runs"], [(2048, 0.006585, 216, 9, 3, 45487), (2049, 0.007458, 272, 17, 2, 54156)]):
+        length, lr, batch, microbatch, accumulation, final_step = expected
+        cfg = TrainConfig.load(run["config"], validate_paths=False)
+        assert cfg.model.pause_token_id == 50261
+        assert cfg.model.max_sequence_length == length
+        assert cfg.model.flash_attention and not cfg.model.flex_attention
+        assert cfg.optimizer.learning_rate == lr
+        assert cfg.global_train_batch_size == batch
+        assert cfg.device_train_microbatch_size == microbatch
+        assert cfg.load_path is None
+        assert cfg.data.paths == [str(REPO_ROOT / "dataset/bbc-news/terminal/train.npy")]
+        assert run["paper_gpu_count"] == 8
+        assert batch // 8 // microbatch == accumulation
+        assert run["final_step"] == final_step
+        assert run["source_config_kind"] == "submitted_training_config"
+        assert run["source_config_sha256"] == sha256_file(REPO_ROOT / run["source_config"])
+        launch = Path(run["launch"]).read_text()
+        assert "NPROC_PER_NODE=${NPROC_PER_NODE:-8}" in launch
+        assert "NNODES * NPROC_PER_NODE != 8" in launch
+
+
+def test_sep_source_snapshot_is_hash_pinned(tmp_path):
+    run = next(run for run in load_manifest()["runs"] if run["id"] == "bbc_100m_pause1_sep")
+    source = tmp_path / "changed.yaml"
+    source.write_text((REPO_ROOT / run["source_config"]).read_text() + "\n# changed\n")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        materialize_config(run, source, tmp_path / "run.yaml", str(tmp_path), "changed_source")
+
+
+def test_sep_launch_validation_rejects_wrong_tokenizer_id(tmp_path):
+    run = next(run for run in load_manifest()["runs"] if run["id"] == "bbc_100m_pause1_sep")
+    config = tmp_path / "run.yaml"
+    materialize_config(run, REPO_ROOT / run["source_config"], config, str(tmp_path), "sep_inputs")
+    corpus = tmp_path / "dataset/bbc-news"
+    (corpus / "terminal").mkdir(parents=True)
+    for split in ("train", "dev", "test"):
+        np.save(corpus / "terminal" / f"{split}.npy", np.arange(4, dtype=np.uint16))
+    tokenizer = corpus / "TG_GPT2_tokenizer.json"
+    tokenizer.write_text(json.dumps({"added_tokens": [{"content": "<|SEP|>", "id": 151673}]}))
+    with pytest.raises(ValueError, match="tokenizer SEP id 151673 does not match"):
+        validate_training_inputs(config)
+    tokenizer.write_text(json.dumps({"added_tokens": [{"content": "<|SEP|>", "id": 50261}]}))
+    assert validate_training_inputs(config)["tokenizer_files"] == 1
 
 
 def test_clean_configs_are_materialized_from_checkpoint_protocol(tmp_path):

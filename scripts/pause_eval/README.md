@@ -7,6 +7,14 @@ checkpoint:
 - XSum finetuning and full-test ROUGE for five fixed seeds;
 - BoolQ finetuning and validation accuracy for the same five seeds.
 
+The final paper's BBC Table 4 uses SEP 50261: Pause-1 is
+`saved_models/pretrain_pause1_100M_SEP50261_steplaw/step45487-unsharded`, and
+Pause-2 is `saved_models/pretrain_pause2_100M_SEP50261_steplaw/step54156-unsharded`
+(recorded on SIST). `pause_token_id: null` weights are historical repeat-token
+controls and are rejected by this campaign. See
+[`docs/pause_protocol.md`](../../docs/pause_protocol.md) for pretraining and
+checkpoint provenance. FineWeb-Edu/Qwen3 SEP 151673 uses its separate OLMES workflow.
+
 The driver freezes checkpoint-derived configs and records hashes before any
 Slurm submission. A four-GPU smoke job performs one real optimizer step and a
 two-batch evaluation for both downstream data paths. For already-trained

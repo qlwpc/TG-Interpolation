@@ -1,8 +1,8 @@
 # EMNLP 2026 Camera-ready 修复、叙述对齐与差异报告
 
-生成日期：2026-08-30
-对比基线：`review_version/paper.tex` → `paper.tex`
-本轮执行边界：修复全部 P0；P1 仅修复 P1-6；另按作者新增指示对齐 scoring-format 叙述；其余 P1 保持原样
+生成日期：2026-08-30  
+对比基线：`review_version/paper.tex` → `paper.tex`  
+本轮执行边界：修复全部 P0；P1 仅修复 P1-6；另按作者新增指示对齐 scoring-format 叙述；其余 P1 保持原样  
 作者确认：Table 4 中的 Doc-PPL 数值为准，即 Tree-Shuffle = 13.41、Pushdown = 13.29
 
 ## 0. 结论

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "protocol": "released-bbc-indices-v1",
+  "dev": {
+    "sha256": "a220f75c9cdb71721f8d7e373cebbb6505fbdcb7db708ea529c92f7036f9e583",
+    "shards": 89,
+    "documents": 4980
+  },
+  "test": {
+    "sha256": "8994db665aa1fc0962941df62ad895bd6ba1806d37dedf56b9b6e73d55c8ced0",
+    "shards": 89,
+    "documents": 5025
+  },
+  "note": "Pins the supplied index files, not historical corpus bytes or the separate DocPPL evaluation corpus. Preserve list order; do not reproduce gen_final_train.py's appended sentinel documents."
+}

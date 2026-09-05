@@ -28,7 +28,12 @@ train_logs/
 saved_models/
 run_folder/
 /run_scripts/
-dataset/
+/dataset/*
+!/dataset/fewshot_sources.py
+!/dataset/bbc-news/
+/dataset/bbc-news/*
+!/dataset/bbc-news/dev_index.json
+!/dataset/bbc-news/test_index.json
 dataset.tar
 
 # GPST lazy corpora (multi-GB generated data, not tracked)

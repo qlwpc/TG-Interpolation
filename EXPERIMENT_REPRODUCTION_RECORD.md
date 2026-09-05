@@ -1,6 +1,6 @@
 # 论文实验复现登记表
 
-更新：2026-08-31。本文是本仓库的唯一人工维护登记表，用于把论文中的
+更新：2026-09-02。本文是本仓库的唯一人工维护登记表，用于把论文中的
 模型、可加载 checkpoint、论文报告值和本次重跑值放在同一张记录中。
 
 > [!IMPORTANT]
@@ -10,7 +10,8 @@
 
 来源：
 
-- 论文：`14901_A_Scaled_Up_Empirical_St.pdf`，Table 3/4/6/7。
+- 当前稿件：`camera_ready/paper.tex`；历史投稿值：
+  `14901_A_Scaled_Up_Empirical_St.pdf`，Table 3/4/6/7。两者不一致时显式标注版本。
 - checkpoint：本机 `saved_models/` 的实际目录；均已检查目录存在。
 - `artifacts/experiment/scaleup_nonfineweb_multiseed_20260815/` 只在逐 run
   `TRAIN_DONE/EVAL_DONE`、日志和 checkpoint 身份均可核验时使用；其中复制式 Pause
@@ -37,6 +38,12 @@
 Tree/TG 的论文 Doc-PPL 是 tree-marginalized 近似，论文 Table 4 也注明 tree
 linearization PPL 为 upper bound。因此录入时必须附带 `protocol`；不能把它和
 terminal/pause 的 `terminal_doc_ppl` 误标为严格同一指标。
+
+代码级复核（2026-09-02）还确认：当前 `tg_doc` evaluator 每句边缘化 300 个
+proposal 后，把 **candidate 0** 的 KV cache 作为下一句的文档历史。已登记的
+Tree/TG 结果因此必须写 `history=candidate-0`，不能解释为对当前模型的
+300 个 proposal 重新求 argmax。当前稿件中的 model-greedy history 文字在对齐
+实现或重跑前属于未关闭差异。
 
 ## 2. 论文模型 ↔ 本机 checkpoint
 
@@ -207,7 +214,8 @@ Pause-1/2 最终 checkpoint 分别为 step45487/step54156，均完成日志、SH
 | 模型组 | 可参考模板 | 是否能精确重训当前 checkpoint |
 |---|---|---|
 | Terminal/Tree/TG-100M | `terminal.yaml` / `tree.yaml` / `TG.yaml` | 否；这些是 early/truncated 模板，LR、batch、stop 与正式 checkpoint 不同 |
-| TGTree、TGNomask、TGNomask-Aug、三种 Tree 数据变体、Tree-Shuffle、复制式及 SEP Pause-1/2-100M | 无独立正式模板 | 否；以对应 checkpoint 的 `config.yaml` 为唯一核心参数源，重写绝对数据路径；Pause 还必须核对 `pause_token_id` |
+| TGTree、TGNomask、TGNomask-Aug、三种 Tree 数据变体、Tree-Shuffle、复制式 Pause-1/2-100M | 无独立正式模板 | 否；以对应 checkpoint 的 `config.yaml` 为唯一核心参数源，重写绝对数据路径；Pause 还必须核对 `pause_token_id` |
+| 论文 SEP Pause-1/2-100M | `train_configs/paper_sources/bbc_100m_pause{1,2}_sep.yaml` | 原始提交配置的固定 SHA-256 副本，绑定 job 988670/988671 与 final step 45487/54156；通过 manifest 清洗后重训，保留 SEP50261、8 GPU 与实际 LR/batch |
 | 两个 mixing 模型 | `nomask_and_tg.yaml` | 否；现文件是 `stop_at=6, lr=6e-4` 的 smoke config；必须从 checkpoint 保留完整 `mix_head_type` |
 | Terminal/Tree/TGTree-500M | `terminal-500M.yaml` / `tree-500M.yaml` / `tgtree-500M.yaml` | 核心 LR/batch/架构一致；final step 仍按 checkpoint 与一 epoch数据长度 |
 | TGNomask-Aug-500M | 无独立正式模板 | 以 checkpoint config 为准 |
@@ -222,7 +230,11 @@ evaluator、`load_path`、`data.paths` 或 trainer/optimizer state。已有权�
 
 上述人工核对结果已固化为机器可读清单
 `train_configs/paper_pretraining_manifest.json`；`scripts/prepare_paper_pretraining.py`
-会逐项比对清单与 checkpoint config，再生成清除旧路径和恢复状态的 27 个重训 run。
+会逐项比对清单与 checkpoint 或固定哈希的原始提交配置，再生成清除旧路径和恢复状态的
+27 个默认重训 run。BBC Pause-1/2 默认对应最终论文的 dedicated-SEP 模型；清单共 29 项，
+其中两个 repeat-token 历史对照仅在显式指定 `bbc-100m-historical` 组或其 model ID 时选择。
+原始提交配置副本不冒充 final-checkpoint config，来源类型和 checkpoint 身份在 manifest
+中分开记录。完整 Pause 入口见 [`docs/pause_protocol.md`](docs/pause_protocol.md)。
 清单只负责机器执行，模型身份与协议解释仍以本节为准，避免 README 另存一份易漂移的参数表。
 
 ### 2A.6 已消除和仍需显式记录的隐含 key
@@ -655,25 +667,35 @@ Terminal-1B Doc-PPL 日志达到 `eval_step=148836`；SG/BLiMP 分别记录
 `avg=0.6741` 与 `overall/overall=0.6331`。旧 unmasked Tree-Shuffle 的 SG/BLiMP 此前在
 完整 suite 上运行；现已分别由 3473/3474 完成并回填至 §3 总表。
 
-## 4. 1B FineWeb-Edu：论文数据与本次重跑
+## 4. 1B FineWeb-Edu：当前 11-task OLMES 与待回填项
 
-论文 Table 6 是 11-task OLMES；这里只登记用户要求的 BoolQ，并保留 AVG 作为
-定位信息。SG、BLiMP、Doc-PPL、XSum 未在该表以同一设置报告，不填论文值。
+`camera_ready/paper.tex` 的当前 Table 6 和本地完成产物均使用 11-task OLMES
+completion/cloze、paper Eq. 5 terminal-format scoring。Tree/TGTree 行的
+`tree_eval_type=terminal`，所以旧表的 `Treeterm`/`TGTreeterm` 不再作为独立模型行。
+SG、BLiMP、Doc-PPL 和 XSum 不属于该 11-task 合同，继续留空，不用 BBC 1B
+或旧无元数据摘录代填。
 
-| 论文模型 / 评测协议 | 论文 BoolQ | 论文 11-task AVG | 本次 BoolQ | 本次 XSum | 本次 SG | 本次 BLiMP | 本次 Doc-PPL | checkpoint / 备注 |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| Terminal | 59.11 | 53.23 | — | — | — | — | — | `saved_models/A800_models/terminal_1B/step94299-unsharded`；BBC model-only 结果只列 §3，不回填本行 |
-| Tree | 64.83 | 53.93 | — | — | — | — | — | `saved_models/A800_models/tree_1B/step137217-unsharded` |
-| TGTree | 68.20 | 54.08 | — | — | — | — | — | `saved_models/A800_models/tgtree_1B/step143658-unsharded` |
-| Treeterm（Tree eval） | 64.83 | 54.72 | — | — | — | — | — | 与上一行 Tree 共用 FineWeb checkpoint；terminal-format scoring，无独立权重 |
-| TGTreeterm（TGTree eval） | 68.20 | 55.92 | — | — | — | — | — | 与上一行 TGTree 共用 FineWeb checkpoint；terminal-format scoring，无独立权重 |
-| Pause-1 | 63.91 | 54.95 | — | — | — | — | — | `saved_models/A800_models/pause1_1B_SEP/step116061-unsharded` |
-| Pause-2 | 61.62 | 55.68 | — | — | — | — | — | `saved_models/A800_models/pause2_1B_SEP/step141380-unsharded` |
+| 模型 / primary scoring | 当前稿件 BoolQ | 当前稿件 11-task AVG | 已核对 BoolQ | 已核对 11-task AVG | SG | BLiMP | XSum | Doc-PPL | checkpoint |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Terminal / terminal | 58.65 | 53.20 | 58.65 | 53.20 | — | — | — | — | `saved_models/A800_models/terminal_1B/step94299-unsharded` |
+| Tree / terminal | 63.85 | 53.56 | 63.85 | 53.56 | — | — | — | — | `saved_models/A800_models/tree_1B/step137217-unsharded` |
+| TGTree / terminal | 67.55 | 55.88 | 67.55 | 55.88 | — | — | — | — | `saved_models/A800_models/tgtree_1B/step143658-unsharded` |
+| Pause-1 / terminal | 65.41 | 55.17 | 65.41 | 55.17 | — | — | — | — | `saved_models/A800_models/pause1_1B_SEP/step116061-unsharded` |
+| Pause-2 / terminal | 63.39 | 55.80 | 63.39 | 55.80 | — | — | — | — | `saved_models/A800_models/pause2_1B_SEP/step141380-unsharded` |
+
+完成证据为 `analysis-output/bootstrap/{terminal,tree,tgtree,pause1,pause2}/`中每模型
+11 个 per-example JSON，及 `analysis-output/bootstrap/logs/`中五份包含
+`Training complete` 且无 Traceback/OOM/runtime failure 的日志。五组配置绑定上表
+checkpoint 和 Qwen3 tokenizer；`analysis-output/bootstrap/results_seed2027/` 用固定
+bootstrap seed 2027 汇总。该 seed 是置信区间重采样 seed，不是新的模型或评测 seed。
+本机忽略文件 `analysis-output/SG_BLIMP_FULL_RESULTS.md` 缺 run id、完成日志与
+data/protocol 元数据，仍不能回填 SG/BLiMP 列。
 
 ## 5. 本轮任务登记与填写格式
 
 | run id | 模型 | 任务 | 状态 | 证据路径 | 结果填写位置 |
 |---|---|---|---|---|---|
+| `fineweb_1b_olmes_terminal_format_11task` | FineWeb-Edu 1B Terminal / Tree / TGTree / Pause-1 / Pause-2 | OLMES 11-task completion/cloze，terminal-format scoring | COMPLETE：五模型各 11/11 per-example JSON；五份日志均 `Training complete`；BoolQ/AVG 分别为 58.65/53.20、63.85/53.56、67.55/55.88、65.41/55.17、63.39/55.80；bootstrap seed=2027 | `analysis-output/bootstrap/{terminal,tree,tgtree,pause1,pause2,logs,results_seed2027}/`；configs=`evaluation/eval_configs/a800_bootstrap_{terminal,tree,pause}.yaml` | §4 FineWeb-Edu OLMES |
 | `terminal_terminal_doc_ppl_full_20260823` | Terminal-100M | Doc-PPL | COMPLETE, PPL=9.88981 | `artifacts/evaluation/terminal_doc_ppl_20260823/terminal/logs/slurm-terminal_terminal_doc_ppl_full_20260823-3444.out` | §3 Terminal-100M |
 | `pause1_terminal_doc_ppl_full_20260823` | Pause-1-100M（复制式） | Doc-PPL | COMPLETE, PPL=9.83125 | `artifacts/evaluation/terminal_doc_ppl_20260823/pause1/logs/slurm-pause1_terminal_doc_ppl_full_20260823-3445.out` | §3 复制式历史对照 |
 | `pause2_terminal_doc_ppl_full_20260823` | Pause-2-100M（复制式） | Doc-PPL | COMPLETE, PPL=9.92898（Slurm 3446） | `artifacts/evaluation/terminal_doc_ppl_20260823/pause2/logs/slurm-pause2_terminal_doc_ppl_full_20260823-3446.out` | §3 复制式历史对照 |

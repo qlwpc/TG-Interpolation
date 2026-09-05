@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -91,12 +92,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=sorted(MODEL_NAMES), default="gpt2",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     output = (args.output or default_output(args.model_name)).resolve()
+    if output.exists() and not args.overwrite:
+        tokenizer = Tokenizer.from_file(str(output))
+        validate_paper_layout(args.model_name, tokenizer)
+        print(f"reused existing {args.model_name} tokenizer -> {output}")
+        return 0
     output.parent.mkdir(parents=True, exist_ok=True)
     tokenizer = build_tokenizer(args.model_name)
     validate_paper_layout(args.model_name, tokenizer)
-    tokenizer.save(str(output))
+    fd, name = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        tokenizer.save(str(temporary))
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
     print(
         f"saved {args.model_name} tokenizer ({tokenizer.get_vocab_size()} tokens, "
         f"SEP={tokenizer.token_to_id('<|SEP|>')}) -> {output}"

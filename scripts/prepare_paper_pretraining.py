@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Materialize clean pretraining campaigns for every model in the paper.
 
-The historical checkpoint ``config.yaml`` is the architecture/optimizer source
-of truth.  ``train_configs/paper_pretraining_manifest.json`` records the fields
+The historical checkpoint ``config.yaml`` (or a hash-pinned submitted training
+config for BBC SEP Pause) is the architecture/optimizer source of truth.
+``train_configs/paper_pretraining_manifest.json`` records the fields
 audited in ``EXPERIMENT_REPRODUCTION_RECORD.md`` and maps every model to its
 input representation.  This program verifies the two sources agree, copies the
 checkpoint config, and replaces only run-local state and canonical data paths.
@@ -66,10 +67,25 @@ def load_manifest(path: Path = MANIFEST_PATH) -> dict[str, Any]:
         raise ValueError("paper pretraining manifest contains duplicate run ids")
     for run in runs:
         marker = f"/step{run['final_step']}-"
-        if marker not in run["source_config"]:
+        if marker not in run.get("source_checkpoint", run["source_config"]):
             raise ValueError(
                 f"{run['id']}: final_step does not identify its source checkpoint"
             )
+        if run["grammar"].startswith("pause"):
+            protocol = run.get("pause_protocol")
+            if protocol == "dedicated_sep":
+                expected_id = 50261 if run["corpus"] == "bbc" else 151673
+                if run.get("pause_token_id") != expected_id:
+                    raise ValueError(f"{run['id']}: dedicated SEP requires pause_token_id={expected_id}")
+            elif protocol == "repeat_token":
+                if (
+                    run.get("pause_token_id") is not None
+                    or run.get("default_enabled", True)
+                    or run["paper_scope"] != "historical_compute_control"
+                ):
+                    raise ValueError(f"{run['id']}: repeat-token controls must be explicit historical runs")
+            else:
+                raise ValueError(f"{run['id']}: missing or unknown pause_protocol={protocol!r}")
     return raw
 
 
@@ -175,6 +191,20 @@ def audit_source_config(run: dict[str, Any], source_cfg: Any) -> None:
         actual = _source_value(source_cfg, "model.pause_token_id")
         if actual != run["pause_token_id"]:
             raise ValueError(f"{run['id']}: pause id {actual} is not audited value")
+    if run.get("pause_protocol") == "dedicated_sep" and run["corpus"] == "bbc":
+        pause_runtime = {
+            "model.flash_attention": True,
+            "model.flex_attention": False,
+            "device_train_batch_size": run["global_batch"] // run["gpu_count"],
+            "device_train_grad_accum": run["gradient_accumulation_steps"],
+        }
+        if run["global_batch"] != (
+            run["gpu_count"] * run["microbatch"] * run["gradient_accumulation_steps"]
+        ):
+            raise ValueError(f"{run['id']}: inconsistent GPU/microbatch/accumulation contract")
+        for key, expected in pause_runtime.items():
+            if _source_value(source_cfg, key) != expected:
+                raise ValueError(f"{run['id']}: source {key} is not audited value {expected!r}")
     if "mix_heads" in run:
         actual = [
             [item["grammar_type"], int(item["n_heads"])]
@@ -231,6 +261,9 @@ def materialize_config(
 ) -> None:
     from omegaconf import OmegaConf as om
 
+    expected_sha = run.get("source_config_sha256")
+    if expected_sha is not None and sha256_file(source) != expected_sha:
+        raise ValueError(f"{run['id']}: source config SHA-256 mismatch")
     cfg = om.load(source)
     audit_source_config(run, cfg)
 
@@ -332,6 +365,18 @@ def validate_training_inputs(config: Path) -> dict[str, Any]:
     for path in tokenizer_paths:
         if not Path(path).is_file():
             raise FileNotFoundError(f"tokenizer input does not exist: {path}")
+        if (
+            (cfg.model.transformer_grammar_type or "").startswith("pause")
+            and cfg.model.pause_token_id is not None
+        ):
+            from scripts.submit_pause_sep_pretrain import tokenizer_special_id
+
+            actual_sep_id = tokenizer_special_id(Path(path), "<|SEP|>")
+            if actual_sep_id != cfg.model.pause_token_id:
+                raise ValueError(
+                    f"{path}: tokenizer SEP id {actual_sep_id} does not match "
+                    f"model.pause_token_id={cfg.model.pause_token_id}"
+                )
 
     return {
         "run_name": cfg.run_name,
@@ -393,6 +438,11 @@ def select_runs(
         for run in runs
         if (not groups_set or "all" in groups_set or run["group"] in groups_set)
         and (not models_set or run["id"] in models_set)
+        and (
+            run.get("default_enabled", True)
+            or run["group"] in groups_set
+            or run["id"] in models_set
+        )
     ]
     if not selected:
         raise ValueError("no paper pretraining runs matched --groups/--models")
@@ -408,7 +458,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=REPO_ROOT / "artifacts/experiment/paper_pretraining_reproduction",
     )
-    parser.add_argument("--groups", nargs="*", default=["all"])
+    parser.add_argument(
+        "--groups", nargs="*", default=["all"],
+        help="default/all excludes historical controls; request bbc-100m-historical explicitly",
+    )
     parser.add_argument("--models", nargs="*", default=[])
     parser.add_argument("--list", action="store_true", help="list audited runs and exit")
     parser.add_argument(
@@ -455,7 +508,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = run_dir / "config.yaml"
         launch = run_dir / "launch.sh"
         materialize_config(run, source, config, workspace, run_name)
-        gpu_count = PAPER_GPU_COUNTS[run["scale"]]
+        gpu_count = run.get("gpu_count", PAPER_GPU_COUNTS[run["scale"]])
         generate_launch(launch, config, workspace, gpu_count, run)
         protocol = {
             **run,

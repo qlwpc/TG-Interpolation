@@ -131,6 +131,8 @@ Models = {
     "pause1in3": {"model.transformer_grammar_type": "pause1/3", "model.max_sequence_length": 2048},
     "pause1in4": {"model.transformer_grammar_type": "pause1/4", "model.max_sequence_length": 2050},
     "pause1": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pause1-repeat": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
+    "pause2-repeat": {"model.transformer_grammar_type": "pause2", "model.max_sequence_length": 2049},
     "pause1-fwedu-1B": {"model.transformer_grammar_type": "pause1", "model.max_sequence_length": 2048},
     "pause2-fwedu-1B": {"model.transformer_grammar_type": "pause2", "model.max_sequence_length": 2049},
     "pause1label": {"model.transformer_grammar_type": "pause1_label", "model.max_sequence_length": 2048},
@@ -314,12 +316,33 @@ date
     print(f"已生成sbatch脚本: {script_filename}")
     return script_filename
 
+PAUSE_TOKEN_IDS = {"pause1": 50261, "pause2": 50261, "pause1-repeat": None, "pause2-repeat": None}
+
+
+def _check_pause_identity(modelname: str, model_config) -> None:
+    if modelname not in PAUSE_TOKEN_IDS:
+        return
+    expected_id = PAUSE_TOKEN_IDS[modelname]
+    expected_grammar = Models[modelname]["model.transformer_grammar_type"]
+    if (
+        model_config is None
+        or model_config.get("pause_token_id") != expected_id
+        or model_config.get("transformer_grammar_type") != expected_grammar
+    ):
+        raise OLMoCliError(
+            f"{modelname} requires checkpoint grammar={expected_grammar}, "
+            f"pause_token_id={expected_id}; never relabel repeat-token weights as SEP. "
+            "Historical controls use pause1-repeat/pause2-repeat."
+        )
+
+
 def _load_checkpoint_config(
     checkpoint_config_path: Path, overrides: List[str], modelname: str
 ) -> TrainConfig:
     """Load a checkpoint config, repairing only known legacy null grammar."""
     raw = TrainConfig.update_legacy_settings(om.load(str(checkpoint_config_path)))
     model_raw = raw.get("model")
+    _check_pause_identity(modelname, model_raw)
     if model_raw is not None and model_raw.get("transformer_grammar_type") is None:
         # Some original terminal checkpoints predate this required field.  The
         # requested model key is the explicit, auditable migration source.
@@ -329,6 +352,7 @@ def _load_checkpoint_config(
     conf = om.merge(om.structured(TrainConfig), raw)
     if overrides:
         conf = om.merge(conf, om.from_dotlist(overrides))
+    _check_pause_identity(modelname, conf.model)
     return om.to_object(conf)
 
 
@@ -342,6 +366,12 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     """
     if modelname not in model_paths:
         raise OLMoCliError(f"Unknown or unmapped model: {modelname}")
+    if modelname in {"pause1", "pause2"} and task in {"xsum_finetune", "xsum_test", "boolq"}:
+        raise OLMoCliError(
+            "Paper SEP Pause downstream runs require scripts/pause_eval_campaign.py prepare "
+            "with the SEP checkpoint (see scripts/pause_eval/README.md). "
+            "That entry point enforces the five-seed XSum v2/BoolQ contract."
+        )
     checkpoint_path = Path(
         os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
     ).resolve()
@@ -532,12 +562,14 @@ model_paths = {
     "tree_noont": "/saved_models/tree_noont/step42440-unsharded",
     "tree_triplecnt": "/saved_models/tree_triplecnt/step60045-unsharded",
     "tree_compress": "/saved_models/tree_compress/step45965-unsharded",
-    "pause2": "/saved_models/pretrain_pause2_100M/step52609-unsharded",
+    "pause2": "/saved_models/pretrain_pause2_100M_SEP50261_steplaw/step54156-unsharded",
+    "pause2-repeat": "/saved_models/pretrain_pause2_100M/step52609-unsharded",
     "pause3": "/saved_models/pretrain_pause3_100M/step61407-unsharded",
     "pause1in2": "/saved_models/pretrain_pause1in2_100M/step40028-unsharded",
     "pause1in3": "/saved_models/pretrain_pause1in3_100M/step38082-unsharded",
     "pause1in4": "/saved_models/pretrain_pause1in4_100M/step36516-unsharded",
-    "pause1": "/saved_models/pretrain_pause1_100M/step45487-unsharded",
+    "pause1": "/saved_models/pretrain_pause1_100M_SEP50261_steplaw/step45487-unsharded",
+    "pause1-repeat": "/saved_models/pretrain_pause1_100M/step45487-unsharded",
     "pause1label": "/saved_models/pretrain_pause1label_100M/step45487-unsharded",
     "pretrain_terminal": "/saved_models/pretrain_terminal_100M/step34115-unsharded"
 }
