@@ -286,21 +286,12 @@ class PushdownAttachmentHead(nn.Module):
             if not 0 <= query_start <= query_end <= n:
                 raise ValueError(f"invalid attachment query_range={query_range} for length {n}")
         h = final_hidden.float()                                   # (B,n,d) keys h_j^L
-        # Only the requested query rows need embeddings or the attachment MLP.
-        # Cached document evaluation supplies a short current sentence as
-        # ``query_range`` against a long candidate-0 prefix; running this MLP
-        # over the expanded prefix once per tree candidate is exactly redundant.
-        query_ids = input_ids[:, query_start:query_end]
-        emb = F.embedding(query_ids, wte_weight).float()           # (B,q,d)
-        query_len = query_end - query_start
-        if query_start == 0:
-            # h_{k-1}^L for position zero is the all-zero vector.
-            h_prev = F.pad(h[:, :max(query_end - 1, 0), :], (0, 0, 1, 0))
-            h_prev = h_prev[:, :query_len, :]
-        else:
-            h_prev = h[:, query_start - 1:query_end - 1, :]
-        h_tilde = self.mlp(torch.cat([emb, h_prev], dim=-1))       # (B,q,d) query
-        Wh_tilde = self.W(h_tilde)                                # (B,q,d)
+        emb = F.embedding(input_ids, wte_weight).float()          # (B,n,d) emb(x_k)
+        # h_{k-1}^L: shift h right by one along time; position 0 gets a zero vector
+        # (no "previous" hidden state for the first token).
+        h_prev = F.pad(h[:, :-1, :], (0, 0, 1, 0))                # (B,n,d)
+        h_tilde = self.mlp(torch.cat([emb, h_prev], dim=-1))      # (B,n,d) query
+        Wh_tilde = self.W(h_tilde[:, query_start:query_end])      # (B,q,d)
         # logits[b,k,j] = (W h̃_k) · h_j  ==  (h_j)^T W h̃_k  (Eq. 5, j != k branch).
         logits = torch.bmm(Wh_tilde, h.transpose(1, 2))           # (B,n,n)
         # Eq. 5 has a distinct shift-only branch on the diagonal:
@@ -308,7 +299,8 @@ class PushdownAttachmentHead(nn.Module):
         # not h_k^T W h̃_k.  Compute it separately and scatter it over the
         # reduce-key matrix, matching the reference implementation's
         # ``next_word_key``/``logit_self`` insertion.
-        self_logits = (Wh_tilde * h_tilde).sum(dim=-1)            # (B,q)
+        query_tilde = h_tilde[:, query_start:query_end]
+        self_logits = (Wh_tilde * query_tilde).sum(dim=-1)        # (B,q)
         row = torch.arange(query_end - query_start, device=logits.device)
         col = torch.arange(query_start, query_end, device=logits.device)
         logits[:, row, col] = self_logits

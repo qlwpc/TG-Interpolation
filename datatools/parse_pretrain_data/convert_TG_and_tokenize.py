@@ -1,13 +1,18 @@
 from nltk import Tree
-from tqdm import tqdm
 import argparse
 from tokenizers import Tokenizer
 import re
 import numpy as np
-from numpy import ndarray
 import os
 from joblib import Parallel, delayed
-import subprocess
+import tempfile
+from contextlib import ExitStack
+from pathlib import Path
+
+from datatools.parse_pretrain_data.pipeline_io import atomic_json, sha256_file
+from datatools.parse_pretrain_data.shard_integrity import (
+    FORMATS, TOKENIZATION_PROTOCOL, receipt_path, verify_receipt,
+)
 
 def _is_qwen3_style_tokenizer(tokenizer) -> bool:
     """Check if tokenizer has bracket mapping enabled.
@@ -60,133 +65,126 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False,
             )
 
 
-def convert_TG_format(input: str, use_bracket_mapping: bool = True) -> str:
+def convert_TG_format(input: str, use_bracket_mapping: bool = True, *, strict: bool = False) -> str:
     line = "(qlwpcRegen " + input.strip() + ")"
     try:
         tree = Tree.fromstring(line, remove_empty_top_bracketing=False)
+        if strict and (not tree.leaves() or any(not isinstance(child, Tree) for child in tree)):
+            raise ValueError("empty or non-tree parsed document")
         outputstr = pformat_flat(tree, use_bracket_mapping=use_bracket_mapping)
+        if strict and not outputstr:
+            raise ValueError("parsed document produced an empty tree stream")
     except Exception as e:
+        if strict:
+            raise ValueError("invalid parsed document") from e
         print("error occurs when processing data: ")
         print(line)
         print(e)
         outputstr = ""
     return outputstr
 
-def count_lines_linux_style(filename):
-    result = subprocess.run(['wc', '-l', filename], capture_output=True, text=True)
-    reslist = result.stdout.split()
-    return int(reslist[0]) if reslist!=[] else 0
-
-
 def encode_tree_document(text, tokenizer, vocab, dtype):
     """Encode one parsed document with explicit, format-stable boundaries."""
     token_ids = [vocab.bos, *tokenizer.encode(text).ids, vocab.eos]
     return np.asarray(token_ids, dtype=dtype)
 
-# def convert_treenpy_to_TG(tree: ndarray, vocab):
-#     T = tree.shape[0]
-#     for token in tree:
-#         if vocab.is_closing_non_terminal(token):
-#             T += 1
-#     TG = np.zeros((T, ), tree.dtype)
-#     i = 0
-#     for token in tqdm(tree):
-#         TG[i] = token
-#         i += 1
-#         if vocab.is_closing_non_terminal(token):
-#             TG[i] = token
-#             i += 1
-#     assert i==T
-#     return TG
+def tokenize_shard(source: Path, output_root: Path, tokenizer, vocab,
+                   tokenizer_sha256: str, *, overwrite: bool = False) -> dict:
+    """Stream one document at a time, then publish three arrays and a receipt.
 
-if __name__=="__main__":
+    A receipt is the completion marker. Interrupted or legacy outputs without
+    one are never silently reused. Scratch space is bounded by one shard, not
+    by corpus size; RAM is bounded by a single document plus the copy buffer.
+    """
+    dtype = np.dtype("uint16" if tokenizer.get_vocab_size() < 65536 else "uint32")
+    source_hash = sha256_file(source)
+    outputs = {fmt: output_root / fmt / f"{source.stem}.npy" for fmt in FORMATS}
+    receipt = receipt_path(output_root, source.stem)
+    if not overwrite and (receipt.exists() or any(p.exists() for p in outputs.values())):
+        result = verify_receipt(output_root, source.stem, tokenizer_sha256, source_hash)
+        print(f"verified existing shard: {source.stem}", flush=True)
+        return result
+    for path in outputs.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    counts = dict.fromkeys(FORMATS, 0)
+    documents = 0
+    with tempfile.TemporaryDirectory(prefix=f".tokenize-{source.stem}-", dir=output_root) as scratch_name:
+        scratch = Path(scratch_name)
+        with ExitStack() as stack:
+            handles = {fmt: stack.enter_context((scratch / f"{fmt}.bin").open("wb")) for fmt in FORMATS}
+            with source.open(encoding="utf-8") as handle:
+                for line_number, line in enumerate(handle, 1):
+                    try:
+                        if not line.endswith("\n"):
+                            raise ValueError("unterminated parsed row (possibly interrupted parser)")
+                        text = convert_TG_format(line, strict=True)
+                        tree = encode_tree_document(text, tokenizer, vocab, dtype)
+                        arrays = {"tree": tree,
+                                  "terminal": vocab.convert_treenpy_to_terminal(tree),
+                                  "tg": vocab.convert_treenpy_to_TG(tree)}
+                        for fmt, array in arrays.items():
+                            if (array.ndim != 1 or array.size < 2 or array[0] != vocab.bos or
+                                    array[-1] != vocab.eos or np.count_nonzero(array == vocab.bos) != 1 or
+                                    np.count_nonzero(array == vocab.eos) != 1):
+                                raise ValueError(f"invalid or embedded document boundaries in {fmt}")
+                            array.astype(dtype, copy=False).tofile(handles[fmt])
+                            counts[fmt] += int(array.size)
+                        documents += 1
+                    except Exception as exc:
+                        raise ValueError(f"{source}:{line_number}: tokenization failed; no rows may be skipped") from exc
+        if not documents:
+            raise ValueError(f"{source}: empty parsed shard")
+        if sha256_file(source) != source_hash:
+            raise ValueError(f"parsed source changed while tokenizing: {source}")
+        result = {"schema_version": 1, "protocol": TOKENIZATION_PROTOCOL,
+                  "source": str(source.resolve()), "source_sha256": source_hash,
+                  "tokenizer_sha256": tokenizer_sha256, "dtype": str(dtype),
+                  "documents": documents, "formats": {}}
+        # Stage all three standard NPY files before replacing any final output.
+        for fmt in FORMATS:
+            staged = scratch / f"{fmt}.npy"
+            dest = np.lib.format.open_memmap(staged, mode="w+", dtype=dtype, shape=(counts[fmt],))
+            raw = np.memmap(scratch / f"{fmt}.bin", mode="r", dtype=dtype)
+            for start in range(0, counts[fmt], 4 * 1024 * 1024):
+                dest[start:start + 4 * 1024 * 1024] = raw[start:start + 4 * 1024 * 1024]
+            dest.flush()
+            del dest, raw
+            result["formats"][fmt] = {"tokens": counts[fmt], "sha256": sha256_file(staged)}
+        # Invalidate an old receipt only once replacement starts. On failure,
+        # validation refuses the incomplete group instead of marking it done.
+        receipt.unlink(missing_ok=True)
+        for fmt, output in outputs.items():
+            os.replace(scratch / f"{fmt}.npy", output)
+        atomic_json(receipt, result)
+    print(f"tokenized {source.stem}: {documents} documents", flush=True)
+    return result
 
-    parser = argparse.ArgumentParser()
-    # parser.add_argument('--list_arg', type=str)  # 接收单个字符串
-    parser.add_argument('--input_dir', type=str, default="../../dataset/bbc-news-parsed-raw")
-    parser.add_argument('--tokenizer', type=str, default="../../dataset/bbc-news/TG_GPT2_tokenizer.json")
-    parser.add_argument('--output_dir', type=str, default="../../dataset/bbc_tokenized/")
-    parser.add_argument('--jobs', type=int, default=16,
-                        help='parallel parsed-text shards to tokenize')
-    args = parser.parse_args()
-    # result_list = args.list_arg.split(',') if args.list_arg else []
-    
-    tokenizer = Tokenizer.from_file(args.tokenizer)
-    dtype = np.uint16 if tokenizer.get_vocab_size() < 65536 else np.uint32
-    output_dir = args.output_dir
-    
+
+def _tokenize_worker(source: Path, output: Path, tokenizer_path: Path, overwrite: bool):
     from olmo.data.tg_mask import SentencepieceVocab
-    vocab = SentencepieceVocab.from_vocab_file(args.tokenizer)
-    
-    tree_dir = os.path.join(output_dir, "tree")
-    terminal_dir = os.path.join(output_dir, "terminal")
-    TG_dir = os.path.join(output_dir, "tg")
-    os.makedirs(tree_dir, exist_ok=True)
-    os.makedirs(terminal_dir, exist_ok=True)
-    os.makedirs(TG_dir, exist_ok=True)
-    input_directory = os.path.expanduser(args.input_dir)
+
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    vocab = SentencepieceVocab.from_vocab_file(str(tokenizer_path))
+    return tokenize_shard(source, output, tokenizer, vocab, sha256_file(tokenizer_path), overwrite=overwrite)
 
 
-    def tokenize_file(input):
-        pid = os.getpid()
-        tree_seq = []
-        terminal_seq = []
-        tg_seq = []
-        # print(f"start tokenizing {input}")
-        filename = os.path.join(input_directory, input + '.txt')
-        with open(filename, 'r') as file:
-            with tqdm(total=count_lines_linux_style(filename), desc=f"Process {pid}", position=hash(pid) % 16) as pbar:
-                for line in file:
-                    TG_str = convert_TG_format(line)
-                    if TG_str=="":
-                        continue
-                    outputid = encode_tree_document(TG_str, tokenizer, vocab, dtype)
-                    tree_seq.append(outputid)
-                    terminal_ids = vocab.convert_treenpy_to_terminal(outputid)
-                    terminal_seq.append(terminal_ids)
-                    TG_ids = vocab.convert_treenpy_to_TG(outputid)
-                    tg_seq.append(TG_ids)
-                    pbar.update(1)
-                    # print(tokenizer.decode(TG_ids, skip_special_tokens=False))
-            
-        if not tree_seq:
-            print(f"[warn] {filename}: no line converted successfully; nothing written")
-            return
-        terminal_data = np.concatenate(terminal_seq, axis=0)
-        np.save(os.path.join(terminal_dir, input+".npy"), terminal_data)
-        tree_data = np.concatenate(tree_seq, axis=0)
-        np.save(os.path.join(tree_dir, input+".npy"), tree_data)
-        TG_data = np.concatenate(tg_seq, axis=0)
-        np.save(os.path.join(TG_dir, input+".npy"), TG_data)
-        return
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Strict, resumable, memory-bounded three-format tokenization")
+    parser.add_argument("--input_dir", type=Path, required=True)
+    parser.add_argument("--tokenizer", type=Path, required=True)
+    parser.add_argument("--output_dir", type=Path, required=True)
+    parser.add_argument("--jobs", type=int, default=1, help="parallel shards; each worker needs scratch disk for one shard")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args(argv)
+    if args.jobs < 1:
+        parser.error("--jobs must be positive")
+    sources = sorted(args.input_dir.glob("*.txt"))
+    if not sources:
+        raise FileNotFoundError(f"no parsed .txt shards in {args.input_dir}")
+    Parallel(n_jobs=args.jobs)(delayed(_tokenize_worker)(source, args.output_dir, args.tokenizer, args.overwrite)
+                              for source in sources)
+    return 0
 
 
-    all_files = sorted(name for name in os.listdir(input_directory) if name.endswith('.txt'))
-    # resume: skip a file only when ALL THREE outputs already exist
-    # (the old check looked at terminal/ alone, which could leave tree/tg
-    #  missing after an interrupted run)
-    def _done(d):
-        return {os.path.splitext(n)[0] for n in os.listdir(d)}
-    done_names = _done(tree_dir) & _done(terminal_dir) & _done(TG_dir)
-
-    process_list = []
-    for filename in all_files:
-        full_path = os.path.join(input_directory, filename)
-        main_name = os.path.splitext(filename)[0]
-        if os.path.isfile(full_path):
-            if main_name not in done_names:
-                process_list.append(main_name)
-                # tokenize_file(main_name)
-    print(f"file to tokenize is {process_list}")
-    Parallel(n_jobs=args.jobs)(delayed(tokenize_file)(name) for name in process_list)
-
-    # tg_exclude_list = os.listdir(TG_dir)
-    # tg_exclude_list = [os.path.splitext(name)[0] for name in tg_exclude_list]
-    # for filename in all_files:
-    #     full_path = os.path.join(input_directory, filename)
-    #     main_name = os.path.splitext(filename)[0]
-    #     if os.path.isfile(full_path):
-    #         if main_name not in tg_exclude_list:
-    #             print(f"start tokenizing TG {main_name}")
-    #             TG_data = vocab.convert_treenpy_to_TG(np.load("../../dataset/bbc_tokenized/tree/" + main_name + ".npy", mmap_mode='r'), vocab)
-    #             np.save("../../dataset/bbc_tokenized/tg/"+main_name+".npy", TG_data)
+if __name__ == "__main__":
+    raise SystemExit(main())

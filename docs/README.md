@@ -12,7 +12,10 @@ corrections and scope limits.
 | --- | --- |
 | [`README.md`](../README.md) | repository setup, data preparation, training, and evaluation entry points |
 | [`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md) | model identity, run status, and result registry |
+| [`Evaluation.md`](../Evaluation.md) | current evaluator, data-entry, configuration, and protocol routing; results remain in the registry |
 | [`pretraining_reproduction.md`](pretraining_reproduction.md) | reproducible pretraining data and campaign workflow |
+| [`pretraining_data_pipeline_repair.md`](pretraining_data_pipeline_repair.md) | supplied BBC split fingerprints, data-integrity fixes, offline tests, and full-corpus verification limits |
+| [`pause_protocol.md`](pause_protocol.md) | final-paper SEP Pause identities, pretraining configs, v2 evaluation, and explicit historical controls |
 | [`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](pushdown_word_atom_strict_binary_document_ppl_protocol.md) | current Pushdown fixed-word-atom Document-PPL protocol |
 | [`FSDP_DOWNSTREAM_EVAL_RISKS.md`](FSDP_DOWNSTREAM_EVAL_RISKS.md) | unresolved multi-rank evaluation risks and operating rule |
 
@@ -42,7 +45,6 @@ corrections and scope limits.
 | [`tree300_vs_test_boundary_report.md`](tree300_vs_test_boundary_report.md) | `tree_300` and test-corpus boundary audit |
 | [`diagnostics/2026-08-20-tree300-eval-failure-report.md`](diagnostics/2026-08-20-tree300-eval-failure-report.md) | full tree-300 failure diagnosis |
 | [`reports/pushdown_gpu_optimization_20260802.md`](../reports/pushdown_gpu_optimization_20260802.md) | consolidated outcome of the completed Pushdown GPU optimization campaign |
-| [`Evaluation.md`](../Evaluation.md) | historical 2026-08-23 evaluation implementation snapshot; not the current protocol index |
 | [`reports/`](../reports/) | dated audits and run reports; they do not replace the result registry |
 
 Completed campaign plans and checklists are intentionally removed once their durable

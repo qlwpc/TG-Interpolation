@@ -21,6 +21,8 @@ import json
 import torch
 import numpy as np
 import gc
+from pathlib import Path
+from datatools.parse_pretrain_data.parse_integrity import checked_parse_trees, parsed_row_count, write_parse_receipt
 
 from benepar import retokenization
 nltk.data.path.append("/2024233198/nltk_data")
@@ -326,9 +328,8 @@ class batch_buffer:
     def parse_batch(self):
         if len(self.batches)==0:
             return
-        TreeGen = self.beneparser.parse_sents(self.batches)
+        TreeGen = checked_parse_trees(self.beneparser.parse_sents(self.batches), self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
-            tree = tree[0]
             leaves = tree.leaves()
             if len(leaves) == 1 and re.match(r"\n+", leaves[0]):
                 parsed_string = leaves[0].replace("\n", "(Ċ Ċ) ").rstrip()
@@ -340,7 +341,7 @@ class batch_buffer:
     
     def append_batch(self, sents):
         if len(sents)==0:
-            self.batches.append(benepar.InputSentence(words='\n'))
+            self.batches.append(benepar.InputSentence(words=['\n']))
             self.document_end.append(True)
         for i, sent in enumerate(sents):
             input_sent = benepar.InputSentence(words=sent)
@@ -359,13 +360,12 @@ def load_shrunk_dataset(directory_path, file_pattern:str = None):
     file_pattern = file_pattern or "*.arrow"
     data_files = []
     regex = re.compile(file_pattern)
-    for filename in os.listdir(directory_path):
+    for filename in sorted(os.listdir(directory_path)):
         if regex.match(filename):
             data_files.append(os.path.join(directory_path,filename))
     logger.info(data_files)
     if not data_files:
-        print(f"错误：在路径 {directory_path} 下没找到任何 .arrow 文件！")
-        return None
+        raise FileNotFoundError(f"no Arrow files matching {file_pattern} in {directory_path}")
     logger.info(f"找到 {len(data_files)} 个分片文件，正在加载...")
     dataset = load_dataset(
         "arrow", data_files=data_files, split="train",
@@ -652,6 +652,7 @@ def main(args_list=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_list', type=str)
     parser.add_argument('--start_index', type=int, default=0)
+    parser.add_argument('--max-docs', type=int, help='parse at most this many additional documents (smoke test)')
     parser.add_argument('--fineweb-edu-arrow-dir', type=str,
                         help='directory containing staged sample-100BT Arrow shards')
     parser.add_argument('--output-dir', type=str,
@@ -659,6 +660,8 @@ def main(args_list=None):
     parser.add_argument('--skip-deps', action='store_true',
                         help='skip the dependency bootstrap (models/tokenizers)')
     args = parser.parse_args(args_list)
+    if args.max_docs is not None and args.max_docs < 1:
+        parser.error("--max-docs must be positive")
     if args.fineweb_edu_arrow_dir:
         FINEWEB_EDU_ARROW_DIR = os.path.abspath(os.path.expanduser(args.fineweb_edu_arrow_dir))
     if args.output_dir:
@@ -683,38 +686,51 @@ def main(args_list=None):
         logger.info(f"start parsing {split}")
         pbar = tqdm()
 
-        start_index = count_lines_linux_style(filename)
+        start_index = parsed_row_count(Path(filename))
+        processed = start_index
+        complete = False
         if start_index > 0:
             pbar.update(start_index)
         with open(filename, "a+") as output:
             Buffer = batch_buffer(output, pbar)
             try:
                 totallen = len(ds)
+            except TypeError:
+                totallen = None
+            if totallen is not None:
+                if start_index > totallen:
+                    raise ValueError(f"parsed rows exceed source documents: {filename}")
                 pbar.total = totallen
                 index = start_index
-                while index < totallen:
+                stop_at = totallen if args.max_docs is None else min(totallen, start_index + args.max_docs)
+                while index < stop_at:
                     document = ds[index]
                     doc = split_text_into_sents(document)
                     split_sents = process_doc_into_maxlen(doc, max_len=450)
                     Buffer.append_batch(split_sents)
                     index += 1
-                    pbar.update(1)
                     if index % 200 == 0:
                         gc.collect()
-            except TypeError:
+                processed = index
+                complete = index == totallen
+            else:
                 # Streaming iterable — no len() or index access
                 import itertools
-                ds_iter = itertools.islice(ds, start_index, None)
+                stop_at = None if args.max_docs is None else start_index + args.max_docs
+                ds_iter = itertools.islice(ds, start_index, stop_at)
                 for i, doc_row in enumerate(ds_iter):
                     document = doc_row['text']
                     doc = split_text_into_sents(document)
                     split_sents = process_doc_into_maxlen(doc, max_len=450)
                     Buffer.append_batch(split_sents)
-                    pbar.update(1)
+                    processed += 1
                     if (start_index + i + 1) % 200 == 0:
                         gc.collect()
+                complete = args.max_docs is None or processed - start_index < args.max_docs
             Buffer.parse_batch()
             print("end parse")
+        if split.startswith("finewebedu"):
+            write_parse_receipt(Path(filename), processed, "benepar_en3", complete=complete)
                 
     logger.info("finished")
 

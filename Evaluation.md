@@ -1,15 +1,231 @@
-# Evaluation 工作流程文档
+# Evaluation：当前协议、数据入口与配置边界
+
+更新：2026-09-02。
+
+本文是评测层的当前导航与协议说明，回答“该模型在该任务上应走哪条数据和配置路径”。
+它不保存第二份结果表：checkpoint 身份、run 状态和可引用数值仍只登记在
+[`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md)，已知错误与待关闭
+风险见 [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md)。论文方法表述以
+[`camera_ready/paper.tex`](camera_ready/paper.tex) 为准；若论文、登记表和代码不一致，必须
+分别记录“论文声称”“实际运行”“checkpoint 身份”，不能静默合并。
+
+> [!IMPORTANT]
+> 本文的“当前”指当前可复核的 evaluator/data/config 合同，不表示所有模型都共享同一
+> 概率、候选集合或分母。Terminal/Pause、Tree/TG、Tree-Shuffle 和 Pushdown 的
+> Document-PPL 是四类协议；正确报告方式是并列注明协议，不是把它们改写成同一种指标。
+
+## 1. 先按模型族选协议
+
+| 模型族 | Document-PPL | SG | BLiMP | XSum / BoolQ 或 OLMES |
+|---|---|---|---|---|
+| BBC Terminal | `terminal_doc`，单 terminal 路径 | terminal teacher-forced | terminal，K=1 | BBC 五 seed task-specific finetune |
+| BBC dedicated-SEP Pause | `terminal_doc`；document-global pause phase，pause target 不进分母 | pause-expanded teacher-forced | pause-expanded terminal，K=1 | 只走 Pause v2 campaign；XSum phase-constrained KV-cache generation |
+| Tree/TG 与其线性化变体 | `tg_doc`；CRF proposal K=300 truncated sum | word-synchronous DFS beam，beam=300 | 读取已有 300 parses 后对 joint tree loss 做 `logsumexp` | BBC 五 seed；保留模型自己的 tree/TG 表示 |
+| Tree-Shuffle（masked 论文行） | terminal-only，K=1 | terminal-only teacher-forced | terminal-only，K=1 | checkpoint 保持 `tree_shuffle_mask`；不能换成 unmasked checkpoint |
+| TreeReg-layer9 | `terminal_doc` | terminal teacher-forced | terminal，K=1 | 论文外架构对照；下游须区分 legacy FT 与 parse-aligned auxiliary-loss FT |
+| Pushdown | native attachment candidates，当前论文值用 n-ary v1 `stack_legal` truncated joint sum | incremental attachment beam=300 | supplied gold300 attachment candidates | XSum 使用 source gold spans + ROOT-free summary stack；BoolQ 使用 corrected gold-span scoring |
+| FineWeb-Edu 1B | 不用 BBC Doc-PPL 入口代填 | GPT-2/Qwen 数据不能混用 | 同左 | Qwen3 tokenizer；OLMES completion/cloze，多 shot，primary=`tree_eval_type: terminal` |
+
+`Treeterm` 与 `TGTreeterm` 是 Tree/TGTree checkpoint 的 terminal-score 评测名，不是独立
+权重。100M 旧 `pause_token_id=null` 权重是 repeat-token compute control，也不是
+dedicated-SEP Pause。Tree-Shuffle 的论文行使用
+`saved_models/treeshufflemask_pretrain/step49440-unsharded`；
+`saved_models/Tree_shuffle_pretrain/step49440-unsharded` 只保留为 unmasked 历史对照。
+
+BBC 100M `pause1` / `pause2` 公共别名现在绑定 SEP50261 checkpoint；历史权重通过
+`pause1-repeat` / `pause2-repeat` 显式选择。通用配置生成器核对 checkpoint 原始 pause ID，
+拒绝通过 override 改写模型身份；论文 XSum/BoolQ 必须走 Pause v2 campaign。
+预训练参数与完整命令见 [`docs/pause_protocol.md`](docs/pause_protocol.md)。
+
+## 2. 数据入口
+
+路径均相对仓库根目录。存在文件只说明本机有资产；进入结果登记前仍须绑定哈希、split、
+checkpoint 和 run id。
+
+| 任务 | 当前数据入口 | 必须核对的结构 |
+|---|---|---|
+| terminal Document-PPL | `dataset/bbc-news/terminal/{test.npy,test_sent_index.npy,test_doc_index.npy}` | 148,836 句、4,966 文档；三个文件必须来自同一版本 |
+| Tree Document-PPL | `dataset/bbc-news/testppl_tree/{tree_300.npy,tree_sent_index.npy,tree_doc_index.npy}` | 每句 300 proposals；使用 bos/eos-normalized testppl 版本 |
+| TG Document-PPL | `dataset/bbc-news/testppl_tg/{tg_300.npy,tg_sent_index.npy,tg_doc_index.npy}` | 同上，表示为 LIN2/TG |
+| Pushdown Document-PPL | `dataset/bbc-news/testppl/native_model_topk_300_v2/` | model-native candidates、文档边界和候选数必须由 finalizer 校验 |
+| SG | `evaluation/SG/tokenized/*.json`；Qwen3 用 `evaluation/SG/tokenized/qwen3/*.json` | 当前 32 项、6 类；`nn-nv-rpl` 不计入 |
+| BLiMP | `dataset/BLiMP/tree300/blimp_{terminal,tree_300,tg_300,tree_300_qwen}.npy` | full suite=67 tasks × 1,000 pairs；terminal K=1，结构模型 K=300 |
+| XSum | `dataset/Xsum/` | filtered train 由 `save_ids.json` 决定；full test=11,333；source、summary、gold JSONL 必须成套 |
+| BoolQ | `dataset/SuperGLUE/BoolQ/` | train=9,427，validation=3,270；parsed passage/question sidecars须与 JSONL 同版 |
+| FineWeb-Edu OLMES | `olmo_data/oe_eval_tasks/`、`olmo_data/hf_datasets/` 与任务 registry | tokenizer=`dataset/TG_QWEN3_tokenizer.json`；不得回落到 BBC GPT-2 tokenizer |
+
+BBC GPT-2 evaluator 使用 `dataset/bbc-news/TG_GPT2_tokenizer.json`。FineWeb-Edu/Qwen3
+模型使用 `dataset/TG_QWEN3_tokenizer.json`，并需相应 Qwen3 SG/BLiMP 数据。任何配置同时
+出现 FineWeb checkpoint 与 BBC tokenizer，或 BBC checkpoint 与 Qwen3 task sidecar，都应
+在提交前失败，而不是让 evaluator 自动猜测。
+
+## 3. 配置分层与入口
+
+### 3.1 四层合同
+
+1. **checkpoint config**：只负责已经训练出的架构、grammar、tokenizer identity、context
+   length 和 pause id；checkpoint 中后来被评测覆盖的 `data.paths` 不是训练来源证据。
+2. **protocol config**：显式选择 evaluator label/type、数据、`structure_mode`、
+   `tree_eval_type`、候选数、分母和 task split。
+3. **runtime config**：设备、DDP/FSDP、microbatch、worker 和输出路径。改变 runtime 不得
+   改变第 2 层概率语义。
+4. **result record**：记录 checkpoint、config、数据/哈希、seed、job/run id、日志、完成
+   状态和主协议/诊断身份。
+
+test-only 运行必须从 checkpoint model config 重建，并设置
+`eval_on_load=true`、`eval_no_save=true`、`max_duration=0`、
+`reset_optimizer_state=true`、`reset_trainer_state=true`、`try_load_latest_save=false`。
+不要继承 checkpoint 的训练 shards、旧 evaluator、`stop_at` 或 optimizer/trainer state。
+
+### 3.2 可执行入口
+
+| 范围 | 首选入口 | 边界 |
+|---|---|---|
+| BBC 常规模型的 SG/BLiMP/Doc-PPL 与普通 XSum/BoolQ campaign | `scripts/init_cfg_and_sbatch.py` | 当前实现硬编码 BBC terminal/tree/TG 数据与 GPT-2 tokenizer；不要把其中的 `*-fwedu-1B` key 当作 FineWeb 通用入口 |
+| dedicated-SEP Pause 全套评测 | `scripts/pause_eval_campaign.py`、`scripts/pause_eval/README.md` | XSum 必须是 pipeline v2 且 eval batch=1；旧 v1 checkpoint/marker 不可复用 |
+| TreeReg/Pushdown SG 与 BLiMP 协议对照 | `scripts/make_syntax_eval_configs.py` | `structure_mode` 必须显式；Pushdown 主值为 SG `beam`、BLiMP `gold` |
+| Pushdown 当前 Document-PPL | `scripts/evaluate_pushdown_document_ppl.py` 与 `docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md` | 论文主值、v1/v2、direct/n-ary 和 topology diagnostic 分开登记 |
+| masked Tree-Shuffle 已完成复现包 | `artifacts/experiment/treeshufflemask_terminal_multiseed_20260830/prepare_campaign.py` | base 三项用 runtime `terminal`；XSum/BoolQ 保持 checkpoint grammar=`tree_shuffle_mask` |
+| FineWeb-Edu 11-task OLMES | `evaluation/eval_configs/a800_bootstrap_{terminal,tree,pause}.yaml` | 使用 Qwen3 tokenizer；Tree/TGTree primary score 必须 `tree_eval_type: terminal` |
+| FineWeb terminal/full 验证 | `scripts/make_terminal_format_validation_configs.py` | Validation-8 decomposition 与 Validation-10 不得冒充 11-task test 结果 |
+
+`evaluation/eval_configs/` 和 `train_configs/eval_per_metric/` 中仍有历史、smoke 和专题 YAML。
+文件名含 `smoke`、`profile`、`decomp` 或旧绝对路径的配置不能仅凭存在就升级为主协议。
+优先从已核对 checkpoint 生成新 run 配置；冻结后的 campaign config 与 manifest 一起保存。
+
+### 3.3 `structure_mode` 是当前结构协议开关
+
+`EvaluatorConfig.structure_mode` 取值为：
+
+| 值 | 语义 |
+|---|---|
+| `auto` | 保留模型族默认；只适合已被本表明确覆盖的普通 Tree/TG 路径 |
+| `terminal` | terminal teacher-forced；不提供 parse/stack tape |
+| `gold` | 当前用于 Pushdown BLiMP；消费 supplied 300 parses/spans |
+| `beam` | 由模型增量推断 latent structure；Pushdown 与 Tree/TG 使用各自搜索器 |
+
+旧 `beam_search: true` 只作兼容；新配置同时写冲突的 `structure_mode` 会报错。论文主协议
+不得依赖隐含 `auto` 来选择 Tree-Shuffle 或 Pushdown 分支。
+
+## 4. 当前 Document-PPL 合同
+
+### 4.1 Terminal、Pause、TreeReg 与 Tree-Shuffle terminal projection
+
+evaluator 为 `label=terminal_doc_ppl, type=terminal_doc`，batch=1、worker=0。每篇文档只在
+开头提供 BOS；BOS 不计分，普通 terminal 与 EOS 计分。当前固定分母为 3,284,061 个
+terminal/EOS token。DataLoader 按完整文档分配到 rank，每句必须恰好评测一次；metric 对
+全局 NLL 与计数做归并，并拒绝 partial evaluation。
+
+同一文档内句间延续 KV cache。下一句首 token 必须由上一句冻结的末位分布计分，不能用
+当前句提交缓存后的分布覆盖。超过 context length 时只裁历史 cache。
+
+Pause 使用 document-global phase；跨句继续、换文档重置。插入位置随 checkpoint 的
+`pause_token_id` 决定：`null` 表示 repeat-token control，50261/151673 表示 dedicated SEP。
+插入位置通过 `label_mask` 排除，因此分子和分母仍与 terminal projection 对齐。
+
+### 4.2 Tree/TG 的 CRF-300 truncated marginal
+
+evaluator 为 `type=tg_doc`，Tree label=`txl_approx_doc`，TG label=`tg_approx_doc`，当前
+结果使用 `SENT_SIZE=300`。每句对 300 个 joint tree NLL 做
+`logsumexp(-NLL)`，总和再除以 terminal/EOS 分母；这是截断候选和，不除以 K。
+
+当前实现把每句第一个 proposal（candidate 0）提交为后续文档 prefix 的 KV cache。它不是
+对 300 个 proposal 按当前模型重新求 joint argmax。当前登记结果因此必须写
+`history=candidate-0`；论文若写 model-greedy history，需先完成协议对齐或重跑，不能用文字
+把已运行结果改成另一条路径。
+
+### 4.3 Pushdown native top-K
+
+当前论文 Table-4 的 13.293598 使用历史 native n-ary candidates 和 v1
+`stack_legal` attachment normalization；它没有补全 checkpoint 训练时的 fixed-word-atom
+与人工 right-CNF reductions，因此不是 training-representation likelihood。当前句计算
+`logsumexp(token_ll + attachment_ll)`，不减 `log K_s`；历史句固定 candidate 0，分母仍为
+3,284,061。已完成的 fixed-word-atom n-ary/direct strict-binary 与 v2 `sentence_causal`、
+uniform-average、token-only、BPE-spliced topology 都是明确定义但不同的协议或诊断，
+不能覆盖历史 v1 主行。完整定义以
+[`docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md`](docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md)
+为准。
+
+## 5. SG 与 BLiMP
+
+SG 使用 32 项、6 类公式，按 target-region surprisal 判断并汇总 category average。
+Terminal/Pause/Tree-Shuffle/TreeReg 使用 teacher-forced logits；Tree/TG 使用
+word-synchronous DFS beam=300，`nc=max(term_len,5)`、`pc=3`、
+`max_length=max(6*term_len,10)`；Pushdown 主协议使用 attachment beam=300。
+
+BLiMP full suite 为 67×1,000 minimal pairs。Terminal/Pause/Tree-Shuffle/TreeReg 每句 K=1；
+Tree/TG 读取已有 300 parses 并对 joint tree likelihood 做 truncated `logsumexp`；Pushdown
+主协议把 supplied gold300 trees 转成 terminal-coordinate spans/action candidates 后边缘化。
+terminal-only 或 inferred-beam 结果是 protocol diagnostic，不能替换 registered gold300
+主值。任何 tied/non-finite pair 数也应随结果登记。
+
+## 6. XSum、BoolQ 与 FineWeb-Edu OLMES
+
+### 6.1 BBC XSum / BoolQ
+
+普通 BBC checkpoint 从预训练权重重置 optimizer/trainer 后独立微调。XSum 为 3 epochs、
+LR `6e-5`、global batch 40；完整 11,333-example test 报 ROUGE-1/2/L 及三者均值 R-AVG。
+BoolQ 为 5 epochs、LR `3e-4`、global batch 40；完整 validation 报 accuracy。论文表使用
+seeds `42, 2026, 6198, 13171, 31723` 的 mean ± sample SD。
+
+Pause 只使用 v2：训练 supervision mask 与 expanded summary 对齐，生成保持 pause phase，
+使用 KV cache 且 eval batch=1。任何缺少匹配 `training_contract.json` 或
+`xsum_pipeline_version: 2` 的旧产物都不可复用。
+
+Pushdown XSum 的已登记主 run 使用 source gold spans、ROOT-free summary stack、beam=6、
+`max_reduce=null`；prompt spans 只作 attention history，不成为 summary attachment target。
+Pushdown BoolQ 使用修正后的 attachment-loss 分母和 gold-span teacher-forced terminal-format
+MC scoring。旧错误分母产生的 BoolQ 和 root-containing/max-reduce=4 XSum 均不进入主表。
+
+### 6.2 FineWeb-Edu OLMES
+
+11 tasks 使用 completion/cloze，而不是显示选项字母的分类。HellaSwag、WinoGrande、MMLU、
+MMLU-Redux、OpenBookQA 为 5-shot；BoolQ、ARC-Easy、ARC-Challenge、PIQA、SocialIQA、
+CommonsenseQA 为 3-shot。每个 textual component 使用 Benepar 1-best；不使用 300 proposals。
+
+Tree/TGTree 的 primary metric 是 continuation terminal-token log-prob 之和
+(`tree_eval_type: terminal`)；full score 只作 sensitivity analysis。11-task test、
+Validation-8 decomposition 和 Validation-10 是三套不同数据合同，不得互相代填。
+已完成的 11-task per-example evidence 与 bootstrap 汇总位于
+`analysis-output/bootstrap/`；进入论文/登记表时仍须由总登记表绑定 checkpoint 和完成证据。
+
+## 7. 分布式与完整性门禁
+
+- evaluator 使用无 padding duplication、无 tail truncation 的 `DistributedEvalSampler`。
+  Document-PPL 按完整文档分 rank；K>1 BLiMP 按完整 sentence group 分 rank。
+- `eval_subset_num_batches=-1` 才是 full run。smoke/partial 指标不得填主表；terminal
+  Document-PPL metric 会主动拒绝记录数不完整的运行。
+- 当前自定义生成和部分结构搜索不支持在 FSDP shard 上直接调用 module 方法。正式下游评测
+  继续使用 DDP/full replica，直至真实多 GPU 集成测试关闭
+  [`docs/FSDP_DOWNSTREAM_EVAL_RISKS.md`](docs/FSDP_DOWNSTREAM_EVAL_RISKS.md) 中的风险。
+- model-only checkpoint 可以没有 `optim.pt`/`train.pt`；只要显式关闭两类 state restore，
+  这不是失败证据。
+- 输出进入总登记表前必须核对 finite metrics、完整样本数、checkpoint/config/data identity、
+  run/job id 和日志完成标记。主协议与 alternative-protocol diagnostic 分行。
+
+## 8. 当前未关闭的协议差异
+
+1. Tree/TG Document-PPL 的当前代码/已登记运行使用 candidate-0 history，而论文正文描述
+   model-greedy history；在对齐或重跑前应显式披露。
+2. camera-ready Pushdown 下游文字仍可能残留 `max_reduce=4` 或 BoolQ beam 描述；已登记主 run
+   是 XSum `max_reduce=null`、BoolQ gold-span teacher-forced，引用时以 run 证据为准并修正文稿。
+3. FineWeb-Edu 11-task OLMES 已有完整 per-example/log/config evidence，但 SG/BLiMP 的旧摘录仍
+   缺 run id、日志和数据/protocol 元数据；两者信任级别不同。
+4. `scripts/init_cfg_and_sbatch.py` 仍同时暴露 BBC 与 `*-fwedu-1B` model key，却重建为 BBC
+   数据/tokenizer。FineWeb 正式 run 只能走专用 Qwen configs，直到通用生成器变为 corpus-aware。
+
+---
+
+# 历史附录：2026-08-23 evaluator 实现快照
 
 > [!WARNING]
-> 本文是 2026-08-23 的个人实现快照，`file:line` 随代码演进已经漂移，也不包含之后
-> Tree-Shuffle checkpoint、Pause XSum v2、Pushdown fixed-word-atom v1/v2 等完整纠错。
-> 当前实验状态先查 [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md) 和
-> [`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md)；本文主要用于
-> 理解历史 evaluator 分发，不应单独作为数值或协议依据。
+> 以下内容保留用于追溯旧 evaluator 分发、当时的行号和错误修复背景。`file:line` 已漂移，
+> “当前”“标准”字样只代表当日状态；Pause v2、masked Tree-Shuffle、Pushdown v1/v2、
+> corpus-qualified FineWeb 配置和分布式 sampler 修正均以上面的当前协议层为准。历史数值不能
+> 绕过总登记表直接引用。
 
-**代码库**: /home/wangpch/TG-Interpolation (OLMo-based)
-**更新日期**: 2026-08-23
-**用途**: 个人参考文档，记录 evaluation 系统如何运作，含 file:line 引用和关键数值。
+**快照日期**：2026-08-23。
+**原用途**：个人实现参考，记录 evaluator 分发、触发机制和早期结果。
 
 ---
 
@@ -65,7 +281,7 @@ else:   # lm, tg_sent, downstream (ICL 多选)
 | Task | EvaluatorConfig label | Type | Metric 类 | Dataset 类 |
 |------|----------------------|------|-----------|------------|
 | pretrain | TG-ppl-validation | lm | MeanMetric | MemMapDataset |
-| docppl (terminal/pause，当前标准) | terminal_doc_ppl | terminal_doc | TerminalDocumentPerplexityMetric | TerminalDocumentPerplexityDataset |
+| docppl (terminal/pause，快照当日标准) | terminal_doc_ppl | terminal_doc | TerminalDocumentPerplexityMetric | TerminalDocumentPerplexityDataset |
 | docppl (terminal/pause，旧口径) | TG-ppl-validation + -test | lm | MeanMetric | MemMapDataset |
 | docppl (tg/tree) | tg_approx_doc / txl_approx_doc | tg_doc | TGPerplexityDocumentLevelMetric | TGPerplexityApproximationDataset |
 | boolq/cb/copa/... | {task} | downstream | ICLMetric | ICLMultiChoiceTaskDataset 子类 |
@@ -146,7 +362,7 @@ finetune_params = {"reset_optimizer_state": True, "reset_trainer_state": True, "
 
 ---
 
-## 4. document-level PPL（当前可比口径）
+## 4. document-level PPL（快照当日可比口径）
 
 `task="docppl"` 对 terminal 和所有 pause grammar 现在统一产生：
 

@@ -76,7 +76,7 @@ def main() -> None:
         not args.token_only,
         progress,
         args.max_batch_tokens,
-        attachment_normalization=attachment_normalization,
+        attachment_normalization,
     )
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
 

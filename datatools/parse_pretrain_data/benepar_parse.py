@@ -15,12 +15,15 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from datatools.parse_pretrain_data.parse_integrity import checked_parse_trees, parsed_row_count, write_parse_receipt
 
 HUB_DATASET = "permutans/fineweb-bbc-news"
 
 
 @Language.component("set_custom_boundaries")
 def set_custom_boundaries(doc):
+    if len(doc) == 0:
+        return doc
     for token in doc[:-1]:
         if token.text == "\n" or token.text == 'Ċ':
             doc[token.i].is_sent_start = True
@@ -125,15 +128,16 @@ class batch_buffer:
     def parse_batch(self):
         if len(self.batches)==0:
             return
-        TreeGen = beneparser.parse_sents(self.batches)
+        TreeGen = checked_parse_trees(beneparser.parse_sents(self.batches), self.batches)
         for tree, DocEnd in zip(TreeGen, self.document_end):
-            tree = tree[0]
             parsed_string = tree.pformat(margin=100000) if tree.leaves() != ['\n'] else "(Ċ Ċ)"
             #print(parsed_string)
             self.write(parsed_string, DocEnd)
         self.init_batch()
     
     def append_batch(self, sents):
+        if not sents or any(not sent for sent in sents):
+            raise ValueError("BBC document has no parseable words; refusing to skip a document index")
         for i, sent in enumerate(sents):
             input_sent = benepar.InputSentence(words=sent)
             if len(sent)>70 and self.is_short:
@@ -164,6 +168,8 @@ if __name__=="__main__":
     parser.add_argument('--skip-deps', action='store_true',
                         help='skip the dependency bootstrap (models/tokenizers)')
     args = parser.parse_args()
+    if args.max_docs is not None and args.max_docs < 1:
+        parser.error("--max-docs must be positive")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if not args.skip_deps:
         try:
@@ -213,7 +219,9 @@ if __name__=="__main__":
 
         pbar = tqdm(total=totallen)
         filename = str(args.output_dir / f"{split}.txt")
-        index = count_lines_linux_style(filename)
+        index = parsed_row_count(Path(filename))
+        if index > totallen:
+            raise ValueError(f"parsed rows exceed source documents: {filename}")
         pbar.update(index)
         stop_at = len(ds) if args.max_docs is None else min(index + args.max_docs, len(ds))
         with open(filename, "a+") as output:
@@ -236,6 +244,7 @@ if __name__=="__main__":
                 #         print(parse_string)
                 index += 1
             Buffer.parse_batch()
+        write_parse_receipt(Path(filename), index, "benepar_en3_large", complete=index == totallen)
         index = 0
                 
     logging.info("finished")

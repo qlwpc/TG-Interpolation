@@ -5,7 +5,7 @@ The full corpora are too large for one opaque command.  This entry point keeps
 each resumable stage explicit and makes the array-task mapping deterministic.
 Use ``plan`` first, then run ``download``/``parse`` as scheduler arrays,
 ``tokenize`` once over completed parsed shards, and BBC-only
-``make-split-indices``/``assemble``/``variants``/``baselines`` as needed.
+``validate-splits``/``assemble``/``variants``/``baselines`` as needed.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -30,6 +31,9 @@ if str(REPO_ROOT) not in sys.path:
 
 CONFIG_FILE = Path(__file__).with_name("bbc_configs.txt")
 CORPORA = ("bbc", "fineweb-edu")
+from datatools.parse_pretrain_data.pipeline_io import atomic_json, validate_split_indices
+
+RELEASED_SPLIT_DIR = REPO_ROOT / "dataset/bbc-news"
 
 
 def utc_now() -> str:
@@ -143,13 +147,10 @@ def command_plan(corpus: str, paths: dict[str, Path]) -> dict[str, Any]:
         stages.extend(
             [
                 {
-                    "stage": "make-split-indices",
+                    "stage": "validate-splits",
                     "array": None,
-                    "command": [*common, "make-split-indices", "--corpus", corpus],
-                    "note": (
-                        "deterministic reconstruction; released index JSON is required "
-                        "for byte-identical historical splits"
-                    ),
+                    "command": [*common, "validate-splits", "--corpus", corpus],
+                    "note": "Use the hash-pinned released indices; never resample the paper split.",
                 },
                 {
                     "stage": "assemble",
@@ -175,6 +176,19 @@ def command_plan(corpus: str, paths: dict[str, Path]) -> dict[str, Any]:
             "command": [*common, "validate", "--corpus", corpus],
         }
     )
+    if corpus == "bbc":
+        stages.insert(4, {"stage": "validate", "array": None,
+                          "command": [*common, "validate", "--corpus", corpus, "--scope", "shards"]})
+        stages[-1]["command"].extend(["--scope", "all"])
+    for stage in stages:
+        for key, option in (("raw", "--raw-dir"), ("parsed", "--parsed-dir"),
+                            ("tokenized", "--tokenized-dir"), ("final", "--final-dir"),
+                            ("tokenizer", "--tokenizer")):
+            stage["command"].extend([option, str(paths[key])])
+        # Retain the array variable but quote all actual filenames (FineWeb
+        # patterns and custom directories may contain shell metacharacters).
+        stage["shell_command"] = " ".join('"${TASK_ID}"' if word == "$TASK_ID" else shlex.quote(word)
+                                            for word in stage["command"])
     return {
         "schema_version": 1,
         "generated_at": utc_now(),
@@ -230,6 +244,8 @@ def allocate_counts(counts: dict[str, int], total: int) -> dict[str, int]:
     available = sum(counts.values())
     if total < 0 or total > available:
         raise ValueError(f"requested split size {total} outside corpus size {available}")
+    if available == 0:
+        return dict.fromkeys(counts, 0)
     exact = {key: value * total / available for key, value in counts.items()}
     allocation = {key: math.floor(value) for key, value in exact.items()}
     remaining = total - sum(allocation.values())
@@ -262,13 +278,49 @@ def make_split_indices(
     return dev, test
 
 
+def expected_stems(corpus: str) -> list[str]:
+    return read_bbc_configs() if corpus == "bbc" else [fineweb_group(i).replace(".", "") for i in range(246)]
+
+
+def check_shard_names(directory: Path, expected: Sequence[str], suffix: str) -> None:
+    actual = {p.stem for p in directory.glob(f"*{suffix}") if p.is_file()}
+    if actual != set(expected):
+        raise ValueError(f"shard names mismatch in {directory}: missing={sorted(set(expected) - actual)[:5]}, "
+                         f"unexpected={sorted(actual - set(expected))[:5]}")
+
+
+def validate_parsed_shards(corpus: str, parsed: Path) -> None:
+    stems = expected_stems(corpus)
+    check_shard_names(parsed, stems, ".txt")
+    for stem in stems:
+        path = parsed / f"{stem}.txt"
+        receipt = path.with_suffix(".parse.json")
+        if not receipt.is_file():
+            raise ValueError(f"missing parse completion receipt: {receipt}; rerun the parse stage")
+        record = json.loads(receipt.read_text())
+        if record.get("schema_version") != 1 or record.get("complete") is not True:
+            raise ValueError(f"parsed shard is incomplete (possibly --max-docs): {path}")
+        expected_model = "benepar_en3_large" if corpus == "bbc" else "benepar_en3"
+        if record.get("parser_model") != expected_model:
+            raise ValueError(f"parser model mismatch for {path}: expected {expected_model}")
+        if record.get("parsed_sha256") != sha256_file(path):
+            raise ValueError(f"parsed shard fingerprint changed: {path}")
+
+
 def validate_tokens(corpus: str, tokenized: Path, tokenizer_path: Path) -> dict[str, Any]:
     import numpy as np
     from tokenizers import Tokenizer
+    from datatools.parse_pretrain_data.assemble_streams import document_bounds, FORMATS
+    from datatools.parse_pretrain_data.get_TG_tokenizer import validate_paper_layout
+    from datatools.parse_pretrain_data.shard_integrity import verify_receipt
 
     tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    validate_paper_layout("gpt2" if corpus == "bbc" else "qwen3", tokenizer)
+    bos, eos = tokenizer.token_to_id("<|beginoftext|>"), tokenizer.token_to_id("<|endoftext|>")
+    if bos is None or eos is None:
+        raise ValueError("tokenizer is missing document boundaries")
     expected_dtype = np.dtype("uint16" if tokenizer.get_vocab_size() < 65536 else "uint32")
-    expected = len(read_bbc_configs()) if corpus == "bbc" else 246
+    stems = expected_stems(corpus)
     result: dict[str, Any] = {
         "corpus": corpus,
         "tokenizer": str(tokenizer_path),
@@ -277,21 +329,58 @@ def validate_tokens(corpus: str, tokenized: Path, tokenizer_path: Path) -> dict[
         "expected_dtype": str(expected_dtype),
         "formats": {},
     }
-    for input_format in ("terminal", "tree", "tg"):
-        files = sorted((tokenized / input_format).glob("*.npy"))
-        if len(files) != expected:
-            raise ValueError(
-                f"{input_format}: expected {expected} shards, found {len(files)} in "
-                f"{tokenized / input_format}"
-            )
-        tokens = 0
-        for path in files:
+    for fmt in FORMATS:
+        check_shard_names(tokenized / fmt, stems, ".npy")
+        result["formats"][fmt] = {"shards": len(stems), "tokens": 0, "documents": 0}
+    for stem in stems:
+        receipt = verify_receipt(tokenized, stem, result["tokenizer_sha256"])
+        for input_format in FORMATS:
+            path = tokenized / input_format / f"{stem}.npy"
             array = np.load(path, mmap_mode="r")
             if array.ndim != 1 or array.dtype != expected_dtype:
                 raise ValueError(f"invalid token shard {path}: {array.shape} {array.dtype}")
-            tokens += int(array.size)
-        result["formats"][input_format] = {"shards": len(files), "tokens": tokens}
+            bounds = document_bounds(array, bos)
+            if len(bounds) - 1 != receipt["documents"] or np.any(array[bounds[1:] - 1] != eos):
+                raise ValueError(f"document count or EOS mismatch: {path}")
+            eos_count = 0
+            for start in range(0, array.size, 4 * 1024 * 1024):
+                block = array[start:start + 4 * 1024 * 1024]
+                if block.size and int(block.max()) >= tokenizer.get_vocab_size():
+                    raise ValueError(f"out-of-vocabulary token in {path}")
+                eos_count += int(np.count_nonzero(block == eos))
+            if eos_count != receipt["documents"]:
+                raise ValueError(f"embedded EOS in {path}")
+            result["formats"][input_format]["tokens"] += int(array.size)
+            result["formats"][input_format]["documents"] += receipt["documents"]
     return result
+
+
+def validate_assembled(final: Path, tokenizer_path: Path) -> dict[str, Any]:
+    import numpy as np
+    from datatools.parse_pretrain_data.assemble_streams import FORMATS, SPLITS
+
+    path = final / "assembly_manifest.json"
+    manifest = json.loads(path.read_text())
+    if manifest.get("schema_version") != 2 or manifest.get("tokenizer_sha256") != sha256_file(tokenizer_path):
+        raise ValueError(f"assembly manifest/tokenizer mismatch: {path}")
+    for fmt in FORMATS:
+        for split in SPLITS:
+            output = final / fmt / f"{split}.npy"
+            record = manifest["formats"][fmt][split]
+            if sha256_file(output) != record["sha256"]:
+                raise ValueError(f"assembled output fingerprint mismatch: {output}")
+            array = np.load(output, mmap_mode="r", allow_pickle=False)
+            if array.ndim != 1 or array.size != record["tokens"] or str(array.dtype) != record["dtype"]:
+                raise ValueError(f"invalid assembled output: {output}")
+    return manifest
+
+
+def selected_index_paths(args) -> tuple[Path, Path, bool]:
+    if bool(args.dev_index) != bool(args.test_index):
+        raise ValueError("custom splits require both --dev-index and --test-index")
+    released = args.dev_index is None
+    return (args.dev_index or RELEASED_SPLIT_DIR / "dev_index.json",
+            args.test_index or RELEASED_SPLIT_DIR / "test_index.json", released)
 
 
 def add_common(parser: argparse.ArgumentParser) -> None:
@@ -329,15 +418,24 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.choices["parse"].add_argument("--task-index", type=int)
     subparsers.choices["parse"].add_argument("--max-docs", type=int)
     subparsers.choices["parse"].add_argument("--skip-deps", action="store_true")
-    subparsers.choices["tokenize"].add_argument("--jobs", type=int, default=16)
+    subparsers.choices["tokenizer"].add_argument("--overwrite", action="store_true")
+    subparsers.choices["tokenize"].add_argument("--jobs", type=int, default=1)
+    subparsers.choices["tokenize"].add_argument("--overwrite", action="store_true")
     subparsers.choices["validate"].add_argument("--output", type=Path)
+    subparsers.choices["validate"].add_argument("--scope", choices=("shards", "assembled", "all"), default="shards")
+
+    check = subparsers.add_parser("validate-splits")
+    add_common(check)
+    check.add_argument("--dev-index", type=Path)
+    check.add_argument("--test-index", type=Path)
 
     split = subparsers.add_parser("make-split-indices")
     add_common(split)
     split.add_argument("--dev-size", type=int, default=5000)
     split.add_argument("--test-size", type=int, default=5000)
     split.add_argument("--seed", type=int, default=42)
-    split.add_argument("--output-dir", type=Path)
+    split.add_argument("--output-dir", type=Path, required=True,
+                       help="explicit separate directory for a NEW split, never the released split")
 
     assemble_parser = subparsers.add_parser("assemble")
     add_common(assemble_parser)
@@ -353,7 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
     baselines = subparsers.add_parser("baselines")
     add_common(baselines)
     baselines.add_argument("--workers", type=int, default=0)
-    baselines.add_argument("--splits", nargs="+", default=["train", "dev", "test"])
+    baselines.add_argument("--splits", nargs="+", choices=("train", "dev", "test"), default=["train", "dev", "test"])
     return parser
 
 
@@ -372,7 +470,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         model = "gpt2" if args.corpus == "bbc" else "qwen3"
         run_checked(
             [sys.executable, "-m", "datatools.parse_pretrain_data.get_TG_tokenizer",
-             "--model-name", model, "--output", str(paths["tokenizer"])]
+             "--model-name", model, "--output", str(paths["tokenizer"])] +
+            (["--overwrite"] if args.overwrite else [])
         )
         return 0
 
@@ -412,7 +511,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--fineweb-edu-arrow-dir", str(paths["raw"]),
                 "--output-dir", str(paths["parsed"]),
             ]
-        if args.max_docs is not None and args.corpus == "bbc":
+        if args.max_docs is not None:
+            if args.max_docs < 1:
+                raise ValueError("--max-docs must be positive")
             command.extend(["--max-docs", str(args.max_docs)])
         if args.skip_deps:
             command.append("--skip-deps")
@@ -420,6 +521,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.stage == "tokenize":
+        validate_parsed_shards(args.corpus, paths["parsed"])
         run_checked(
             [
                 sys.executable, "-m", "datatools.parse_pretrain_data.convert_TG_and_tokenize",
@@ -427,28 +529,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--tokenizer", str(paths["tokenizer"]),
                 "--output_dir", str(paths["tokenized"]),
                 "--jobs", str(args.jobs),
-            ]
+            ] + (["--overwrite"] if args.overwrite else [])
         )
+        return 0
+
+    if args.stage == "validate-splits":
+        if args.corpus != "bbc":
+            raise ValueError("FineWeb-Edu does not use BBC split indices")
+        dev, test, released = selected_index_paths(args)
+        print(json.dumps(validate_split_indices(dev, test, read_bbc_configs(), released=released), indent=2))
         return 0
 
     if args.stage == "make-split-indices":
         if args.corpus != "bbc":
             raise ValueError("FineWeb-Edu pretraining consumes all 246 tokenized shard groups")
-        output_dir = (args.output_dir or paths["final"]).resolve()
+        output_dir = args.output_dir.resolve()
+        if output_dir in (RELEASED_SPLIT_DIR.resolve(), paths["final"].resolve()):
+            raise ValueError("new split indices must use a separate output directory, not the released/final directory")
+        for filename in ("dev_index.json", "test_index.json", "split_manifest.json"):
+            if (output_dir / filename).exists():
+                raise FileExistsError(f"refusing to overwrite split artifact: {output_dir / filename}")
         output_dir.mkdir(parents=True, exist_ok=True)
         dev, test = make_split_indices(
             paths["parsed"], read_bbc_configs(), args.dev_size, args.test_size, args.seed
         )
-        (output_dir / "dev_index.json").write_text(json.dumps(dev, sort_keys=True) + "\n")
-        (output_dir / "test_index.json").write_text(json.dumps(test, sort_keys=True) + "\n")
+        atomic_json(output_dir / "dev_index.json", dev)
+        atomic_json(output_dir / "test_index.json", test)
         metadata = {
             "seed": args.seed,
             "dev_documents": sum(map(len, dev.values())),
             "test_documents": sum(map(len, test.values())),
             "historical_byte_identical": False,
             "note": (
-                "Use the released dev_index.json/test_index.json for byte-identical "
-                "paper streams."
+                "Custom reconstruction, not the released paper split."
             ),
         }
         (output_dir / "split_manifest.json").write_text(
@@ -460,8 +573,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.stage == "assemble":
         if args.corpus != "bbc":
             raise ValueError("FineWeb-Edu remains sharded and does not use BBC split assembly")
-        dev_index = args.dev_index or paths["final"] / "dev_index.json"
-        test_index = args.test_index or paths["final"] / "test_index.json"
+        dev_index, test_index, released = selected_index_paths(args)
+        validate_split_indices(dev_index, test_index, read_bbc_configs(), released=released)
+        validate_tokens(args.corpus, paths["tokenized"], paths["tokenizer"])
         command = [
             sys.executable, "-m", "datatools.parse_pretrain_data.assemble_streams",
             "--input-root", str(paths["tokenized"]),
@@ -472,19 +586,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         ]
         if args.overwrite:
             command.append("--overwrite")
+        if released:
+            command.append("--released-indices")
         run_checked(command)
         return 0
 
     if args.stage == "variants":
         if args.corpus != "bbc":
             raise ValueError("tree ablation variants are built only for BBC experiments")
+        validate_assembled(paths["final"], paths["tokenizer"])
+        if not args.overwrite:
+            for variant in ("noont", "compress", "triplecnt"):
+                for split in ("train", "dev", "test"):
+                    output = paths["final"] / f"tree_{variant}" / f"{split}.npy"
+                    if output.exists():
+                        raise FileExistsError(f"refusing to trust/overwrite existing variant {output}; pass --overwrite")
         for variant in ("noont", "compress", "triplecnt"):
             output_dir = paths["final"] / f"tree_{variant}"
             for split in ("train", "dev", "test"):
                 output = output_dir / f"{split}.npy"
-                if output.exists() and not args.overwrite:
-                    print(f"skip existing {output}")
-                    continue
                 run_checked(
                     [
                         sys.executable, "-m", "datatools.parse_pretrain_data.make_tree_variant",
@@ -500,6 +620,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.stage == "baselines":
         if args.corpus != "bbc":
             raise ValueError("TreeReg/Pushdown baselines use BBC parse-aligned streams")
+        validate_assembled(paths["final"], paths["tokenizer"])
         for split in args.splits:
             run_checked(
                 [
@@ -528,10 +649,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.stage == "validate":
-        result = validate_tokens(args.corpus, paths["tokenized"], paths["tokenizer"])
-        output = args.output or paths["tokenized"] / "validation_manifest.json"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        result = {}
+        if args.scope in ("shards", "all"):
+            result["shards"] = validate_tokens(args.corpus, paths["tokenized"], paths["tokenizer"])
+        if args.scope in ("assembled", "all"):
+            if args.corpus != "bbc":
+                raise ValueError("FineWeb-Edu remains sharded; use --scope shards")
+            result["assembled"] = validate_assembled(paths["final"], paths["tokenizer"])
+        output = args.output or paths["final" if args.scope != "shards" else "tokenized"] / "validation_manifest.json"
+        atomic_json(output, result)
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
 

@@ -1,0 +1,126 @@
+run_name: pretrain_pause2_100M_SEP50261_steplaw
+seed: 6198
+dry_run: false
+epoch: null
+wandb:
+  name: pretrain_pause2_100M_SEP50261_steplaw
+  project: TG-bbcnews
+  entity: qlwpc-shanghaitech-university
+  group: pause-sep-100m-step-law
+  mode: offline
+model:
+  d_model: 768
+  n_heads: 12
+  n_layers: 12
+  mlp_ratio: 4
+  mlp_hidden_size: 3072
+  weight_tying: true
+  alibi: false
+  rope: true
+  flash_attention: true
+  attention_dropout: 0.0
+  attention_layer_norm: false
+  clip_qkv: null
+  include_bias: true
+  block_type: sequential
+  layer_norm_type: rms
+  layer_norm_with_affine: true
+  layer_norm_eps: 1.0e-06
+  bias_for_layer_norm: true
+  attention_layer_norm_with_affine: false
+  activation_type: swiglu
+  residual_dropout: 0.0
+  embedding_dropout: 0.0
+  max_sequence_length: 2049
+  vocab_size: 50320
+  embedding_size: 50320
+  eos_token_id: 50256
+  pad_token_id: 50258
+  init_device: cuda
+  init_fn: normal
+  init_std: 0.02
+  init_cutoff_factor: 3
+  transformer_grammar_type: pause2
+  pause_token_id: 50261
+  flex_attention: false
+ddp:
+  grad_sync_mode: batch
+  find_unused_params: false
+compile: null
+optimizer:
+  name: adamw
+  learning_rate: 0.007458
+  weight_decay: 0.1
+  eps: 1.0e-08
+  betas:
+  - 0.9
+  - 0.95
+  metrics_log_interval: 10
+scheduler:
+  name: cosine_with_warmup
+  t_warmup: 2000
+  min_lr: 1.0e-05
+  warmup_min_lr: 0
+  t_constant: 0
+tokenizer:
+  identifier: /public/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json
+  vocabulary: /public/home/wangpch/TG-Interpolation/dataset/bbc-news/TG_GPT2_tokenizer.json
+  truncate_direction: right
+save_folder: /public/home/wangpch/TG-Interpolation/saved_models/pretrain_pause2_100M_SEP50261_steplaw
+save_overwrite: false
+save_interval_unsharded: 5000
+save_num_unsharded_checkpoints_to_keep: 2
+load_path: null
+max_duration: 1ep
+stop_at: 2000000000
+global_train_batch_size: 272
+device_train_microbatch_size: 17
+precision: amp_bf16
+distributed_strategy: ddp
+gen1_gc_interval: 1
+max_grad_norm: 1.0
+max_grad_norm_ratio: null
+speed_monitor:
+  window_size: 20
+eval_interval: 5000
+eval_subset_num_batches: -1
+device_eval_batch_size: 17
+evaluators:
+- label: TG-ppl-validation
+  data:
+    num_workers: 1
+    prefetch_factor: 1
+    pin_memory: true
+    drop_last: false
+    generate_doc_lengths: true
+    paths:
+    - /public/home/wangpch/TG-Interpolation/dataset/bbc-news/terminal/dev.npy
+    memmap_dtype: uint16
+- label: TG-ppl-validation-test
+  data:
+    num_workers: 1
+    pin_memory: true
+    drop_last: false
+    generate_doc_lengths: true
+    paths:
+    - /public/home/wangpch/TG-Interpolation/dataset/bbc-news/terminal/test.npy
+    memmap_dtype: uint16
+data:
+  pad_direction: right
+  num_workers: 4
+  drop_last: true
+  pin_memory: true
+  prefetch_factor: 8
+  persistent_workers: true
+  timeout: 0
+  paths:
+  - /public/home/wangpch/TG-Interpolation/dataset/bbc-news/terminal/train.npy
+  memmap_dtype: uint16
+  generate_attention_mask: false
+workspace: /public/home/wangpch/TG-Interpolation
+device_train_batch_size: 34
+device_train_grad_accum: 2
+remote_save_folder: null
+try_load_latest_save: false
+restore_dataloader: true
+save_data_indices: true

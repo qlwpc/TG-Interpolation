@@ -18,7 +18,7 @@ Terminal、Pause、Tree/TG、TreeReg、Tree-Shuffle 和 Pushdown 等模型分支
 | checkpoint、实际 config、运行状态与结果 | [`EXPERIMENT_REPRODUCTION_RECORD.md`](EXPERIMENT_REPRODUCTION_RECORD.md) | 当前唯一人工总登记 |
 | 数据构建与预训练 campaign | [`docs/pretraining_reproduction.md`](docs/pretraining_reproduction.md) | 当前可执行操作说明 |
 | 已确认错误、协议差异和未关闭风险 | [`REPOSITORY_CLEANUP_MEMORY.md`](REPOSITORY_CLEANUP_MEMORY.md) | 错误数值不保留；有意义的替代协议带限定条件保留 |
-| evaluator 的实现背景 | [`Evaluation.md`](Evaluation.md) | 目前是 2026-08-23 历史快照，不是当前协议或结果真源 |
+| evaluator、数据入口与配置路由 | [`Evaluation.md`](Evaluation.md) | 当前评测协议导航；结果与 checkpoint 身份仍以总登记表为真源 |
 
 发生冲突时，先区分三件事：论文原本声称什么、代码实际执行什么、某个 checkpoint
 当时使用了什么。修正应回填总登记表和纠错记忆，不能直接用一种口径覆盖另一种口径。
@@ -73,18 +73,24 @@ python -m datatools.parse_pretrain_data.build_pretrain_data tokenizer --corpus b
 python -m datatools.parse_pretrain_data.build_pretrain_data download --corpus bbc --task-index "$TASK_ID"
 python -m datatools.parse_pretrain_data.build_pretrain_data parse    --corpus bbc --task-index "$TASK_ID"
 
-python -m datatools.parse_pretrain_data.build_pretrain_data tokenize --corpus bbc --jobs 16
+python -m datatools.parse_pretrain_data.build_pretrain_data tokenize --corpus bbc --jobs 1
+python -m datatools.parse_pretrain_data.build_pretrain_data validate-splits --corpus bbc
 python -m datatools.parse_pretrain_data.build_pretrain_data assemble  --corpus bbc
 python -m datatools.parse_pretrain_data.build_pretrain_data variants  --corpus bbc --jobs 4
 python -m datatools.parse_pretrain_data.build_pretrain_data baselines --corpus bbc --workers 8
-python -m datatools.parse_pretrain_data.build_pretrain_data validate  --corpus bbc
+python -m datatools.parse_pretrain_data.build_pretrain_data validate  --corpus bbc --scope all
 ```
 
-字节级复现应使用发布的 `dataset/bbc-news/{dev,test}_index.json`。若没有，可先运行
-`make-split-indices --corpus bbc` 生成 seed 42 的确定性重建 split，但它不冒充历史 split。
-`assemble` 使用 mmap 两遍写出标准 `.npy`，不要用 `cat` 拼接 NumPy 文件。
-数据阶段的 `validate` 检查 shard 数量、dtype 与 tokenizer；最终模型输入由下文
-`--validate-data` 逐路径门禁。
+仓库包含 `dataset/bbc-news/{dev,test}_index.json`，分别选择 **4,980 / 5,025** 个文档；
+默认流程校验固定 SHA-256 并保留列表顺序，不重新抽样。未列入索引的五个 2023 config
+全部进入 train。索引一致不等于历史语料逐字节一致，也不能替换独立的 DocPPL 评测语料。
+
+`tokenize` 要求全部解析任务完成，逐文档写盘，坏行直接失败；续跑核对源文件、tokenizer 和
+三路输出指纹。`assemble` 先检查每个 shard 的文档对齐与索引范围，再用 mmap 写标准 `.npy`。
+`validate --scope all` 校验 shard 完成记录与最终三路 train/dev/test 的哈希；消融和架构基线
+仍需各自预计算及下文 `--validate-data` 路径门禁。已有最终数据不会默认覆盖，重建建议指定
+新的 `--final-dir`。自定义 split、半成品恢复及历史协议边界见
+[`docs/pretraining_reproduction.md`](docs/pretraining_reproduction.md)。
 
 论文 BBC terminal `train.npy` 为 `10,061,025,584` 个 `uint16` token；LIN1/LIN2 约为
 24.7B/32B。GPT-2 扩展 tokenizer 应为 vocab 50320、`<|SEP|>=50261`。
@@ -103,7 +109,7 @@ python -m datatools.parse_pretrain_data.build_pretrain_data download  --corpus f
 # 调度器数组 0-245。
 python -m datatools.parse_pretrain_data.build_pretrain_data parse --corpus fineweb-edu --task-index "$TASK_ID"
 
-python -m datatools.parse_pretrain_data.build_pretrain_data tokenize --corpus fineweb-edu --jobs 16
+python -m datatools.parse_pretrain_data.build_pretrain_data tokenize --corpus fineweb-edu --jobs 1
 python -m datatools.parse_pretrain_data.build_pretrain_data validate --corpus fineweb-edu
 ```
 
@@ -115,8 +121,9 @@ terminal/LIN1/LIN2 约为 98B/233B/301B token。
 
 机器可读清单
 [`train_configs/paper_pretraining_manifest.json`](train_configs/paper_pretraining_manifest.json)
-由复现登记表 §2A 固化，并逐项绑定已核对 checkpoint config。先查看模型，再生成包含
-27 个已登记 run 的 dry-run campaign：
+由复现登记表 §2A 固化，并逐项绑定已核对 checkpoint config 或固定哈希的原始提交配置。
+默认生成 27 个已登记 run，其中 BBC Pause-1/2 使用最终论文的 dedicated-SEP 协议；
+另外两个历史 repeat-token 对照仅在显式选择时生成：
 
 ```bash
 python scripts/prepare_paper_pretraining.py --list
@@ -126,8 +133,8 @@ python scripts/prepare_paper_pretraining.py \
 
 | 实验组 | 生成的模型 |
 |---|---|
-| BBC 100M | Terminal；Tree、TGTree、TG、TGNomask、TGNomask-Aug、Tree-NoONT、Tree-Compress、Tree-TripleCNT、Tree-Shuffle、TGNomask-Mix-TG、TGTree-Mix-TG；Pause-1/补充 Pause-2 |
-| BBC 100M 架构基线 | TreeReg-L9、Pushdown |
+| BBC 100M | Terminal；Tree、TGTree、TG、TGNomask、TGNomask-Aug、Tree-NoONT、Tree-Compress、Tree-TripleCNT、Tree-Shuffle、TGNomask-Mix-TG、TGTree-Mix-TG；dedicated-SEP Pause-1/2 |
+| BBC 100M 架构基线 | Pushdown |
 | BBC 500M | Terminal、Tree、TGTree、TGNomask-Aug |
 | BBC 1B 补充 | Terminal、Tree |
 | FineWeb-Edu 1B 主实验 | Terminal、Tree、TGTree、Pause-1、Pause-2 |
@@ -144,15 +151,18 @@ python scripts/prepare_paper_pretraining.py --groups fineweb-edu-1b
 grammar、LR、global batch、dtype、pause id 与 mixing heads，并清除旧绝对路径、评测污染路径
 和 checkpoint restore state。正式运行前加 `--validate-data` 重新生成，以验证全部输入路径。
 
-100M 历史 Pause checkpoint 是 `pause_token_id=null` 的 repeat-token control；FineWeb-Edu 1B
-才使用 SEP 151673。独立 SEP 的 100M 重训属于补充实验，入口为
-[`scripts/submit_pause_sep_pretrain.py`](scripts/submit_pause_sep_pretrain.py)，不能覆盖历史模型身份。
+BBC 100M 论文 Pause-1/2 使用 SEP 50261，FineWeb-Edu 1B 使用 SEP 151673。
+BBC SEP 两个 run 保留实际重训的 8-GPU、global batch 216/272 与 sequence length 2048/2049；
+完整参数、checkpoint 和评测命令见 [`docs/pause_protocol.md`](docs/pause_protocol.md)。
+历史 `pause_token_id=null` 权重仅通过 `--groups bbc-100m-historical` 或显式
+`--models bbc_100m_pause1_repeat bbc_100m_pause2_repeat` 选择，不能通过修改 YAML 冒充 SEP 模型。
 
 ## 4. 验证
 
 ```bash
 PYTHONPATH=. python -m pytest -q \
   tests/test_pretraining_reproduction_pipeline.py \
+  tests/test_paper_pause_protocol.py \
   tests/test_parse_pipeline_smoke.py \
   tests/test_make_tree_variant.py \
   tests/test_submit_pause_sep_pretrain.py \
@@ -161,15 +171,15 @@ PYTHONPATH=. python -m pytest -q \
 
 ## 5. 评测与结果登记
 
-`Evaluation.md` 尚未完成当前协议重写，因此不要把其中的历史行号、旧结果速查表或统一分支
-描述直接当作论文复现入口。现阶段按下表选择依据：
+`Evaluation.md` 已重写当前协议层，用于选择模型族、数据、evaluator 和配置入口；
+其后的 2026-08-23 实现快照只作历史附录。指标、checkpoint 和完成状态仍只从总登记表引用。
 
 | 任务 | 当前依据 | 必须单列的协议差异 |
 |---|---|---|
-| Document PPL | 总登记表 §3；Pushdown 另见 [`docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md`](docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md) | terminal、tree marginalization、Tree-Shuffle terminal、Pushdown native top-K 不混写 |
-| SG / BLiMP | 论文方法 + 总登记表对应小节 | Tree/TG、Pause、Tree-Shuffle、Pushdown 各自的候选与计分方式 |
-| XSum / BoolQ | 论文方法 + 总登记表对应小节 | Pause 专用生成流程、Tree-Shuffle masked checkpoint、Pushdown gold-span 流程 |
-| FineWeb-Edu OLMES | 论文 terminal-format 方法 + 总登记表 §4 | task shots、Benepar 1-best、terminal score 与 full score 分开登记 |
+| Document PPL | [`Evaluation.md`](Evaluation.md) §4 + 总登记表 §3；Pushdown 另见 [`docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md`](docs/pushdown_word_atom_strict_binary_document_ppl_protocol.md) | terminal、tree marginalization、Tree-Shuffle terminal、Pushdown native top-K 不混写 |
+| SG / BLiMP | [`Evaluation.md`](Evaluation.md) §5 + 总登记表对应小节 | Tree/TG、Pause、Tree-Shuffle、Pushdown 各自的候选与计分方式 |
+| XSum / BoolQ | [`Evaluation.md`](Evaluation.md) §6.1 + 总登记表对应小节 | Pause 专用生成流程、Tree-Shuffle masked checkpoint、Pushdown gold-span 流程 |
+| FineWeb-Edu OLMES | [`Evaluation.md`](Evaluation.md) §6.2 + 总登记表 §4 | task shots、Benepar 1-best、terminal score 与 full score 分开登记 |
 
 每条准备进入论文表格的结果至少记录：
 
@@ -195,6 +205,6 @@ PYTHONPATH=. python -m pytest -q \
 | `reports/` | 带日期的审计与专题结果，不替代总登记表 |
 | `artifacts/`、`saved_models/` | 本机运行产物；路径存在不等于已发布或可再生资产 |
 
-建议的整理顺序是：先核对总登记表与纠错记忆，再整理数据入口和配置，随后重写
-`Evaluation.md` 的当前协议层，最后才清理历史报告和本机 artifacts。删除文档前，先把仍有
+评测层本轮已按“核对总登记表与纠错记忆 → 整理数据与配置入口 → 重写
+`Evaluation.md` 当前协议层”完成。后续清理历史报告和本机 artifacts 时，删除前先把仍有
 解释力的错误原因或替代协议迁移到纠错记忆或对应专题文档。

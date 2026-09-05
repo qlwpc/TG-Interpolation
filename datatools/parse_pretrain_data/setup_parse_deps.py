@@ -26,6 +26,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -163,6 +164,7 @@ def fetch_hf_file(
     out_path: str | Path,
     repo_type: str = "dataset",
     revision: str = "main",
+    expected_size: int | None = None,
 ) -> Path:
     """Streaming-GET one file from the Hub (or the mirror) to ``out_path``.
 
@@ -178,20 +180,29 @@ def fetch_hf_file(
     last_err: Exception | None = None
     for endpoint in ("https://huggingface.co", HF_MIRROR):
         url = f"{endpoint}/{prefix}/{repo_id}/resolve/{revision}/{filename}"
+        fd, name = tempfile.mkstemp(prefix=f".{out_path.name}.", suffix=".part", dir=out_path.parent)
+        os.close(fd)
+        temporary = Path(name)
         try:
             with requests.get(url, timeout=30, stream=True) as r:
                 r.raise_for_status()
                 total = int(r.headers.get("content-length", 0)) or None
-                with open(out_path, "wb") as f, tqdm(
+                with open(temporary, "wb") as f, tqdm(
                     total=total, unit="B", unit_scale=True, desc=out_path.name
                 ) as bar:
                     for chunk in r.iter_content(chunk_size=1 << 20):
                         f.write(chunk)
                         bar.update(len(chunk))
+                expected = expected_size if expected_size is not None else (None if r.headers.get("content-encoding") else total)
+                if expected is not None and temporary.stat().st_size != expected:
+                    raise IOError(f"incomplete download: {temporary.stat().st_size} bytes, expected {expected}")
+            os.replace(temporary, out_path)
             return out_path
         except Exception as e:  # try next endpoint
             last_err = e
             print(f"[setup] GET failed from {endpoint}: {e.__class__.__name__}")
+        finally:
+            temporary.unlink(missing_ok=True)
     raise RuntimeError(f"could not fetch {repo_id}/{filename}: {last_err}")
 
 
@@ -214,7 +225,8 @@ def list_dataset_files(repo_id: str, path: str = "") -> list[dict]:
 
 def fetch_bbc_shard(config: str, out_root: str | Path = "dataset/bbc-news-raw") -> list[Path]:
     """Download every parquet of one BBC config into ``<out_root>/<config>/``."""
-    files = [e for e in list_dataset_files(HUB_DATASET, path=config) if e["type"] == "file"]
+    files = sorted((e for e in list_dataset_files(HUB_DATASET, path=config)
+                    if e["type"] == "file" and e["path"].endswith(".parquet")), key=lambda e: e["path"])
     if not files:
         raise RuntimeError(f"no files under {HUB_DATASET}/{config}")
     out_paths = []
@@ -223,7 +235,7 @@ def fetch_bbc_shard(config: str, out_root: str | Path = "dataset/bbc-news-raw") 
         if out.exists() and out.stat().st_size == entry.get("size", -1):
             print(f"[setup] already downloaded: {out}")
         else:
-            fetch_hf_file(HUB_DATASET, entry["path"], out, repo_type="dataset")
+            fetch_hf_file(HUB_DATASET, entry["path"], out, repo_type="dataset", expected_size=entry.get("size"))
         out_paths.append(out)
     return out_paths
 

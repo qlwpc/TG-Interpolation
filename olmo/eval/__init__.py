@@ -143,8 +143,6 @@ def build_downstream_evaluator(
     # meaningful partial-run accuracy. None => 1000 (full BLiMP).
     if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "pair_per_task", None) is not None:
         task_kwargs["pair_per_task"] = eval_cfg.pair_per_task
-    if eval_cfg.label == "BLiMP" and getattr(eval_cfg, "blimp_dataset_name", None) is not None:
-        task_kwargs["dataset_name"] = eval_cfg.blimp_dataset_name
     if train_config.finetune_task is not None:
         task_kwargs["shots_num"] = 0
     ds_eval_dataset = task_class(tokenizer=tokenizer, **task_kwargs)  # type: ignore
