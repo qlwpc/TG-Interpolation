@@ -19,10 +19,11 @@ mkdir -p docppl_runs
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 export OPENBLAS_NUM_THREADS=4
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 export PYTHONPATH=.
 export PYTHON_BIN=/home/wangpch/.conda/envs/LLM/bin/python
 
 "$PYTHON_BIN" --version
 bash scripts/run_native_document_ppl_shards.sh pushdown 8 \
-  dataset/bbc-news/native_model_topk_300_v2 \
-  "docppl_runs/pushdown_native_sbatch_${SLURM_JOB_ID}"
+  "${NATIVE_DATA:-dataset/bbc-news/testppl/native_model_topk_300_v2}" \
+  "${RESUME_OUTPUT_DIR:-docppl_runs/pushdown_native_sbatch_${SLURM_JOB_ID}}"

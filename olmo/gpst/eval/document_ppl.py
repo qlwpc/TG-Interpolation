@@ -468,6 +468,12 @@ class GoldTreePPLResult:
     deduplicated_trees: bool
     candidate_slots: int
     model_candidate_forwards: int
+    structure_source: str = ""
+    candidate_aggregation: str = "truncated_joint_sum"
+    ppl_denominator: str = "terminal_count"
+    prefix_policy: str = "candidate0"
+    max_action_nodes: int = 0
+    max_terminals: int = 0
 
     def as_dict(self) -> dict:
         result = dict(self.__dict__)
@@ -489,6 +495,10 @@ def evaluate_gold_tree_document_ppl(
     normalize_mixture: bool = False,
     deduplicate_trees: bool = False,
     progress: Optional[Callable[[int, int, int], None]] = None,
+    *,
+    max_batch_attention_elements: int = 134217728,
+    document_complete: Optional[Callable[[int, dict], None]] = None,
+    completed_document_ids: Optional[set[int]] = None,
 ) -> GoldTreePPLResult:
     """Evaluate document PPL from fixed gold trees, without beam search.
 
@@ -496,7 +506,7 @@ def evaluate_gold_tree_document_ppl(
     ``logsumexp(log p(x,y_k))``.  Set it to true for the conventional uniform
     mixture, which subtracts ``log(K)`` per sentence.
     """
-    if eval_batch_size <= 0 or max_batch_actions <= 0:
+    if eval_batch_size <= 0 or max_batch_actions <= 0 or max_batch_attention_elements <= 0:
         raise ValueError("batch limits must be positive")
     device = torch.device(device)
     model.eval()
@@ -506,11 +516,55 @@ def evaluate_gold_tree_document_ppl(
     seen_documents = 0
     log_likelihood = 0.0
     terminal_count = 0
+    sentence_count = 0
     candidate_slots = 0
     model_candidate_forwards = 0
+    doc_log_likelihood = 0.0
+    doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
+    structure_source = (
+        "native_gpst_strict_binary_topk"
+        if isinstance(corpus, NativeGPSTTopKCorpus)
+        else "gold300_serialized_tree"
+    )
+    candidate_aggregation = (
+        "uniform_mixture" if normalize_mixture else "truncated_joint_sum"
+    )
+    protocol_metadata = {
+        "structure_source": structure_source,
+        "candidate_aggregation": candidate_aggregation,
+        "ppl_denominator": "terminal_count",
+        "prefix_policy": "candidate0",
+        "max_action_nodes": max_action_nodes,
+        "max_terminals": max_terminals,
+    }
+
+    def emit_document(doc_id: int) -> None:
+        if document_complete is None or doc_sentences == 0:
+            return
+        document_complete(doc_id, {
+            **protocol_metadata,
+            "document_id": doc_id, "terminal_count": doc_terminals,
+            "sentence_count": doc_sentences, "document_count": 1,
+            "candidate_slots": doc_candidate_slots, "model_candidate_forwards": doc_forwards,
+            "samples_per_sentence": corpus.samples_per_sentence,
+            "log_likelihood": doc_log_likelihood,
+            "perplexity": math.exp(-doc_log_likelihood / doc_terminals),
+            "normalized_mixture": normalize_mixture, "deduplicated_trees": deduplicate_trees,
+        })
 
     for sentence_index, (doc_id, original_candidates) in enumerate(corpus):
+        if completed_document_ids is not None and doc_id in completed_document_ids:
+            if doc_id != previous_doc and previous_doc is not None:
+                emit_document(previous_doc)
+                doc_log_likelihood = 0.0
+                doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
+            previous_doc = doc_id
+            continue
         if doc_id != previous_doc:
+            if previous_doc is not None:
+                emit_document(previous_doc)
+            doc_log_likelihood = 0.0
+            doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
             prefix = ()
             previous_doc = doc_id
             seen_documents += 1
@@ -523,6 +577,8 @@ def evaluate_gold_tree_document_ppl(
             candidates, multiplicities = _compress_candidates(original_candidates)
         candidate_slots += len(original_candidates)
         model_candidate_forwards += len(candidates)
+        doc_candidate_slots += len(original_candidates)
+        doc_forwards += len(candidates)
         if deduplicate_trees:
             # Historical diagnostic mode: treat each distinct unlabeled tree as
             # one mixture component.  Normal evaluation retains all original
@@ -538,9 +594,12 @@ def evaluate_gold_tree_document_ppl(
         prefix_tokens = _count_tokens(context)
         prefix_actions = _count_actions(context)
         nll_parts: List[torch.Tensor] = []
-        batch_size = min(eval_batch_size, max(1, max_batch_actions // max(
-            prefix_actions + current_actions, 1
-        )))
+        total_actions = prefix_actions + current_actions
+        batch_size = min(
+            eval_batch_size,
+            max(1, max_batch_actions // max(total_actions, 1)),
+            max(1, max_batch_attention_elements // max(total_actions * total_actions, 1)),
+        )
         for start in range(0, len(candidates), batch_size):
             chunk = candidates[start:start + batch_size]
             full_candidates = [context + tuple(candidate) for candidate in chunk]
@@ -560,7 +619,11 @@ def evaluate_gold_tree_document_ppl(
             nll, normalize_mixture, multiplicities=multiplicities
         )
         log_likelihood += sentence_log_likelihood
+        doc_log_likelihood += sentence_log_likelihood
         terminal_count += current_tokens
+        doc_terminals += current_tokens
+        doc_sentences += 1
+        sentence_count += 1
         # OLMo commits candidate 0 to the shared document cache.  Retain only
         # the suffix that can ever enter a later bounded-context forward pass:
         # this is exactly equivalent to keeping the whole document history,
@@ -573,16 +636,20 @@ def evaluate_gold_tree_document_ppl(
         if progress is not None:
             progress(sentence_index + 1, len(corpus), doc_id)
 
+    if previous_doc is not None:
+        emit_document(previous_doc)
+
     perplexity = math.exp(-log_likelihood / terminal_count) if terminal_count else math.nan
     return GoldTreePPLResult(
         perplexity=perplexity,
         log_likelihood=log_likelihood,
         terminal_count=terminal_count,
-        sentence_count=len(corpus),
+        sentence_count=sentence_count,
         document_count=seen_documents,
         samples_per_sentence=corpus.samples_per_sentence,
         normalized_mixture=normalize_mixture,
         deduplicated_trees=deduplicate_trees,
         candidate_slots=candidate_slots,
         model_candidate_forwards=model_candidate_forwards,
+        **protocol_metadata,
     )

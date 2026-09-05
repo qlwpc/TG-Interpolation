@@ -1,60 +1,51 @@
 #!/usr/bin/env python
-"""Merge independent complete-document native doc-PPL shards exactly."""
+"""Validate and merge native DocPPL results without mixing scoring contracts."""
 from __future__ import annotations
 
+import argparse
 import json
-import math
-import sys
 from pathlib import Path
+import sys
+
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+from scripts.native_document_results import aggregate_rows, atomic_json
 
 
 def main() -> None:
-    model, directory = sys.argv[1:3]
-    rows = [json.loads(path.read_text()) for path in sorted(Path(directory).glob("shard_*.json"))]
-    if not rows:
-        raise SystemExit("no shard result JSON files")
-    total = {key: sum(row[key] for row in rows) for key in (
-        "terminal_count", "sentence_count", "document_count", "candidate_slots", "model_candidate_forwards"
-    )}
-    if model == "gpst":
-        ll = sum(row["log_likelihood"] for row in rows)
-        output = {**total, "log_likelihood": ll,
-                  "perplexity": math.exp(-ll / total["terminal_count"]),
-                  "samples_per_sentence": rows[0]["samples_per_sentence"],
-                  "candidate_compression_ratio": total["candidate_slots"] / total["model_candidate_forwards"]}
-    elif model == "pushdown":
-        protocol_fields = (
-            "attachment_normalization",
-            "protocol_version",
-            "structure_source",
-            "candidate_aggregation",
-            "ppl_denominator",
-        )
-        protocol = {}
-        for key in protocol_fields:
-            values = {row.get(key) for row in rows}
-            if None in values:
-                raise SystemExit(
-                    f"Pushdown shard is missing required protocol metadata {key!r}"
-                )
-            if len(values) != 1:
-                raise SystemExit(
-                    f"refusing to mix Pushdown shards with different {key}: {values}"
-                )
-            protocol[key] = values.pop()
-        legacy = sum(row["legacy_log_likelihood"] for row in rows)
-        uniform = sum(row["uniform_mixture_log_likelihood"] for row in rows)
-        token = sum(row["token_only_log_likelihood"] for row in rows)
-        output = {**total, **protocol, "legacy_log_likelihood": legacy,
-                  "uniform_mixture_log_likelihood": uniform, "token_only_log_likelihood": token,
-                  "legacy_perplexity": math.exp(-legacy / total["terminal_count"]),
-                  "uniform_mixture_perplexity": math.exp(-uniform / total["terminal_count"]),
-                  "token_only_perplexity": math.exp(-token / total["terminal_count"]),
-                  "samples_per_sentence": rows[0]["samples_per_sentence"],
-                  "candidate_compression_ratio": total["candidate_slots"] / total["model_candidate_forwards"]}
-    else:
-        raise SystemExit("model must be gpst or pushdown")
-    print(json.dumps(output, indent=2, sort_keys=True))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model", choices=("gpst", "pushdown"))
+    parser.add_argument("directory", type=Path)
+    parser.add_argument("--expected-documents", type=int)
+    parser.add_argument("--expected-samples-per-sentence", type=int)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    if args.expected_documents is not None and args.expected_documents <= 0:
+        parser.error("--expected-documents must be positive")
+    if args.expected_samples_per_sentence is not None and args.expected_samples_per_sentence <= 0:
+        parser.error("--expected-samples-per-sentence must be positive")
+    root = args.directory
+    document_dir = root / "documents" if (root / "documents").is_dir() else root
+    documents = sorted(document_dir.glob("document_*.json"))
+    paths = documents or sorted(root.glob("shard_*.json"))
+    try:
+        rows = []
+        for path in paths:
+            row = json.loads(path.read_text())
+            if documents:
+                doc_id = row.get("document_id")
+                if type(doc_id) is not int or path.name != f"document_{doc_id:05d}.json":
+                    raise ValueError(f"document filename/ID mismatch: {path}")
+            rows.append(row)
+        expected = set(range(args.expected_documents)) if args.expected_documents is not None else None
+        output = aggregate_rows(args.model, rows, expected, args.expected_samples_per_sentence)
+        if args.output:
+            atomic_json(args.output, output)
+        else:
+            print(json.dumps(output, indent=2, sort_keys=True, allow_nan=False))
+    except (OSError, ValueError) as error:
+        parser.exit(1, f"invalid document results: {error}\n")
 
 
 if __name__ == "__main__":
