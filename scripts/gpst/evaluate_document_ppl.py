@@ -24,6 +24,11 @@ from olmo.gpst.eval.document_ppl import (  # noqa: E402
     evaluate_gold_tree_document_ppl,
 )
 from olmo.gpst.model.model_factory import create_model  # noqa: E402
+from scripts.native_document_results import (  # noqa: E402
+    input_identity,
+    prepare_result_store,
+    selected_document_ids,
+)
 
 
 def main() -> None:
@@ -54,6 +59,9 @@ def main() -> None:
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log-every", type=int, default=10)
+    parser.add_argument("--max-batch-attention-elements", type=int, default=134217728)
+    parser.add_argument("--document-result-dir", help="atomically save complete documents for restart")
+    parser.add_argument("--resume-document-results", action="store_true")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -63,9 +71,22 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.backends.cuda.enable_flash_sdp(False)
 
+    store = prepare_result_store(args, "gpst", {
+        "backbone": args.backbone,
+        "r2d2_config": input_identity(args.r2d2_config),
+        "gpt_config": input_identity(args.gpt_config),
+        "normalize_mixture": args.normalize_mixture,
+        "max_action_nodes": args.max_action_nodes,
+        "max_terminals": args.max_terminals,
+        "prefix_policy": "candidate0",
+    })
     log.info("loading native mmap corpus (serialized tree parsing is disabled)")
     corpus = NativeGPSTTopKCorpus(args.native_data, args.tokenizer_path, args.max_sentences,
                                   args.start_document, args.end_document)
+    expected_ids = selected_document_ids(corpus)
+    if store is not None and expected_ids and expected_ids <= store.completed_ids:
+        print(json.dumps(store.aggregate(expected_ids), indent=2, sort_keys=True))
+        return
     log.info("loading GPST checkpoint with %s transformer blocks", args.backbone)
     model = create_model(
         "r2d2-gen-fast", args.r2d2_config, args.gpt_config, backbone=args.backbone
@@ -89,8 +110,12 @@ def main() -> None:
         normalize_mixture=args.normalize_mixture,
         deduplicate_trees=False,
         progress=progress,
+        max_batch_attention_elements=args.max_batch_attention_elements,
+        document_complete=store.write if store else None,
+        completed_document_ids=store.completed_ids if store else None,
     )
-    print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    output = store.aggregate(expected_ids) if store is not None else result.as_dict()
+    print(json.dumps(output, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

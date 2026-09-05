@@ -47,7 +47,7 @@ checkpoint 和 run id。
 | terminal Document-PPL | `dataset/bbc-news/terminal/{test.npy,test_sent_index.npy,test_doc_index.npy}` | 148,836 句、4,966 文档；三个文件必须来自同一版本 |
 | Tree Document-PPL | `dataset/bbc-news/testppl_tree/{tree_300.npy,tree_sent_index.npy,tree_doc_index.npy}` | 每句 300 proposals；使用 bos/eos-normalized testppl 版本 |
 | TG Document-PPL | `dataset/bbc-news/testppl_tg/{tg_300.npy,tg_sent_index.npy,tg_doc_index.npy}` | 同上，表示为 LIN2/TG |
-| Pushdown Document-PPL | `dataset/bbc-news/testppl/native_model_topk_300_v2/` | model-native candidates、文档边界和候选数必须由 finalizer 校验 |
+| Pushdown Document-PPL | `dataset/bbc-news/testppl/native_model_topk_300_v2/` | model-native candidates、文档边界和候选数必须由 finalizer 校验；断点续跑与严格合并见 [`docs/native_document_ppl_recovery.md`](docs/native_document_ppl_recovery.md) |
 | SG | `evaluation/SG/tokenized/*.json`；Qwen3 用 `evaluation/SG/tokenized/qwen3/*.json` | 当前 32 项、6 类；`nn-nv-rpl` 不计入 |
 | BLiMP | `dataset/BLiMP/tree300/blimp_{terminal,tree_300,tg_300,tree_300_qwen}.npy` | full suite=67 tasks × 1,000 pairs；terminal K=1，结构模型 K=300 |
 | XSum | `dataset/Xsum/` | filtered train 由 `save_ids.json` 决定；full test=11,333；source、summary、gold JSONL 必须成套 |

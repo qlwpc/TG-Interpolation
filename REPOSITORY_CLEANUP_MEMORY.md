@@ -113,3 +113,7 @@ Pushdown 协议文档，不随错误文档删除。
   元数据的 SG/BLiMP 摘录为历史线索。
 - 登记 Tree/TG Doc-PPL candidate-0 history、Pushdown 下游稿件偏差与 FineWeb 通用配置
   生成器语料混用风险。
+- 三方审计并整合 RTX3090 上未提交的 native GPST/Pushdown Doc-PPL 工作：恢复
+  candidate-0 KV cache、按文档原子保存与续跑、二次显存门禁和严格汇总；保留当前
+  v1/v2 协议并修复远端草稿中的变量作用域错误。取舍与验证边界见
+  [`docs/native_document_ppl_recovery.md`](docs/native_document_ppl_recovery.md)。

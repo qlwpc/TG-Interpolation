@@ -25,6 +25,7 @@ corrections and scope limits.
 | --- | --- |
 | [`gpst_binary_pushdown_document_ppl_protocol.md`](gpst_binary_pushdown_document_ppl_protocol.md) | current GPST strict-binary to Pushdown evaluation contract |
 | [`native_model_topk_300_v2_format.md`](native_model_topk_300_v2_format.md) | current model-native top-300 storage format |
+| [`native_document_ppl_recovery.md`](native_document_ppl_recovery.md) | resumable GPST/Pushdown native Doc-PPL execution, strict merging, and the RTX3090 integration record |
 | [`native_binary_storage.md`](native_binary_storage.md) | native-binary corpus storage contract |
 | [`pushdown_vs_original_repo.md`](pushdown_vs_original_repo.md) | semantic comparison with the original Pushdown repository; use current protocol documents for final values |
 | [`native_nary_300_format.md`](native_nary_300_format.md) | legacy shared n-ary top-300 format; not the current model-native format |
