@@ -2,7 +2,7 @@
 
 This protocol deliberately uses the *independent GPST* candidate axis from the
 native-model-topk v2 corpus.  Every valid merge-order row is converted to
-terminal-coordinate binary spans, candidate 0 is committed as document
+terminal-coordinate binary spans, the highest-probability candidate is committed as document
 history, and the supplied support is marginalized with a truncated **sum**
 (never a mean over candidate count).
 
@@ -1005,7 +1005,7 @@ def _build_prefix_cache(
     context: Sequence[PushdownGoldCandidate],
     device: torch.device | str,
 ) -> PushdownPrefixKVCache:
-    """Rebuild one bounded candidate-0 prefix after a context-window slide."""
+    """Rebuild one bounded selected prefix after a context-window slide."""
     if not context:
         raise ValueError("cannot build an empty prefix cache")
     device = torch.device(device)
@@ -1048,6 +1048,8 @@ def score_gpst_binary_pushdown_candidates(
     prefix_cache: Optional[PushdownPrefixKVCache] = None,
     return_candidate0_cache: bool = False,
     attachment_normalization: str = ATTACHMENT_NORMALIZATION_V1,
+    *,
+    return_best_cache: bool = False,
 ) -> Tuple[PushdownCandidateScores, Optional[PushdownPrefixKVCache]]:
     """Score one candidate microbatch under joint token + attachment loss."""
     attachment_normalization = canonical_attachment_normalization(
@@ -1061,7 +1063,7 @@ def score_gpst_binary_pushdown_candidates(
     use_cache = prefix_cache is not None
     if use_cache:
         if prefix_cache.context != tuple(prefix):
-            raise ValueError("KV cache context does not match candidate-0 prefix")
+            raise ValueError("KV cache context does not match selected prefix")
         input_ids = (
             token_row[prefix_length:].unsqueeze(0).expand(batch_size, -1).to(device)
         )
@@ -1092,7 +1094,7 @@ def score_gpst_binary_pushdown_candidates(
         pushdown_sentence_ids=sentence_ids,
         compute_attachment_logits=False,
         return_final_hidden=True,
-        use_cache=return_candidate0_cache,
+        use_cache=return_candidate0_cache or return_best_cache,
         logits_range=logits_range,
         past_key_values=past_key_values,
     )
@@ -1150,16 +1152,18 @@ def score_gpst_binary_pushdown_candidates(
     )
 
     next_cache: Optional[PushdownPrefixKVCache] = None
-    if return_candidate0_cache:
+    if return_candidate0_cache or return_best_cache:
+        selected = int(scores.joint_nll.argmin().item()) if return_best_cache else 0
+        selected_row = slice(selected, selected + 1)
         if out.attn_key_values is None:
-            raise RuntimeError("candidate-0 forward did not return KV state")
+            raise RuntimeError("candidate forward did not return KV state")
         next_cache = PushdownPrefixKVCache(
-            context=tuple(prefix) + (candidates[0],),
+            context=tuple(prefix) + (candidates[selected],),
             key_values=tuple(
-                (key[:1].detach(), value[:1].detach())
+                (key[selected_row].detach().clone(), value[selected_row].detach().clone())
                 for key, value in out.attn_key_values
             ),
-            final_hidden=full_hidden[:1].detach(),
+            final_hidden=full_hidden[selected_row].detach().clone(),
             input_ids=token_row.unsqueeze(0).to(device).detach(),
             sentence_ids=sid_row.unsqueeze(0).to(device).detach(),
         )
@@ -1189,13 +1193,16 @@ class GPSTBinaryPushdownDocumentPPLResult:
     source_candidate_axis: str = "gpst"
     binarization: str = "direct_strict_binary_cky_with_fixed_word_bpe_atoms"
     deduplicated_binary_structures: bool = True
-    prefix_policy: str = "candidate0"
+    prefix_policy: str = "model_best"
     context_truncation: str = "left_drop_complete_sentences"
     attachment_normalization: str = ATTACHMENT_NORMALIZATION_V1
     candidate_aggregation: str = "valid_unique_truncated_joint_sum"
     divide_by_candidate_count: bool = False
     ppl_denominator: str = "terminal_count"
     beam_search: bool = False
+
+    non_candidate0_count: int = 0
+    non_candidate0_ratio: float = math.nan
 
     def as_dict(self) -> dict:
         result = dict(self.__dict__)
@@ -1266,6 +1273,7 @@ def evaluate_gpst_binary_pushdown_document_ppl(
     prefix: Tuple[PushdownGoldCandidate, ...] = ()
     prefix_cache: Optional[PushdownPrefixKVCache] = None
     previous_doc: Optional[int] = None
+    non_candidate0_count = doc_non_candidate0_count = 0
     joint_ll = candidate0_token_ll = 0.0
     terminal_count = document_count = valid_candidate_count = 0
     candidate_slots = model_candidate_forwards = 0
@@ -1284,7 +1292,7 @@ def evaluate_gpst_binary_pushdown_document_ppl(
                 "source_candidate_axis": source_candidate_axis,
                 "binarization": binarization,
                 "deduplicated_binary_structures": deduplicated_binary_structures,
-                "prefix_policy": "candidate0",
+                "prefix_policy": "model_best",
                 "context_truncation": "left_drop_complete_sentences",
                 "attachment_normalization": attachment_normalization,
                 "candidate_aggregation": "valid_unique_truncated_joint_sum",
@@ -1300,6 +1308,8 @@ def evaluate_gpst_binary_pushdown_document_ppl(
                 ),
                 "terminal_count": doc_terminals,
                 "sentence_count": doc_sentences,
+                "non_candidate0_count": doc_non_candidate0_count,
+                "non_candidate0_ratio": doc_non_candidate0_count / doc_sentences,
                 "document_count": 1,
                 "valid_candidate_count": doc_candidates,
             },
@@ -1316,6 +1326,7 @@ def evaluate_gpst_binary_pushdown_document_ppl(
             if previous_doc is not None:
                 emit_document(previous_doc)
             doc_joint_ll = doc_token_ll = 0.0
+            doc_non_candidate0_count = 0
             doc_terminals = doc_sentences = doc_candidates = 0
             prefix = ()
             prefix_cache = None
@@ -1365,16 +1376,17 @@ def evaluate_gpst_binary_pushdown_document_ppl(
         while True:
             parts: List[PushdownCandidateScores] = []
             next_cache: Optional[PushdownPrefixKVCache] = None
-            candidate0_cache: Optional[PushdownPrefixKVCache] = None
+            batch_cache: Optional[PushdownPrefixKVCache] = None
+            best_nll = math.inf
             try:
                 for start in range(0, len(candidates), batch_size):
-                    part, candidate0_cache = score_gpst_binary_pushdown_candidates(
+                    part, batch_cache = score_gpst_binary_pushdown_candidates(
                         model,
                         context,
                         candidates[start : start + batch_size],
                         device,
                         active_cache,
-                        return_candidate0_cache=(start == 0 and use_kv_cache),
+                        return_best_cache=use_kv_cache,
                         attachment_normalization=attachment_normalization,
                     )
                     nonfinite = {}
@@ -1403,15 +1415,16 @@ def evaluate_gpst_binary_pushdown_document_ppl(
                             f"nonfinite={nonfinite}"
                         )
                     parts.append(part)
-                    if start == 0:
-                        next_cache = candidate0_cache
+                    batch_best = float(part.joint_nll.min().item())
+                    if batch_best < best_nll:
+                        best_nll, next_cache = batch_best, batch_cache
                 break
             except torch.OutOfMemoryError:
                 if batch_size == 1:
                     raise
                 parts.clear()
                 next_cache = None
-                candidate0_cache = None
+                batch_cache = None
                 batch_size = max(1, batch_size // 2)
                 oom_retries += 1
                 if torch.cuda.is_available():
@@ -1424,7 +1437,7 @@ def evaluate_gpst_binary_pushdown_document_ppl(
                 # exact; never serialize or silently skip a non-finite value.
                 parts.clear()
                 next_cache = None
-                candidate0_cache = None
+                batch_cache = None
                 nonfinite_retries += 1
                 if batch_size > 1:
                     batch_size = max(1, batch_size // 2)
@@ -1445,6 +1458,10 @@ def evaluate_gpst_binary_pushdown_document_ppl(
             raise RuntimeError(
                 "candidate microbatching changed the valid candidate count"
             )
+        selected = int(scores.joint_nll.argmin().item())
+        current = candidates[selected]
+        non_candidate0_count += int(selected != 0)
+        doc_non_candidate0_count += int(selected != 0)
         sentence_joint_ll = torch.logsumexp(
             -scores.joint_nll.to(torch.float64), dim=0
         ).item()
@@ -1482,6 +1499,8 @@ def evaluate_gpst_binary_pushdown_document_ppl(
         candidate0_terminal_log_likelihood=candidate0_token_ll,
         terminal_count=terminal_count,
         sentence_count=len(corpus),
+        non_candidate0_count=non_candidate0_count,
+        non_candidate0_ratio=non_candidate0_count / len(corpus) if len(corpus) else math.nan,
         document_count=document_count,
         valid_candidate_count=valid_candidate_count,
         candidate_slots=candidate_slots,

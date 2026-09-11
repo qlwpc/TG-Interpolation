@@ -283,8 +283,11 @@ def build(args: argparse.Namespace) -> None:
             sentence_lengths[fmt][sentence_id] = value
             totals[fmt] += value
 
-    if old_special_counts != {"bos": 88, "eos": 4878, "pad": 0}:
-        raise ValueError(f"unexpected historical boundary counts: {old_special_counts}")
+    # Both the archived records and their already-normalized successor are
+    # valid inputs. The latter is now exposed as testppl/tree300.
+    normalized_counts = {"bos": len(document_counts), "eos": len(document_counts), "pad": 0}
+    if old_special_counts not in ({"bos": 88, "eos": 4878, "pad": 0}, normalized_counts):
+        raise ValueError(f"unexpected document boundary counts: {old_special_counts}")
 
     temporary_paths = {}
     outputs = {}

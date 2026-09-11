@@ -44,7 +44,10 @@ class Evaluator:
             key = f"eval/downstream/{self.label}_{self.eval_metric.metric_type}"
             if self.eval_metric.metric_type in ["ce_loss", "bpb"]:
                 key = key.replace("/downstream/", f"/downstream_{self.eval_metric.metric_type}/")
-            return {key: value}
+            result = {key: value}
+            if self.type == EvaluatorType.tg_doc:
+                result[f"eval/downstream/{self.label}_non_candidate0_ratio"] = self.eval_metric.non_candidate0_ratio()
+            return result
         elif self.type == EvaluatorType.downstream:
             assert isinstance(self.eval_metric, Metric)
             score : Dict = self.eval_metric.compute()
