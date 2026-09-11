@@ -36,6 +36,13 @@ python datatools/parse_test_docppl_data/generate_native_topk.py finalize \
 
 ## Tree/TG document-PPL data
 
+`generate_labeled_topk.py` generates exact labeled top-300 candidates directly
+from frozen canonical sentence/word/BPE boundaries. `labeled_topk.py` replaces
+the historical autograd KMax decoder with lazy canonical A/B CKY enumeration;
+`audit_labeled_topk.py` independently checks every candidate. The complete
+reserved-clean test workflow, local Slurm commands and output contracts are in
+[`bbc_reserved_clean_top300.md`](../../docs/bbc_reserved_clean_top300.md).
+
 `tree_to_tg.py` converts `testppl_tree` by duplicating every closing
 non-terminal token in place. It streams multi-GB arrays through mmap, updates
 every candidate-record length, preserves the document index, publishes files
@@ -49,6 +56,20 @@ python datatools/parse_test_docppl_data/tree_to_tg.py --validate-only
 `normalize_document_boundaries.py` is the one-time BOS/EOS normalization tool.
 `build_aligned_test.py` derives aligned terminal, Tree, and TG `test.npy`
 streams from candidate zero. Both retain their old `scripts/` entry points.
+
+`reproduce_bbc_test.py` extracts indexed archived parsed rows (`--split dev`
+or `--split test`), compares the
+current pretraining conversion with the historical GPT-2 encoding, audits
+terminal differences, and rebuilds the current test streams. It also supports
+a frozen delta recipe so raw-derived reconstruction does not require tree300
+after the recipe has been saved. See
+[`bbc_test_version_reproduction.md`](../../docs/bbc_test_version_reproduction.md)
+for the verified hashes and commands.
+`build-raw --encoding legacy` reconstructs the selected dev/test split;
+`verify-raw` checks all three arrays against archived reference files.
+Add `--normalize-adj` to `build-raw` to map ADJ constituents to real ADJP
+nonterminals before encoding, preserving the text leaves. Omit it when
+reproducing the unchanged historical dev/test files.
 
 ## Production safety
 

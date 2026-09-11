@@ -1175,12 +1175,12 @@ class Trainer:
         )  # batch includes all keys that the downstream evaluation needs
     
     def TG_doc_eval_step(self, batch: Dict[str, Any], evaluator: Evaluator) -> None:
-        # before move to the right device, make per sent batch attention bias
-        # eval must take on exactly one device
-        # make sure <bos> occur once one document
+        # Candidates arrive in sentence order; each rank owns whole documents.
+        # Score every candidate against the preceding selected sentence history.
 
         batch_size, T = batch["input_ids"].shape[0], batch["input_ids"].shape[1]
-        update_T = batch.get("add_len")
+        dataset = evaluator.eval_loader.dataset
+        generate_bias = getattr(dataset, "generate_TG_attention_bias", None)
         if batch["doc_id"] != self.cur_doc_id:
             self.kv_to_update = None
             self.doc_kv_cache = None
@@ -1189,11 +1189,24 @@ class Trainer:
             self.cur_length = 0
             self.last_logProb = None
             self.logits_to_update = None
+            if generate_bias is not None:
+                generate_bias.reset_state()
         # Freeze the preceding sentence's next-token distribution. The cache
         # commit below updates self.last_logProb to the CURRENT sentence, which
         # must not be used to score this sentence's first token.
         prefix_last_log_prob = self.last_logProb
         
+        # Document masks must follow model-selected history. Build them here,
+        # after the preceding sentence is committed, rather than in prefetched
+        # DataLoader collation where the winning tree is not yet known.
+        if generate_bias is not None:
+            biases, masks = zip(*(generate_bias(row) for row in batch["input_ids"]))
+            bias_rows = [torch.as_tensor(b) for b in biases]
+            batch["attention_bias"] = torch.stack([
+                b.unsqueeze(0) if b.ndim == 2 else b for b in bias_rows
+            ])
+            generated_mask = torch.stack([torch.as_tensor(m) for m in masks])
+            batch["label_mask"] = generated_mask & batch.get("label_mask", generated_mask)
         batch = move_to_device(batch, self.device)
         self.num_evaled += batch_size
         samples_per_sentence = int(evaluator.eval_loader.dataset.SENT_SIZE)
@@ -1201,6 +1214,8 @@ class Trainer:
             (self.num_evaled - batch_size) % samples_per_sentence == 0
         )
         ends_sentence = self.num_evaled % samples_per_sentence == 0
+        if starts_sentence:
+            self.best_candidate_nll = float("inf")
 
         with torch.no_grad():
             with torch.autocast("cuda", enabled=True, dtype=self.cfg.autocast_precision):
@@ -1214,34 +1229,21 @@ class Trainer:
                 else:
                     self.past_key_values = self.doc_kv_cache
                 
+                if self.past_key_values is not None:
+                    self.past_key_values = [
+                        (k.expand(batch_size, -1, -1, -1), v.expand(batch_size, -1, -1, -1))
+                        for k, v in self.past_key_values
+                    ]
                 out = self.dist_model(
                     input_ids=batch["input_ids"],
                     attention_mask=batch.get("attention_mask"),
                     attention_bias=batch.get("attention_bias"),
                     doc_lens=batch.get("doc_lens"),
                     max_doc_lens=batch.get("max_doc_lens"),
-                    use_cache=starts_sentence,
+                    use_cache=True,
                     past_key_values = self.past_key_values,
                 )
                 logits, kv_cache = out.logits, out.attn_key_values
-                if starts_sentence:
-                    # update input_ids
-                    # List[Tuple[torch.Tensor, torch.Tensor]] -> len=model_num_layers, tuple(key, value), 
-                    # tensor shape: Batch * n_kv_heads * seq_length * dim_head
-                    past_length = self.past_key_values[0][0].shape[-2] if self.past_key_values is not None else 0
-                    self.kv_to_update = [
-                        ( k[0, :, :past_length + update_T, :].clone().expand(batch_size,-1,-1,-1),
-                          v[0, :, :past_length + update_T, :].clone().expand(batch_size,-1,-1,-1) ) 
-                        for k, v in kv_cache
-                    ]
-                    self.logits_to_update = torch.log_softmax(logits[0, update_T - 1, :], dim=-1)
-                if ends_sentence:
-                    # update past_key_values
-                    self.doc_kv_cache = self.kv_to_update
-                    self.cur_length = self.doc_kv_cache[0][0].shape[-2]
-                    self.last_logProb = self.logits_to_update
-                    self.past_key_values = None
-
                 logits_for_loss = logits[..., :-1, :].contiguous()
                 # shape: (batch_size * seq_len, vocab_size)
                 logits_for_loss = logits_for_loss.view(-1, logits_for_loss.size(-1))
@@ -1259,6 +1261,32 @@ class Trainer:
                         dim=0,
                         index=batch["input_ids"][:, 0],
                     )
+
+                if not bool(torch.isfinite(ce_loss).all()):
+                    raise FloatingPointError("non-finite document candidate NLL")
+                best_in_batch = int(ce_loss.argmin().item())
+                best_nll = float(ce_loss[best_in_batch].item())
+                if best_nll < self.best_candidate_nll:
+                    self.best_candidate_nll = best_nll
+                    lengths = batch.get("candidate_lengths")
+                    update_T = (int(lengths[best_in_batch]) if lengths is not None
+                                else int(batch.get("add_len", T)))
+                    past_length = self.past_key_values[0][0].shape[-2] if self.past_key_values is not None else 0
+                    self.kv_to_update = [
+                        (k[best_in_batch:best_in_batch + 1, :, :past_length + update_T].clone(),
+                         v[best_in_batch:best_in_batch + 1, :, :past_length + update_T].clone())
+                        for k, v in kv_cache
+                    ]
+                    self.logits_to_update = torch.log_softmax(logits[best_in_batch, update_T - 1], dim=-1)
+                    # Keep padding for matching window truncation in the mask generator.
+                    self.selected_tree_to_update = batch["input_ids"][best_in_batch].detach().cpu()
+                if ends_sentence:
+                    self.doc_kv_cache = self.kv_to_update
+                    self.cur_length = self.doc_kv_cache[0][0].shape[-2]
+                    self.last_logProb = self.logits_to_update
+                    self.past_key_values = None
+                    if generate_bias is not None:
+                        generate_bias(self.selected_tree_to_update, True)
 
         evaluator.update_metrics(
             batch, ce_loss, logits
@@ -1842,7 +1870,8 @@ class Trainer:
                 evaluator.eval_loader.dataset.reset()
                 self.num_evaled = 0
                 self.cur_length = 0
-                self.cur_doc_id = 0
+                self.cur_doc_id = None
+                self.last_logProb = None
                 self.doc_kv_cache = None
                 self.kv_to_update = None
             # Initialize data loader iterator.
@@ -1899,6 +1928,10 @@ class Trainer:
                 del self.cur_length
                 del self.last_logProb
                 del self.logits_to_update
+                if hasattr(self, "selected_tree_to_update"):
+                    del self.selected_tree_to_update
+                if hasattr(self, "best_candidate_nll"):
+                    del self.best_candidate_nll
 
         # Eval compiles a bunch more versions, and the result is terrible. This way we get back to zero.
         if self.cfg.compile is not None:

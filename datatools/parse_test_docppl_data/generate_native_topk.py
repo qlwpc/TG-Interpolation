@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate model-native top-K trees for GPST and Pushdown.
 
-The canonical evaluation boundary is ``testppl_tree`` (4,966 documents), while
-``tree/test.npy`` supplies the terminal-alignment source relation. Benepar is
+Canonical inputs can be legacy ``testppl_tree`` records or one archived tree
+per sentence with a corpus manifest; the supplied Tree stream certifies
+terminal alignment. Document and sentence counts come from the inputs. Benepar is
 used only for its labeled span score chart. The same label-marginalized chart
 is decoded into strict-binary CKY trees for GPST and unary-free native n-ary
 trees for Pushdown. CPU workers decode while the next batches run on one GPU.
@@ -76,6 +77,14 @@ def _json_dump(path: Path, value: object) -> None:
     os.replace(temporary, path)
 
 
+def _sha256_path(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(8 << 20), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
 def _tree_terminals_and_record(block: Sequence[int], vocab: TreeVocab):
     record = []
     content = []
@@ -143,14 +152,41 @@ def _scan_document_terminals(tree_path: Path, vocab: TreeVocab):
 class CanonicalPPLCorpus:
     def __init__(self, ppl_dir: Path, tokenizer_path: Path) -> None:
         self.ppl_dir = ppl_dir
-        self.tree = np.load(ppl_dir / "tree_300.npy", mmap_mode="r")
-        lengths = np.load(ppl_dir / "tree_sent_index.npy", mmap_mode="r")
-        if lengths.size % SLOTS:
-            raise ValueError("tree_sent_index length is not divisible by 300")
-        self.lengths = lengths.reshape(-1, SLOTS)
-        self.document_counts = np.asarray(
-            np.load(ppl_dir / "tree_doc_index.npy", mmap_mode="r"), dtype=np.int64
-        )
+        manifest_path = ppl_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        if manifest.get("format") == "canonical-tree-sentences-v1":
+            tree_path = (ppl_dir / manifest["tree_path"]).resolve()
+            offset_path = ppl_dir / "sentence_offsets.npy"
+            doc_path = ppl_dir / "document_sentence_counts.npy"
+            for path, key in ((tree_path, "tree_sha256"), (offset_path, "sentence_offsets_sha256"),
+                              (doc_path, "document_sentence_counts_sha256")):
+                if _sha256_path(path) != manifest[key]:
+                    raise ValueError(f"canonical source fingerprint differs: {path}")
+            self.tree = np.load(tree_path, mmap_mode="r")
+            offsets = np.load(offset_path)
+            if len(offsets) < 2 or offsets[0] != 0 or np.any(offsets[1:] <= offsets[:-1]):
+                raise ValueError("invalid canonical sentence offsets")
+            # This is explicitly a single archived tree input. Candidate
+            # generation still emits 300 independent, valid-counted slots.
+            self.lengths = np.diff(offsets).reshape(-1, 1)
+            self.document_counts = np.asarray(np.load(doc_path), dtype=np.int64)
+            if (len(self.document_counts) != manifest["document_count"] or
+                    len(self.lengths) != manifest["sentence_count"]):
+                raise ValueError("canonical manifest counts differ from arrays")
+            self.source_paths = (tree_path, offset_path, doc_path, manifest_path)
+        else:
+            self.tree = np.load(ppl_dir / "tree_300.npy", mmap_mode="r")
+            lengths = np.load(ppl_dir / "tree_sent_index.npy", mmap_mode="r")
+            if lengths.size % SLOTS:
+                raise ValueError("tree_sent_index length is not divisible by 300")
+            self.lengths = lengths.reshape(-1, SLOTS)
+            self.document_counts = np.asarray(
+                np.load(ppl_dir / "tree_doc_index.npy", mmap_mode="r"), dtype=np.int64
+            )
+            self.source_paths = tuple(ppl_dir / n for n in
+                                      ("tree_300.npy", "tree_sent_index.npy", "tree_doc_index.npy"))
+        if np.any(self.document_counts <= 0):
+            raise ValueError("documents must contain at least one sentence")
         if int(self.document_counts.sum()) != len(self.lengths):
             raise ValueError("tree_doc_index does not cover all tree_300 sentences")
         totals = self.lengths.sum(axis=1, dtype=np.uint64)
@@ -164,6 +200,9 @@ class CanonicalPPLCorpus:
         from tokenizers import Tokenizer
 
         self.tokenizer = Tokenizer.from_file(str(tokenizer_path))
+
+    def fingerprints(self, tokenizer_path: Path, test_tree: Path):
+        return {str(p.resolve()): _sha256_path(p) for p in (*self.source_paths, tokenizer_path, test_tree)}
 
     def document_id(self, sentence_id: int) -> int:
         return int(np.searchsorted(self.document_ends, sentence_id, side="right"))
@@ -287,6 +326,7 @@ def audit_alignment(args) -> None:
         "test_tree": str(args.test_tree),
         "ppl_dir": str(args.ppl_dir),
         "tokenizer": str(args.tokenizer),
+        "source_sha256": corpus.fingerprints(args.tokenizer, args.test_tree),
     }
     args.output.mkdir(parents=True, exist_ok=True)
     _json_dump(args.output / "alignment_audit.json", result)
@@ -436,10 +476,13 @@ def generate_shard(args) -> None:
         raise FileNotFoundError(f"run the audit command first: missing {audit_path}")
     with audit_path.open() as handle:
         audit = json.load(handle)
-    if audit["ppl_document_count"] != 4966 or audit["ppl_sentence_count"] != 148836:
-        raise ValueError("alignment audit does not match the fixed BBC test-PPL contract")
-
     corpus = CanonicalPPLCorpus(args.ppl_dir, args.tokenizer)
+    if (audit["ppl_document_count"] != len(corpus.document_counts) or
+            audit["ppl_sentence_count"] != len(corpus.lengths) or audit["exceptions"] or
+            audit["document_offset"] != 0):
+        raise ValueError("alignment audit does not match the complete canonical input")
+    if audit.get("source_sha256") != corpus.fingerprints(args.tokenizer, args.test_tree):
+        raise ValueError("alignment audit has stale/missing source fingerprints; rerun audit")
     doc_start, doc_end, sent_start, sent_end = corpus.shard_bounds(args.shard_id, args.num_shards)
     if args.max_sentences is not None:
         if args.max_sentences < 1:
@@ -662,6 +705,15 @@ def reuse_pushdown_shard(args) -> None:
 
 
 def finalize(args) -> None:
+    with (args.output / "alignment_audit.json").open() as handle:
+        audit = json.load(handle)
+    if audit["exceptions"] or audit["document_offset"] != 0:
+        raise ValueError("cannot finalize an unaligned corpus")
+    if not audit.get("source_sha256"):
+        raise ValueError("alignment audit has no source fingerprints; rerun audit")
+    for path, expected in audit["source_sha256"].items():
+        if _sha256_path(Path(path)) != expected:
+            raise ValueError(f"canonical source changed after alignment audit: {path}")
     shards = sorted(args.output.glob("shard-*-of-*"))
     if len(shards) != args.num_shards:
         raise ValueError(f"found {len(shards)} shards, expected {args.num_shards}")
@@ -696,7 +748,7 @@ def finalize(args) -> None:
         if reuse_path.exists():
             with reuse_path.open() as handle:
                 reuse_reports.append(json.load(handle))
-    if sentence_total != 148836 or document_total != 4966:
+    if sentence_total != audit["ppl_sentence_count"] or document_total != audit["ppl_document_count"]:
         raise ValueError(f"unexpected totals: documents={document_total}, sentences={sentence_total}")
     manifest = {
         "format_version": FORMAT_VERSION,

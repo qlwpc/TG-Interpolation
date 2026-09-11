@@ -1953,12 +1953,16 @@ class TGPerplexityDocumentLevelMetric(Metric):
         self.device_eval_batch_size = device_eval_batch_size 
         self.add_state("loglikelihoods", default=torch.zeros((dataset_length//self.samples_per_sent, self.samples_per_sent), dtype=torch.float32), dist_reduce_fx=None)
 
+        self.add_state("evaluated_candidates", default=torch.zeros(dataset_length // self.samples_per_sent, dtype=torch.int64), dist_reduce_fx=None)
+
     def reset(self):
         # ``compute()`` replaces this rank-local state with the globally
         # all-reduced tensor. A later evaluation in the same Trainer must start
         # from zeros; otherwise slots owned by other ranks retain their previous
         # global values and are summed again at the next all-reduce.
+        super().reset()
         self.loglikelihoods.zero_()
+        self.evaluated_candidates.zero_()
         # Retained for compatibility with older code that inspected these
         # counters, although update() now scatters by global sample index.
         self.cur_sent = 0
@@ -1981,16 +1985,24 @@ class TGPerplexityDocumentLevelMetric(Metric):
         row = idx // self.samples_per_sent
         col = idx % self.samples_per_sent
         self.loglikelihoods[row, col] = ce_loss
+        self.evaluated_candidates.index_add_(0, row, torch.ones_like(row))
 
     def compute(self) -> torch.Tensor:
         # SUM all-reduce the fixed-size loglikelihoods tensor across ranks
         # (count-insensitive: each rank wrote its own disjoint slots). Required
         # under multi-GPU DistributedEvalSampler; a no-op for single-device eval.
         self.loglikelihoods = _all_reduce_tensor(self.loglikelihoods)
+        self.evaluated_candidates = _all_reduce_tensor(self.evaluated_candidates)
         data_numwords = sum(self.term_length)
         ppl = torch.logsumexp(-self.loglikelihoods, dim=1).sum().item()
         ppl = np.exp(-ppl / data_numwords)
         return torch.tensor(ppl)
+
+    def non_candidate0_ratio(self) -> float:
+        complete = self.evaluated_candidates == self.samples_per_sent
+        if not bool(complete.any()):
+            return float("nan")
+        return float((self.loglikelihoods.argmin(dim=1)[complete] != 0).float().mean().item())
 
 
 class TerminalDocumentPerplexityMetric(Metric):
@@ -2363,11 +2375,6 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
 
     def collate_fn(self, data):
         # pad to max length
-        if self.metric_type=="doc" and data[0]["doc_id"] > self.cur_doc_id:
-            self.cur_doc_id = data[0]["doc_id"]
-            if self.generate_TG_attention_bias is not None:
-                self.generate_TG_attention_bias.reset_state()
-        
         self.num_evaled += len(data)
         max_input_len = 0
         for sample in data:
@@ -2390,7 +2397,7 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
             cur_input_id = torch.LongTensor(self.pad_tokens_until_max(sample["input_ids"], max_len=max_input_len))
 
             attention_bias, label_mask = None, None
-            if self.generate_TG_attention_bias is not None:
+            if self.generate_TG_attention_bias is not None and self.metric_type != "doc":
                 attention_bias, label_mask = self.generate_TG_attention_bias(cur_input_id)
             sample_label_mask = sample.get("label_mask")
             if sample_label_mask is not None:
@@ -2437,14 +2444,11 @@ class TGPerplexityApproximationDataset(metaclass=abc.ABCMeta):
         if all_label_mask:
             batch["label_mask"] = torch.stack(all_label_mask)
 
-        if self.metric_type=="doc":
-            if self.num_evaled % self.SENT_SIZE == self.batch_size or self.batch_size == self.SENT_SIZE:
-                # Make sure bias has the same length with kv cache, we must pass pad into GenBias
-                self.sent_to_add = torch.LongTensor(self.pad_tokens_until_max(data[0]["input_ids"], max_len=max_input_len))
-                batch["add_len"] = data[0]["input_ids"].shape[0]
-            if self.num_evaled % self.SENT_SIZE == 0:
-                if self.generate_TG_attention_bias is not None:
-                    self.generate_TG_attention_bias(self.sent_to_add, True)
+        if self.metric_type == "doc":
+            batch["candidate_lengths"] = torch.tensor([
+                min(len(sample["input_ids"]), batch["input_ids"].shape[1]) for sample in data
+            ])
+            batch["add_len"] = int(batch["candidate_lengths"][0])
         return batch
 
     def token_encode(self, string: str) -> List[int]:

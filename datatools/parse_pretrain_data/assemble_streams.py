@@ -19,6 +19,7 @@ import numpy as np
 from tokenizers import Tokenizer
 
 from datatools.parse_pretrain_data.pipeline_io import atomic_json, load_index, sha256_file, validate_split_indices
+from datatools.reserved_clean.common import RESERVED
 
 Index = Mapping[str, Sequence[int] | set[int]]
 
@@ -175,6 +176,12 @@ def assemble(
     manifest: dict[str, dict[str, dict[str, int | str]]] = {}
     if not order or len(order) != len(set(order)):
         raise ValueError("shard order must be nonempty and unique")
+    reserved = set(order) & set(RESERVED)
+    if reserved:
+        raise ValueError(
+            f"reserved evaluation shards must not enter train assembly: {sorted(reserved)}; "
+            "use bbc_train_shards.txt for the historical 89-shard scope"
+        )
     if not formats or len(formats) != len(set(formats)) or set(formats) - set(FORMATS):
         raise ValueError("formats must be nonempty, unique, and known")
     if any(Path(stem).name != stem or stem in (".", "..") for stem in order):
@@ -242,7 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--shard-order",
         type=Path,
-        default=Path(__file__).with_name("bbc_configs.txt"),
+        default=Path(__file__).with_name("bbc_train_shards.txt"),
     )
     parser.add_argument("--formats", nargs="+", choices=FORMATS, default=list(FORMATS))
     parser.add_argument("--overwrite", action="store_true")

@@ -1,7 +1,7 @@
 """Gold-tree document perplexity for terminal-only Pushdown OLMo models.
 
 The evaluator performs exact teacher forcing over the supplied trees.  It
-commits candidate 0 after each sentence into a real transformer KV cache and
+commits the highest-probability candidate after each sentence into a real transformer KV cache and
 rebuilds that cache only when the bounded context window slides; it never calls
 :meth:`OLMo.pushdown_beam_search`.
 """
@@ -163,11 +163,11 @@ class PushdownCandidateScores:
 
 @dataclass(frozen=True)
 class PushdownPrefixKVCache:
-    """Candidate-0 prefix state used by exact document-level scoring.
+    """Model-selected prefix state used by exact document-level scoring.
 
     ``final_hidden`` is retained in addition to transformer K/V because the
     attachment head scores current queries against prefix final-layer states.
-    The cache always represents exactly the bounded candidate-0 context passed
+    The cache always represents exactly the bounded model-selected context passed
     to the next sentence; when that context slides, it is rebuilt from that
     suffix rather than silently using stale keys.
     """
@@ -354,15 +354,17 @@ def score_pushdown_native_candidates(
     *,
     prefix_cache: Optional[PushdownPrefixKVCache] = None,
     return_candidate0_cache: bool = False,
+    return_best_cache: bool = False,
 ) -> PushdownCandidateScores | Tuple[PushdownCandidateScores, PushdownPrefixKVCache]:
     """Score one native candidate batch without repeated CPU composition."""
+    return_cache = return_candidate0_cache or return_best_cache
     device = torch.device(device)
     token_row, sid_row, spans, legal, targets, prefix_length = _pack_shared_native_candidates(prefix, candidates)
     batch_size = len(candidates)
     use_cache = prefix_cache is not None
     if use_cache:
         if prefix_cache.context != tuple(prefix):
-            raise ValueError("KV cache context is not this sentence's candidate-0 prefix")
+            raise ValueError("KV cache context is not this sentence's selected prefix")
         input_ids = token_row[prefix_length:].unsqueeze(0).expand(batch_size, -1).to(device)
         sentence_ids = sid_row[prefix_length:].unsqueeze(0).expand(batch_size, -1).to(device)
         past_key_values = tuple(
@@ -386,7 +388,7 @@ def score_pushdown_native_candidates(
                 attachment_query_range=(prefix_length, target_end),
                 past_key_values=past_key_values, past_final_hidden=past_final_hidden,
                 past_input_ids=past_input_ids, past_sentence_ids=past_sentence_ids,
-                use_cache=return_candidate0_cache, return_final_hidden=return_candidate0_cache)
+                use_cache=return_cache, return_final_hidden=return_cache)
     if use_cache:
         # The cached prefix's final row predicts the first continuation token;
         # the new rows predict the remaining continuation tokens. This is the
@@ -419,19 +421,21 @@ def score_pushdown_native_candidates(
             attachment_normalization,
         )
         scores = PushdownCandidateScores(token_nll + attachment_nll, token_nll, attachment_nll)
-    if not return_candidate0_cache:
+    if not return_cache:
         return scores
+    selected = int(scores.joint_nll.argmin().item()) if return_best_cache else 0
+    selected_row = slice(selected, selected + 1)
     if out.attn_key_values is None or out.final_hidden is None:
         raise RuntimeError("Pushdown KV-cache forward did not return cache state")
     if use_cache:
-        next_hidden = torch.cat((prefix_cache.final_hidden, out.final_hidden[:1]), dim=1)
-        next_input_ids = torch.cat((prefix_cache.input_ids, input_ids[:1]), dim=1)
-        next_sentence_ids = torch.cat((prefix_cache.sentence_ids, sentence_ids[:1]), dim=1)
+        next_hidden = torch.cat((prefix_cache.final_hidden, out.final_hidden[selected_row]), dim=1)
+        next_input_ids = torch.cat((prefix_cache.input_ids, input_ids[selected_row]), dim=1)
+        next_sentence_ids = torch.cat((prefix_cache.sentence_ids, sentence_ids[selected_row]), dim=1)
     else:
-        next_hidden, next_input_ids, next_sentence_ids = out.final_hidden[:1], input_ids[:1], sentence_ids[:1]
+        next_hidden, next_input_ids, next_sentence_ids = out.final_hidden[selected_row], input_ids[selected_row], sentence_ids[selected_row]
     next_cache = PushdownPrefixKVCache(
-        tuple(prefix) + (candidates[0],),
-        tuple((key[:1].detach().clone(), value[:1].detach().clone()) for key, value in out.attn_key_values),
+        tuple(prefix) + (candidates[selected],),
+        tuple((key[selected_row].detach().clone(), value[selected_row].detach().clone()) for key, value in out.attn_key_values),
         next_hidden.detach().clone(), next_input_ids.detach().clone(), next_sentence_ids.detach().clone(),
     )
     return scores, next_cache
@@ -508,10 +512,12 @@ class PushdownDocumentPPLResult:
     protocol_version: int = 1
     structure_source: str = ""
     attachment_normalization: str = ""
-    prefix_policy: str = "candidate0"
+    prefix_policy: str = "model_best"
     max_sequence_length: int = 0
     candidate_aggregation: str = "truncated_joint_sum"
     ppl_denominator: str = "terminal_count"
+    non_candidate0_count: int = 0
+    non_candidate0_ratio: float = math.nan
     def as_dict(self) -> dict:
         result = dict(self.__dict__)
         result["candidate_compression_ratio"] = (
@@ -544,6 +550,7 @@ def evaluate_pushdown_document_ppl(
     prefix_cache: Optional[PushdownPrefixKVCache] = None
     legacy_ll = mixture_ll = token_ll = 0.0; terminals = documents = sentences = 0
     candidate_slots = model_candidate_forwards = cache_hits = cache_rebuilds = 0
+    non_candidate0_count = doc_non_candidate0_count = 0
     doc_legacy_ll = doc_mixture_ll = doc_token_ll = 0.0
     doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
     structure_source = (
@@ -560,7 +567,7 @@ def evaluate_pushdown_document_ppl(
         ),
         "structure_source": structure_source,
         "attachment_normalization": effective_attachment_normalization,
-        "prefix_policy": "candidate0",
+        "prefix_policy": "model_best",
         "max_sequence_length": max_sequence_length,
         "candidate_aggregation": "truncated_joint_sum",
         "ppl_denominator": "terminal_count",
@@ -576,6 +583,8 @@ def evaluate_pushdown_document_ppl(
             **protocol_metadata,
             "document_id": doc_id, "terminal_count": doc_terminals,
             "sentence_count": doc_sentences, "document_count": 1,
+            "non_candidate0_count": doc_non_candidate0_count,
+            "non_candidate0_ratio": doc_non_candidate0_count / doc_sentences,
             "candidate_slots": doc_candidate_slots, "model_candidate_forwards": doc_forwards,
             "samples_per_sentence": corpus.samples_per_sentence,
             "legacy_log_likelihood": doc_legacy_ll,
@@ -588,10 +597,11 @@ def evaluate_pushdown_document_ppl(
     for index, (doc_id, original) in enumerate(corpus):
         if completed_document_ids is not None and doc_id in completed_document_ids:
             # Document contexts never cross boundaries, so an atomic result can
-            # be skipped without reconstructing its candidate-0 cache.
+            # be skipped without reconstructing its selected-tree cache.
             if doc_id != previous_doc and previous_doc is not None:
                 emit_document(previous_doc)
                 doc_legacy_ll = doc_mixture_ll = doc_token_ll = 0.0
+                doc_non_candidate0_count = 0
                 doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
             previous_doc = doc_id
             continue
@@ -600,6 +610,7 @@ def evaluate_pushdown_document_ppl(
             if previous_doc is not None:
                 emit_document(previous_doc)
             doc_legacy_ll = doc_mixture_ll = doc_token_ll = 0.0
+            doc_non_candidate0_count = 0
             doc_terminals = doc_sentences = doc_candidate_slots = doc_forwards = 0
             prefix = (); prefix_cache = None; previous_doc = doc_id; documents += 1
         candidates = original if first else tuple(_drop_leading_bos(c, corpus.vocab.bos) for c in original)
@@ -639,28 +650,32 @@ def evaluate_pushdown_document_ppl(
             while True:
                 parts = []
                 next_cache = None
+                best_nll = math.inf
                 try:
                     for start in range(0, len(scored), batch_size):
-                        if start == 0 and use_kv_cache:
-                            first_scores, next_cache = score_fn(
-                                model, context, scored[:batch_size], device,
+                        if use_kv_cache:
+                            part, batch_cache = score_fn(
+                                model, context, scored[start:start + batch_size], device,
                                 include_attachment_probability, attachment_normalization,
-                                prefix_cache=active_cache, return_candidate0_cache=True,
+                                prefix_cache=active_cache, return_best_cache=True,
                             )
-                            parts.append(first_scores)
+                            batch_best = float(part.joint_nll.min().item())
+                            if batch_best < best_nll:
+                                best_nll, next_cache = batch_best, batch_cache
                         else:
-                            parts.append(score_fn(
+                            part = score_fn(
                                 model, context, scored[start:start + batch_size], device,
                                 include_attachment_probability, attachment_normalization,
                                 prefix_cache=active_cache,
-                            ))
+                            )
+                        parts.append(part)
                     break
                 except torch.OutOfMemoryError:
                     if batch_size == 1:
                         raise
                     parts.clear()
                     next_cache = None
-                    first_scores = None
+                    batch_cache = None
                     batch_size = max(1, batch_size // 2)
                     torch.cuda.empty_cache()
             scores = PushdownCandidateScores(*(torch.cat([getattr(part, field) for part in parts])
@@ -669,6 +684,14 @@ def evaluate_pushdown_document_ppl(
             scores = score_fn(model, context, scored, device, eval_batch_size,
                               include_attachment_probability, max_batch_tokens,
                               attachment_normalization)
+        if not bool(torch.isfinite(scores.joint_nll).all()):
+            raise FloatingPointError(f"non-finite Pushdown candidate NLL in sentence {index}")
+        selected = int(scores.joint_nll.argmin().item())
+        current = scored[selected]
+        # Compression preserves first occurrence, so index zero is candidate0's
+        # tree; multiplicity affects marginalization but never MAP selection.
+        non_candidate0_count += int(selected != 0)
+        doc_non_candidate0_count += int(selected != 0)
         joint_ll = _weighted_logsumexp(scores.joint_nll, multiplicities)
         token_sentence_ll = _weighted_logsumexp(scores.token_nll, multiplicities)
         legacy_ll += joint_ll.item()
@@ -692,6 +715,7 @@ def evaluate_pushdown_document_ppl(
         terminals, sentences, documents, corpus.samples_per_sentence,
         deduplicate_trees, False, candidate_slots, model_candidate_forwards, cache_hits, cache_rebuilds,
         1 if attachment_normalization == ATTACHMENT_NORMALIZATION_V1 else 2,
-        structure_source, effective_attachment_normalization, "candidate0",
+        structure_source, effective_attachment_normalization, "model_best",
         max_sequence_length, "truncated_joint_sum", "terminal_count",
+        non_candidate0_count, non_candidate0_count / sentences if sentences else math.nan,
     )
