@@ -117,3 +117,59 @@ def test_current_depth_range_implementation_covers_remote_multirow_optimization(
                           [[0, 2, 6], [2, 3, 5], [3, 3, 3], [3, 3, 3]]])
     torch.testing.assert_close(compute_depth_rows_gpu(spans, 7, start, end),
                                compute_depth_matrix_gpu(spans, 7)[:, start:end])
+
+
+@pytest.mark.parametrize("binary", [False, True])
+def test_best_cache_retains_nonzero_winner_and_scores_next_sentence(tiny_model, binary):
+    if binary:
+        from olmo.eval.gpst_binary_pushdown_document_ppl import score_gpst_binary_pushdown_candidates as score
+        def run(prefix, trees, **kwargs):
+            return score(tiny_model, prefix, trees, "cpu", **kwargs)
+    else:
+        def run(prefix, trees, **kwargs):
+            result = ppl.score_pushdown_native_candidates(tiny_model, prefix, trees, "cpu", **kwargs)
+            return result if isinstance(result, tuple) else (result, None)
+    trees = candidates()
+    raw, _ = run((), trees)
+    # Put the actual less likely tree in slot zero, so the cache must select row 1.
+    order = raw.joint_nll.argsort(descending=True).tolist()
+    trees = tuple(trees[i] for i in order)
+    scores, cache = run((), trees, return_best_cache=True)
+    assert scores.joint_nll[1] < scores.joint_nll[0]
+    assert cache.context == (trees[1],)
+    following = tuple(ppl._drop_leading_bos(c, 0) for c in trees)
+    cached, _ = run(cache.context, following, prefix_cache=cache)
+    full, _ = run(cache.context, following)
+    torch.testing.assert_close(cached.joint_nll, full.joint_nll, atol=2e-5, rtol=1e-6)
+    for key, value in cache.key_values:
+        assert key.untyped_storage().nbytes() == key.numel() * key.element_size()
+        assert value.untyped_storage().nbytes() == value.numel() * value.element_size()
+
+
+def test_document_selection_matches_greedy_full_prefix_and_microbatching(tiny_model):
+    corpus = TinyCorpus()
+    corpus.rows = [(doc, tuple(reversed(trees))) for doc, trees in corpus.rows]
+    prefix = ()
+    previous_doc = None
+    nonzero = 0
+    for doc, trees in corpus:
+        if doc != previous_doc:
+            prefix = ()
+        else:
+            trees = tuple(ppl._drop_leading_bos(c, 0) for c in trees)
+        context = ppl._trim_prefix(prefix, trees[0], 10)
+        scores = ppl.score_pushdown_native_candidates(tiny_model, context, trees, "cpu")
+        selected = int(scores.joint_nll.argmin())
+        nonzero += int(selected != 0)
+        prefix = context + (trees[selected],)
+        previous_doc = doc
+    assert nonzero > 0
+    for batch_size in (1, 2):
+        rows = []
+        result = ppl.evaluate_pushdown_document_ppl(tiny_model, corpus, "cpu", eval_batch_size=batch_size,
+                                                   max_sequence_length=10,
+                                                   document_complete=lambda _, row: rows.append(row))
+        assert result.prefix_policy == "model_best"
+        assert result.non_candidate0_count == nonzero
+        assert result.non_candidate0_ratio == pytest.approx(nonzero / len(corpus))
+        assert sum(row["non_candidate0_count"] for row in rows) == nonzero

@@ -455,13 +455,14 @@ def test_metric_uses_valid_k_sum_and_candidate0_terminal_only(monkeypatch):
         _device,
         prefix_cache=None,
         return_candidate0_cache=False,
+        return_best_cache=False,
         attachment_normalization="stack_legal",
     ):
         del prefix_cache, return_candidate0_cache, attachment_normalization
         seen_prefixes.append(tuple(prefix))
         if candidates[0].tokens[0] == 7:
             token = torch.tensor([1.0, 3.0], dtype=torch.float64)
-            attachment = torch.tensor([0.5, 0.5], dtype=torch.float64)
+            attachment = torch.tensor([4.5, 0.5], dtype=torch.float64)
         else:
             token = torch.tensor([2.0], dtype=torch.float64)
             attachment = torch.tensor([0.25], dtype=torch.float64)
@@ -481,7 +482,7 @@ def test_metric_uses_valid_k_sum_and_candidate0_terminal_only(monkeypatch):
         eval_batch_size=300,
     )
     expected_joint_ll = (
-        torch.logsumexp(-torch.tensor([1.5, 3.5], dtype=torch.float64), 0).item() - 2.25
+        torch.logsumexp(-torch.tensor([5.5, 3.5], dtype=torch.float64), 0).item() - 2.25
     )
     assert result.joint_log_likelihood_v1 == pytest.approx(expected_joint_ll)
     assert result.candidate0_terminal_log_likelihood == pytest.approx(-3.0)
@@ -496,7 +497,11 @@ def test_metric_uses_valid_k_sum_and_candidate0_terminal_only(monkeypatch):
     assert result.candidate_slots == 600
     assert result.terminal_count == 4
     assert seen_prefixes[0] == ()
-    assert seen_prefixes[1] == (_RaggedCorpus().rows[0][1][0],)
+    assert seen_prefixes[1] == (_RaggedCorpus().rows[0][1][1],)
+
+    assert result.non_candidate0_count == 1
+    assert result.non_candidate0_ratio == 0.5
+    assert result.prefix_policy == "model_best"
 
 
 def test_evaluator_rejects_nonfinite_candidate_with_location(monkeypatch):
@@ -509,6 +514,7 @@ def test_evaluator_rejects_nonfinite_candidate_with_location(monkeypatch):
         _device,
         prefix_cache=None,
         return_candidate0_cache=False,
+        return_best_cache=False,
         attachment_normalization="stack_legal",
     ):
         nonlocal calls
@@ -551,6 +557,7 @@ def test_evaluator_retries_transient_nonfinite_at_smaller_microbatch(monkeypatch
         _device,
         prefix_cache=None,
         return_candidate0_cache=False,
+        return_best_cache=False,
         attachment_normalization="stack_legal",
     ):
         nonlocal calls
@@ -631,3 +638,10 @@ def test_shard_merge_sums_likelihoods_and_rejects_overlap():
         merge([{**left, "candidate0_terminal_log_likelihood": math.inf}])
     with pytest.raises(ValueError, match="full BBC corpus invariants"):
         validate_full_bbc(result)
+    best_left = {**left, "prefix_policy": "model_best", "non_candidate0_count": 1, "non_candidate0_ratio": 0.5}
+    best_right = {**right, "prefix_policy": "model_best", "non_candidate0_count": 2, "non_candidate0_ratio": 1.0}
+    combined = merge([best_left, best_right])
+    assert combined["non_candidate0_count"] == 3
+    assert combined["non_candidate0_ratio"] == 0.75
+    with pytest.raises(ValueError, match="prefix_policy"):
+        merge([best_left, right])

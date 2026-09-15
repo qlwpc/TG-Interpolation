@@ -158,7 +158,7 @@ def main() -> None:
     }[args.candidate_source]
     log.info(
         "structure_source=%s source_candidate_axis=%s binarization=%s "
-        "prefix_policy=candidate0 context_truncation=left_drop_complete_sentences "
+        "prefix_policy=model_best context_truncation=left_drop_complete_sentences "
         "attachment_normalization=%s candidate_aggregation=truncated_sum "
         "divide_by_candidate_count=false kv_cache=%s",
         corpus_class.structure_source,

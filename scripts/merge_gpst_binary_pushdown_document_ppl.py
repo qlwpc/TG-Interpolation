@@ -102,6 +102,12 @@ def merge(rows: list[dict]) -> dict:
             raise ValueError(
                 "candidate_slots must equal sentence_count times physical capacity"
             )
+        if row.get("prefix_policy") == "model_best":
+            count = row.get("non_candidate0_count")
+            if type(count) is not int or not 0 <= count <= row["sentence_count"]:
+                raise ValueError("invalid non_candidate0_count")
+            if not math.isclose(row.get("non_candidate0_ratio", -1), count / row["sentence_count"]):
+                raise ValueError("invalid non_candidate0_ratio")
         for field in (
             joint_ll_key,
             "candidate0_terminal_log_likelihood",
@@ -156,6 +162,9 @@ def merge(rows: list[dict]) -> dict:
             "merged_shards": len(rows),
         }
     )
+    if reference.get("prefix_policy") == "model_best":
+        result["non_candidate0_count"] = sum(row["non_candidate0_count"] for row in rows)
+        result["non_candidate0_ratio"] = result["non_candidate0_count"] / result["sentence_count"]
     return result
 
 

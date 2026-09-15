@@ -346,6 +346,13 @@ class ModelConfig(BaseConfig):
     causal attention to FlashAttention/SDPA.
     """
 
+    tg_typed_attention: bool = False
+    """Build compact TG layouts in the pretraining data pipeline and use the
+    dedicated CUDA TG/mixed-head operators. Supports fresh-segment sequential
+    MHA, tg or mixing(tg/tgnomask/tgtree), no extra masks/bias/dropout/cache.
+    Layouts are shared across layers; the default preserves existing backends.
+    """
+
     flex_attention_train_min_sequence_length: int = 1024
     """Minimum original sequence length for TG-style FlexAttention in training.
 

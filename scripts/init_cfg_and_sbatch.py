@@ -100,7 +100,7 @@ Models = {
     "terminal-fwedu-1B": {"model.transformer_grammar_type": "terminal"},
     "terminal-500M": {"model.transformer_grammar_type": "terminal"},
     "terminal-100M-early" : {"model.transformer_grammar_type": "terminal"},
-    "treereg": {"model.transformer_grammar_type": "treereg"},
+    "treereg": {"model.transformer_grammar_type": "treereg", "model.treereg_layer": 9},
     "treereg_layer9": {
         "model.transformer_grammar_type": "treereg",
         "model.treereg_layer": 9,
@@ -551,7 +551,7 @@ model_paths = {
     "terminal1024": "/saved_models/terminal_100M_1024/step34115-unsharded",
     "terminal-500M" : "/saved_models/terminal_500M/step34115-unsharded",
     "terminal-100M-early": "/saved_models/terminal_100M_early/step14425-unsharded",
-    "treereg": "/saved_models/treereg/step34354-unsharded",
+    "treereg": "/saved_models/treereg_layer9/step34354-unsharded",
     "treereg_layer9": "/saved_models/treereg_layer9/step34354-unsharded",
     "tree-500M" : "/saved_models/Tree_500M/step49440-unsharded",
     "tree-100M-early" : "/saved_models/Tree_100M_early/step19233-unsharded",

@@ -64,3 +64,29 @@ def test_teacher_forced_protocol_rejects_illegal_gold_target():
     legal = torch.tensor([[[True, False]]])
     with pytest.raises(ValueError, match="outside its legal action set"):
         _attachment_nll_from_logits(logits, targets, legal, "sentence_causal")
+
+
+def test_gold_history_uses_individual_probability_not_duplicate_mass(monkeypatch):
+    from types import SimpleNamespace
+    from olmo.eval import pushdown_document_ppl as ppl
+    left, right = _candidate(((1, 1, 2),)), _candidate(((1, 2, 2),))
+    class Corpus:
+        vocab = SimpleNamespace(bos=99)
+        samples_per_sentence = 300
+        def __len__(self):
+            return 2
+        def __iter__(self):
+            return iter([(0, (left,) * 299 + (right,))] * 2)
+    seen = []
+    def score(_model, prefix, candidates, *args):
+        seen.append(prefix)
+        assert candidates == (left, right)
+        nll = torch.tensor([2., 1.], dtype=torch.float64)
+        return ppl.PushdownCandidateScores(nll, nll, torch.zeros_like(nll))
+    monkeypatch.setattr(ppl, "score_pushdown_gold_candidates", score)
+    result = ppl.evaluate_pushdown_document_ppl(SimpleNamespace(eval=lambda: None), Corpus(), "cpu",
+                                               include_attachment_probability=False)
+    assert seen == [(), (right,)]
+    assert result.non_candidate0_count == 2
+    assert result.non_candidate0_ratio == 1
+    assert result.legacy_log_likelihood == pytest.approx(2 * torch.logsumexp(torch.tensor([-2.] * 299 + [-1.], dtype=torch.float64), 0).item())

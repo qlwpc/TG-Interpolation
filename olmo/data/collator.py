@@ -19,6 +19,8 @@ class DataCollator:
     pad_token_id: int
     generate_attention_mask: bool
     shuffle_tree: str
+    tg_typed_attention: bool = False
+    mix_head_type: tuple = ()
 
     @classmethod
     def from_train_config(cls, config: TrainConfig) -> DataCollator:
@@ -26,6 +28,19 @@ class DataCollator:
                    generate_attention_mask=config.data.generate_attention_mask, shuffle_tree=config.model.transformer_grammar_type)
         if obj.shuffle_tree:
             obj.vocab = SentencepieceVocab.from_vocab_file(config.tokenizer.vocabulary)
+        if config.model.tg_typed_attention:
+            if (obj.shuffle_tree not in ('tg', 'mixing') or obj.generate_attention_mask
+                    or config.data.generate_doc_lengths or config.model.attention_dropout != 0
+                    or config.model.alibi or str(config.model.block_type) != 'sequential'
+                    or config.model.effective_n_kv_heads != config.model.n_heads):
+                raise ValueError('tg_typed_attention requires fresh tg/mixing sequential MHA without extra masks, ALiBi or dropout')
+            if obj.shuffle_tree == 'mixing':
+                groups = tuple((g.grammar_type, g.n_heads) for g in config.model.mix_head_type)
+                if (not groups or any(kind not in ('tg', 'tgnomask', 'tgtree') or h <= 0 for kind, h in groups)
+                        or sum(h for _, h in groups) != config.model.n_heads):
+                    raise ValueError('tg_typed_attention requires valid tg/tgnomask/tgtree head groups')
+                obj.mix_head_type = groups
+            obj.tg_typed_attention = True
         return obj
 
     def __call__(self, items: Union[List[Dict[str, Any]], List[torch.Tensor]]) -> Dict[str, Any]:
@@ -256,12 +271,22 @@ class DataCollator:
                 all_gold_summary.append(gold_summary)
 
         out: Dict[str, Any] = {"input_ids": torch.stack(all_input_ids)}
+        if self.tg_typed_attention:
+            if all_attention_bias or all_attention_mask or all_doc_lens:
+                raise ValueError('Typed TG batches cannot also supply attention masks/bias or document masks')
+            from ..attention_kernels.tg_attention import build_tg_layout, build_mix_tg_layout
+            layout = (build_mix_tg_layout(out['input_ids'], self.vocab, self.mix_head_type)
+                      if self.shuffle_tree == 'mixing' else build_tg_layout(out['input_ids'], self.vocab))
+            out['tg_layout'] = layout
+            labels = layout.label_mask if self.shuffle_tree == 'mixing' else layout.base.label_mask
+            out['label_mask'] = labels & (out['input_ids'] != self.pad_token_id)
         if all_attention_mask:
             out["attention_mask"] = torch.stack(all_attention_mask)
         if all_attention_bias:
             out["attention_bias"] = torch.stack(all_attention_bias)
         if all_label_mask:
-            out["label_mask"] = torch.stack(all_label_mask)
+            supplied_labels = torch.stack(all_label_mask)
+            out["label_mask"] = supplied_labels & out['label_mask'] if self.tg_typed_attention else supplied_labels
         if all_indices:
             out["index"] = torch.stack(all_indices)
         if all_instance_mask:

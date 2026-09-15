@@ -746,6 +746,7 @@ class Trainer:
             input_ids=batch["input_ids"],
             attention_mask=batch.get("attention_mask"),
             attention_bias=batch.get("attention_bias"),
+            tg_layout=batch.get("tg_layout"),
             doc_lens=batch.get("doc_lens"),
             max_doc_lens=batch.get("max_doc_lens"),
             tree_spans=batch.get("tree_spans"),
@@ -1784,7 +1785,11 @@ class Trainer:
         else:
             micro_batches = {}
             for key, value in batch.items():
-                if isinstance(value, torch.Tensor):
+                from .attention_kernels.tg_attention import TGLayout, MixTGLayout
+                if isinstance(value, (TGLayout, MixTGLayout)):
+                    micro_batches[key] = [value.slice_batch(start, start + microbatch_size)
+                                          for start in range(0, batch_size, microbatch_size)]
+                elif isinstance(value, torch.Tensor):
                     micro_batches[key] = value.split(microbatch_size, dim=0)
                 elif isinstance(value, list):
                     micro_batches[key] = [

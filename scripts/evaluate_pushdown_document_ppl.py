@@ -53,7 +53,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("pushdown-document-ppl")
     log.info(
-        "structure_source=native_pushdown_nary_topk beam_search=false context_update=candidate0 "
+        "structure_source=native_pushdown_nary_topk beam_search=false context_update=model_best "
         "attachment_probability=%s attachment_normalization=%s "
         "mixture_reporting=legacy_and_normalized",
         not args.token_only,
@@ -65,7 +65,7 @@ def main() -> None:
         "max_sequence_length": args.max_sequence_length,
         "use_kv_cache": not args.no_kv_cache,
         "deduplicated_trees": False,
-        "prefix_policy": "candidate0", "candidate_aggregation": "truncated_joint_sum",
+        "prefix_policy": "model_best", "candidate_aggregation": "truncated_joint_sum",
         "ppl_denominator": "terminal_count",
     })
     corpus = NativePushdownTopKCorpus(args.native_data, args.tokenizer_path, args.max_sentences,

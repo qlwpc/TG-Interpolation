@@ -16,6 +16,7 @@ some_note_new.md
 # These are source/evidence files despite their conventional .txt suffix.
 !olmo/data/tgmasking/CMakeLists.txt
 !validation/environment/*.txt
+!datatools/parse_pretrain_data/bbc_train_shards.txt
 
 build310/
 build/
