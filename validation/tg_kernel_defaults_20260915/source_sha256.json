@@ -1,0 +1,19 @@
+{
+  "olmo/attention_kernels/layouts.py": "4832319b31814e393517764c8c88d13108081f183bd96cc4295d54c02f76dbb1",
+  "olmo/attention_kernels/_tg_layout_native.py": "6470a0a5f938c38852c110ba477175d6fb4cbfc97db2db979ab479ed082ec13c",
+  "olmo/attention_kernels/__init__.py": "51363f213b9221ba2e792d48f5033d191e7fcfff089c119f1eed344bd3119f4e",
+  "olmo/attention_kernels/tgnomask.py": "9997620c4293564b07337816cc825059c6895b9d3e4b81c0c21bbdc68baed041",
+  "olmo/attention_kernels/tg_attention.py": "247c4d8828d13f9267b267a0c8e1bf26866726536c37b41609e8f85b1b43f6b0",
+  "olmo/attention_kernels/kernels.py": "dff686ba54550fee0e313c105caf997f53ff618451046c26dda2eb672a5e1946",
+  "olmo/attention_kernels/tg_layout.cpp": "5f2b81c76a55eceab440b1290b75d3dbf8e956440d5ade1dc94389a5ac651271",
+  "olmo/config.py": "d3a925fd22866f53274aa58d0dbb297deb991036549a2c04e432d6ecb1af0b8e",
+  "olmo/model.py": "b2abb46d51a6cb14d49d00a334f956195770bd9483404e8ec3d3434c2368d75d",
+  "olmo/data/collator.py": "177716d37baf9214ba49c99417e0002125f3e20e97d4734793d870b132bd21ac",
+  "olmo/data/__init__.py": "f7f897f52ffafb0d4f24a850e83386b2ce6cb58d20eff8d017c90e3f6ec3eb64",
+  "olmo/torch_util.py": "ac50efa1bb6c9c6c57c3a17d9fe7af1d8beda6e95fb5b86b085aebeff473270c",
+  "olmo/train.py": "7dcfee0eef1cd4f059204a9aca75bdfc553ed5306a5f2766553c43cfb56a86be",
+  "tests/test_tg_defaults.py": "9f6ebbe039f0fe7fdd088e7756c70d4b99d47406cf1906fb8c3c3a5ff12a7b6b",
+  "tests/test_tg_typed.py": "0fd53dadbec78c0901b51026fec18f325ff405ad92dbe80073826c612f9bd7f1",
+  "tests/test_tgnomask_typed.py": "894a69f95aefd47b615e49cceb4fac934fb105bf60211992f040674ff0b85808",
+  "tests/test_tg_input_pipeline.py": "b015e133d47890401e1838a9c73f43d01a472f03d9798e85d545d2abc63f964d"
+}

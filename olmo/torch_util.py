@@ -65,18 +65,18 @@ def get_fs_local_rank() -> int:
         return int(os.environ.get("FS_LOCAL_RANK") or get_local_rank())
 
 
-def move_to_device(o: T, device: torch.device) -> T:
-    from .attention_kernels.tg_attention import TGLayout, MixTGLayout
-    if isinstance(o, (TGLayout, MixTGLayout)):
-        return o.to(device)  # type: ignore[return-value]
+def move_to_device(o: T, device: torch.device, non_blocking: bool = False) -> T:
+    from .attention_kernels.layouts import TGLayout, TGNoMaskLayout, MixTGLayout
+    if isinstance(o, (TGLayout, TGNoMaskLayout, MixTGLayout)):
+        return o.to(device, non_blocking=non_blocking)  # type: ignore[return-value]
     if isinstance(o, torch.Tensor):
-        return o.to(device)  # type: ignore[return-value]
+        return o.to(device, non_blocking=non_blocking)  # type: ignore[return-value]
     elif isinstance(o, dict):
-        return {k: move_to_device(v, device) for k, v in o.items()}  # type: ignore[return-value]
+        return {k: move_to_device(v, device, non_blocking) for k, v in o.items()}  # type: ignore[return-value]
     elif isinstance(o, list):
-        return [move_to_device(x, device) for x in o]  # type: ignore[return-value]
+        return [move_to_device(x, device, non_blocking) for x in o]  # type: ignore[return-value]
     elif isinstance(o, tuple):
-        return tuple((move_to_device(x, device) for x in o))  # type: ignore[return-value]
+        return tuple((move_to_device(x, device, non_blocking) for x in o))  # type: ignore[return-value]
     else:
         return o
 

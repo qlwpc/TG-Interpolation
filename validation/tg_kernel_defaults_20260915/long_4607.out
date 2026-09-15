@@ -1,0 +1,24 @@
+name, driver_version, memory.total [MiB]
+NVIDIA GeForce RTX 3090, 535.230.02, 24576 MiB
+2.7.1+cu126 3.3.1 2.13.6
+============================= test session starts ==============================
+platform linux -- Python 3.10.0, pytest-8.3.3, pluggy-1.5.0 -- /home/wangpch/.conda/envs/LLM/bin/python
+cachedir: .pytest_cache
+rootdir: /home/wangpch/TG-Interpolation
+configfile: pytest.ini
+plugins: torchtyping-0.1.5, cov-7.1.0, typeguard-2.13.3, anyio-4.2.0
+collecting ... collected 42 items / 38 deselected / 4 selected
+
+tests/test_tg_defaults.py::test_long_nomask_optimized_prefix[dtype0-False] PASSED [ 25%]
+tests/test_tg_defaults.py::test_long_nomask_optimized_prefix[dtype0-True] PASSED [ 50%]
+tests/test_tg_defaults.py::test_long_nomask_optimized_prefix[dtype1-False] PASSED [ 75%]
+tests/test_tg_defaults.py::test_long_nomask_optimized_prefix[dtype1-True] PASSED [100%]
+
+=============================== warnings summary ===============================
+../.conda/envs/LLM/lib/python3.10/site-packages/google/api_core/_python_version_support.py:273
+  /home/wangpch/.conda/envs/LLM/lib/python3.10/site-packages/google/api_core/_python_version_support.py:273: FutureWarning: You are using a Python version (3.10.0) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+    warnings.warn(message, FutureWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/wangpch/TG-Interpolation/validation/tg_kernel_defaults_20260915/long_4607.xml -
+================= 4 passed, 38 deselected, 1 warning in 14.55s =================

@@ -42,6 +42,8 @@ class IterableDataset(torch.utils.data.IterableDataset[Dict[str, Any]]):
         work_dir: Optional[PathOrStr] = None,
         num_threads: Optional[int] = None,
     ):
+        # Shared scalar state is visible to persistent fork/spawn worker copies.
+        self._iteration_state = torch.zeros(3, dtype=torch.int64).share_memory_()
         self.dataset = dataset
         self.seed = seed
         self.epoch = epoch
@@ -76,6 +78,31 @@ class IterableDataset(torch.utils.data.IterableDataset[Dict[str, Any]]):
 
         if work_dir is not None:
             self._build_and_save_global_indices()
+
+    @property
+    def epoch(self):
+        return int(self._iteration_state[0])
+
+    @epoch.setter
+    def epoch(self, value):
+        self._iteration_state[0] = value
+
+    @property
+    def start_index(self):
+        return int(self._iteration_state[1])
+
+    @start_index.setter
+    def start_index(self, value):
+        self._iteration_state[1] = value
+
+    @property
+    def max_examples(self):
+        value = int(self._iteration_state[2])
+        return None if value == -1 else value
+
+    @max_examples.setter
+    def max_examples(self, value):
+        self._iteration_state[2] = -1 if value is None else value
 
     def _build_and_save_global_indices(self):
         assert self.work_dir is not None

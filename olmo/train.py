@@ -10,7 +10,7 @@ import random
 import shutil
 import time
 from collections import deque
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
@@ -1091,7 +1091,7 @@ class Trainer:
         self.optim.zero_grad(set_to_none=True)
 
         # Move tensors to the right device.
-        batch = move_to_device(batch, self.device)
+        batch = move_to_device(batch, self.device, non_blocking=self.cfg.data.pin_memory)
 
         # Run forward-backward pass.
         ce_batch_loss, z_batch_loss = self.train_batch(batch)
@@ -1785,8 +1785,8 @@ class Trainer:
         else:
             micro_batches = {}
             for key, value in batch.items():
-                from .attention_kernels.tg_attention import TGLayout, MixTGLayout
-                if isinstance(value, (TGLayout, MixTGLayout)):
+                from .attention_kernels.layouts import TGLayout, TGNoMaskLayout, MixTGLayout
+                if isinstance(value, (TGLayout, TGNoMaskLayout, MixTGLayout)):
                     micro_batches[key] = [value.slice_batch(start, start + microbatch_size)
                                           for start in range(0, batch_size, microbatch_size)]
                 elif isinstance(value, torch.Tensor):
@@ -2087,16 +2087,20 @@ class Trainer:
         stop_at: int = self.cfg.stop_at if self.cfg.stop_at <= self.max_steps else self.max_steps
         save_checkpoints: bool = True
 
-        with torch_profiler as p:
+        from .data.prefetch import CUDABatchPrefetcher
+
+        with torch_profiler as p, ExitStack() as input_stack:
             # Optional per-step phase timing (set OLMO_STEP_PROFILE=1 to enable).
             # Prints one line/step: data_ms h2d_ms fwd_bwd_ms opt_ms gpu_tr_ms step_ms.
             _step_profile = bool(os.environ.get("OLMO_STEP_PROFILE"))
             _gpu0 = torch.device("cuda", 0) if torch.cuda.is_available() else None
             for epoch in range(self.epoch or 0, self.max_epochs):
-                for batch in self.train_loader:
+                epoch_batches = input_stack.enter_context(CUDABatchPrefetcher(
+                    self.train_loader, self.device, enabled=self.cfg.data.cuda_prefetch))
+                for batch in epoch_batches:
                     if _step_profile:
                         import time as _t
-                        _sp_data0 = _t.perf_counter()
+                        _sp_data0 = _t.perf_counter() - epoch_batches.last_wait_seconds
                     # Bookkeeping.
                     # NOTE: To track the global batch size / number of tokens per batch we make the assumption that all
                     # batches see the same number of tokens, which should be the case for language model pre-training
@@ -2277,6 +2281,7 @@ class Trainer:
                             python_profiler.print_stats(sort=SortKey.CUMULATIVE)
                             python_profiler = None
                 else:
+                    epoch_batches.close()
                     log.info("Training epoch complete")
                     self.epoch = epoch + 1
                     self.global_train_examples_seen_this_epoch = 0
@@ -2286,6 +2291,7 @@ class Trainer:
                         self.dataset.reshuffle(self.epoch)
                     continue
 
+                epoch_batches.close()
                 break
 
         # Save final checkpoint.
