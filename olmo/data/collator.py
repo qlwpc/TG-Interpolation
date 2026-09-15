@@ -7,10 +7,34 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from ..config import PaddingDirection, TrainConfig
+from ..config import DataConfig, PaddingDirection, TrainConfig
 from .tg_mask import SentencepieceVocab
 from .util import get_document_lengths
 __all__ = ["DataCollator"]
+
+
+def use_typed_tg(config: TrainConfig, data_config: DataConfig | None = None) -> bool:
+    """One routing decision for dataset generation and train/eval collation."""
+    model, data = config.model, data_config or config.data
+    if model.tg_typed_attention is False:
+        return False
+    grammar = model.transformer_grammar_type
+    groups = tuple((g.grammar_type, g.n_heads) for g in model.mix_head_type)
+    supported = grammar in ('tg', 'tgnomask', 'tgnomaskaug') or (
+        grammar == 'mixing' and bool(groups)
+        and all(kind in ('tg', 'tgnomask', 'tgnomaskaug', 'tgtree') and h > 0 for kind, h in groups)
+        and sum(h for _, h in groups) == model.n_heads)
+    supported = (supported and not data.generate_attention_mask and not data.generate_doc_lengths
+                 and model.attention_dropout == 0 and not model.alibi
+                 and str(model.block_type) == 'sequential'
+                 and model.effective_n_kv_heads == model.n_heads
+                 and model.d_model % model.n_heads == 0
+                 and 16 <= model.d_model // model.n_heads <= 128
+                 and config.finetune_task is None)
+    if model.tg_typed_attention is True and not supported:
+        raise ValueError('tg_typed_attention requires fresh tg/tgnomask/tgnomaskaug/mixing '
+                         'sequential MHA, head size 16..128, without extra masks, ALiBi, dropout or finetuning')
+    return supported
 
 
 @dataclass
@@ -21,26 +45,25 @@ class DataCollator:
     shuffle_tree: str
     tg_typed_attention: bool = False
     mix_head_type: tuple = ()
+    tg_layout_backend: str = "native"
 
     @classmethod
-    def from_train_config(cls, config: TrainConfig) -> DataCollator:
-        obj = cls(pad_direction=config.data.pad_direction, pad_token_id=config.model.pad_token_id, 
-                   generate_attention_mask=config.data.generate_attention_mask, shuffle_tree=config.model.transformer_grammar_type)
+    def from_train_config(cls, config: TrainConfig, data_config: DataConfig | None = None) -> DataCollator:
+        data = data_config or config.data
+        obj = cls(pad_direction=data.pad_direction, pad_token_id=config.model.pad_token_id,
+                  generate_attention_mask=data.generate_attention_mask,
+                  shuffle_tree=config.model.transformer_grammar_type)
         if obj.shuffle_tree:
             obj.vocab = SentencepieceVocab.from_vocab_file(config.tokenizer.vocabulary)
-        if config.model.tg_typed_attention:
-            if (obj.shuffle_tree not in ('tg', 'mixing') or obj.generate_attention_mask
-                    or config.data.generate_doc_lengths or config.model.attention_dropout != 0
-                    or config.model.alibi or str(config.model.block_type) != 'sequential'
-                    or config.model.effective_n_kv_heads != config.model.n_heads):
-                raise ValueError('tg_typed_attention requires fresh tg/mixing sequential MHA without extra masks, ALiBi or dropout')
-            if obj.shuffle_tree == 'mixing':
-                groups = tuple((g.grammar_type, g.n_heads) for g in config.model.mix_head_type)
-                if (not groups or any(kind not in ('tg', 'tgnomask', 'tgtree') or h <= 0 for kind, h in groups)
-                        or sum(h for _, h in groups) != config.model.n_heads):
-                    raise ValueError('tg_typed_attention requires valid tg/tgnomask/tgtree head groups')
-                obj.mix_head_type = groups
-            obj.tg_typed_attention = True
+        obj.tg_typed_attention = use_typed_tg(config, data)
+        if obj.tg_typed_attention:
+            obj.mix_head_type = tuple((g.grammar_type, g.n_heads) for g in config.model.mix_head_type)
+            obj.tg_layout_backend = data.tg_layout_backend
+            if obj.tg_layout_backend not in ("auto", "native", "python"):
+                raise ValueError("Invalid data.tg_layout_backend")
+            if obj.tg_layout_backend != "python":
+                from ..attention_kernels._tg_layout_native import native_builder
+                native_builder(obj.tg_layout_backend == "native")
         return obj
 
     def __call__(self, items: Union[List[Dict[str, Any]], List[torch.Tensor]]) -> Dict[str, Any]:
@@ -274,11 +297,19 @@ class DataCollator:
         if self.tg_typed_attention:
             if all_attention_bias or all_attention_mask or all_doc_lens:
                 raise ValueError('Typed TG batches cannot also supply attention masks/bias or document masks')
-            from ..attention_kernels.tg_attention import build_tg_layout, build_mix_tg_layout
-            layout = (build_mix_tg_layout(out['input_ids'], self.vocab, self.mix_head_type)
-                      if self.shuffle_tree == 'mixing' else build_tg_layout(out['input_ids'], self.vocab))
+            from ..attention_kernels import build_tg_layout, build_tgnomask_layout, build_mix_tg_layout
+            kwargs = dict(backend=self.tg_layout_backend)
+            if self.shuffle_tree == 'mixing':
+                layout = build_mix_tg_layout(out['input_ids'], self.vocab, self.mix_head_type, **kwargs)
+            elif self.shuffle_tree in ('tgnomask', 'tgnomaskaug'):
+                layout = build_tgnomask_layout(out['input_ids'], self.vocab,
+                                              augmented=self.shuffle_tree == 'tgnomaskaug', **kwargs)
+            elif self.shuffle_tree == 'tg':
+                layout = build_tg_layout(out['input_ids'], self.vocab, **kwargs)
+            else:
+                raise ValueError('Unsupported typed TG grammar')
             out['tg_layout'] = layout
-            labels = layout.label_mask if self.shuffle_tree == 'mixing' else layout.base.label_mask
+            labels = layout.label_mask
             out['label_mask'] = labels & (out['input_ids'] != self.pad_token_id)
         if all_attention_mask:
             out["attention_mask"] = torch.stack(all_attention_mask)

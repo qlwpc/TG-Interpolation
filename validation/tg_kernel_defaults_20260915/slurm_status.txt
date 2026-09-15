@@ -1,0 +1,12 @@
+Cluster: tukw-rtx3090b / rtx3090b
+Account/QoS/partition: wangpch / normal / normal
+Requested: 1 GPU, 8 CPU, 24G memory per job
+4601 FAILED 1:0 00:00:16
+4603 FAILED 1:0 00:00:21
+4605 COMPLETED 0:0 00:03:23
+4607 COMPLETED 0:0 00:00:19
+Final squeue query: no active jobs among 4601,4603,4605,4607
+Time limits: verify 30 minutes; long 10 minutes
+Maximum requested GPU time per successful job: 0.5 / 0.1667 GPU hours
+Total actual allocated GPU time including diagnostic failures: 259 seconds
+Local cluster skill does not specify a monetary unit rate.

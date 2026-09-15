@@ -35,7 +35,7 @@ def reference(ids, groups=(('tg', 1),)):
             if kind == 'tgtree':
                 mask = torch.ones(n, n, dtype=torch.bool).tril()
             else:
-                gen = TG_attention_bias(VOCAB, max(2048, n)) if kind == 'tg' else KProximal_TG_attention_bias(VOCAB, max(2048, n), max(2048, n), False)
+                gen = TG_attention_bias(VOCAB, max(2048, n)) if kind == 'tg' else KProximal_TG_attention_bias(VOCAB, max(2048, n), max(2048, n), kind == "tgnomaskaug")
                 mask, label = gen(row.cpu())
             heads.append(mask.expand(count, n, n))
         rows.append(torch.cat(heads))
@@ -96,6 +96,8 @@ def test_bulk_base_matches_existing_layout(vocab):
         actual = build_tg_layout(ids, vocab).base
         ref = build_tgnomask_layout(ids, vocab)
         for field in fields(ref):
+            if field.name.startswith("_"):
+                continue
             a, r = getattr(actual, field.name), getattr(ref, field.name)
             assert torch.equal(a, r) if isinstance(a, torch.Tensor) else a == r
 
@@ -158,7 +160,7 @@ def test_gpu_real_strides(vocab, dtype, d, n):
 
 
 @GPU
-@pytest.mark.parametrize('groups', [(('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2))])
+@pytest.mark.parametrize('groups', [(('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2)), (('tg', 1), ('tgnomaskaug', 2), ('tgnomask', 1))])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.bfloat16])
 def test_gpu_mixed(vocab, groups, dtype):
     torch.manual_seed(209)
@@ -183,7 +185,7 @@ def model_config(groups=(), **overrides):
     return ModelConfig(**values)
 
 
-@pytest.mark.parametrize('groups', [(), (('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2))])
+@pytest.mark.parametrize('groups', [(), (('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2)), (('tg', 1), ('tgnomaskaug', 2), ('tgnomask', 1))])
 def test_collator_and_microbatch(vocab, groups):
     from olmo.config import TrainConfig
     from olmo.data.collator import DataCollator
@@ -225,7 +227,7 @@ def test_model_rejects_ambiguous_layout(vocab, extra):
 
 
 @GPU
-@pytest.mark.parametrize('groups', [(), (('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2))])
+@pytest.mark.parametrize('groups', [(), (('tg', 2), ('tgnomask', 2)), (('tgtree', 2), ('tg', 2)), (('tg', 1), ('tgnomaskaug', 2), ('tgnomask', 1))])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize('group_size', [1, 2])
 def test_full_model(vocab, groups, dtype, group_size):

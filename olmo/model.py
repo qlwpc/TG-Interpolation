@@ -55,8 +55,7 @@ from .exceptions import OLMoConfigurationError
 from .initialization import init_normal
 from .torch_util import ensure_finite_, get_cumulative_document_lengths, move_to_device
 from .data.tg_mask import SentencepieceVocab, TG_attention_bias
-from .attention_kernels.tgnomask import TGNoMaskLayout, tgnomask_attention
-from .attention_kernels.tg_attention import TGLayout, MixTGLayout, tg_attention, mix_tg_attention
+from .attention_kernels import TGLayout, TGNoMaskLayout, MixTGLayout, tg_attention, tgnomask_attention, mix_tg_attention
 
 
 def _flex_attention_kernel_options() -> Optional[Dict[str, int]]:
@@ -636,6 +635,10 @@ class OLMoBlock(nn.Module):
         Computes scaled dot product attention on query, key and value tensors, using an optional
         attention mask if passed, and applying dropout if a probability greater than 0.0 is specified.
         """
+        if isinstance(block_mask, (TGLayout, TGNoMaskLayout, MixTGLayout)) and not q.is_cuda:
+            if attn_mask is not None or dropout_p != 0.0 or max_doc_len is not None:
+                raise OLMoConfigurationError("Typed TG cannot combine with bias, dropout, or document masking")
+            return F.scaled_dot_product_attention(q, k, v, attn_mask=block_mask.dense_mask())
         if isinstance(block_mask, (TGLayout, MixTGLayout)):
             if attn_mask is not None or dropout_p != 0.0 or max_doc_len is not None:
                 raise OLMoConfigurationError("Typed TG cannot combine with bias, dropout, or document masking")
@@ -1808,7 +1811,7 @@ class OLMo(nn.Module):
         past_input_ids: Optional[torch.Tensor] = None,
         past_sentence_ids: Optional[torch.Tensor] = None,
         tgnomask_layout: Optional[TGNoMaskLayout] = None,
-        tg_layout: Optional[Union[TGLayout, MixTGLayout]] = None,
+        tg_layout: Optional[Union[TGLayout, TGNoMaskLayout, MixTGLayout]] = None,
     ) -> OLMoOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -1849,33 +1852,34 @@ class OLMo(nn.Module):
             assert len(past_key_values) == self.config.n_layers
 
         batch_size, seq_len = input_ids.size() if input_embeddings is None else input_embeddings.size()[:2]
+        # Keep the former TGnomask keyword as an alias; all data pipelines now
+        # pass the shared tg_layout keyword, including TGnomask/aug.
+        if tgnomask_layout is not None:
+            if tg_layout is not None:
+                raise OLMoConfigurationError("Supply only one TG layout")
+            tg_layout = tgnomask_layout
         if tg_layout is not None:
-            expected_grammar = "mixing" if isinstance(tg_layout, MixTGLayout) else "tg"
-            if self.config.transformer_grammar_type != expected_grammar:
-                raise OLMoConfigurationError("tg_layout must match the model's tg/mixing grammar")
             if isinstance(tg_layout, MixTGLayout):
+                expected_grammar = "mixing"
                 groups = tuple((g.grammar_type, g.n_heads) for g in self.config.mix_head_type)
                 if groups != tg_layout.head_groups or sum(h for _, h in groups) != self.config.n_heads:
                     raise OLMoConfigurationError("tg_layout head groups must match model.mix_head_type in order")
+            elif isinstance(tg_layout, TGNoMaskLayout):
+                expected_grammar = "tgnomaskaug" if tg_layout.augmented else "tgnomask"
+            elif isinstance(tg_layout, TGLayout):
+                expected_grammar = "tg"
+            else:
+                raise OLMoConfigurationError("Unrecognized TG layout type")
+            if self.config.transformer_grammar_type != expected_grammar:
+                raise OLMoConfigurationError("tg_layout must match the model's TG grammar (including aug)")
             if self.config.block_type != BlockType.sequential or self.config.effective_n_kv_heads != self.config.n_heads:
                 raise OLMoConfigurationError("Typed TG requires sequential MHA blocks")
             if (attention_bias is not None or attention_mask is not None or past_key_values is not None
                     or use_cache or doc_lens is not None or max_doc_lens is not None
-                    or self.config.alibi or self.config.attention_dropout != 0.0 or tgnomask_layout is not None):
+                    or self.config.alibi or self.config.attention_dropout != 0.0):
                 raise OLMoConfigurationError("Typed TG requires a fresh segment without extra masks, cache, ALiBi, or dropout")
             if tg_layout.shape != (batch_size, seq_len):
                 raise OLMoConfigurationError("tg_layout shape must match the input")
-        if tgnomask_layout is not None:
-            if self.config.transformer_grammar_type != "tgnomask":
-                raise OLMoConfigurationError("tgnomask_layout requires non-augmented tgnomask grammar")
-            if self.config.block_type != BlockType.sequential:
-                raise OLMoConfigurationError("Typed TGnomask currently requires sequential blocks")
-            if (attention_bias is not None or attention_mask is not None or past_key_values is not None
-                    or use_cache or doc_lens is not None or max_doc_lens is not None
-                    or self.config.alibi or self.config.attention_dropout != 0.0):
-                raise OLMoConfigurationError("Typed TGnomask requires a fresh segment without extra masks, cache, ALiBi, or dropout")
-            if tgnomask_layout.shape != (batch_size, seq_len):
-                raise OLMoConfigurationError("tgnomask_layout shape must match the input")
         if past_key_values is None:
             past_length = 0
         else:
@@ -1959,7 +1963,7 @@ class OLMo(nn.Module):
                 structured_route_reason = f"below_threshold_{threshold}"
 
         flex_unpadded_seq_len: Optional[int] = None
-        block_mask: Optional[Union[BlockMask, TGNoMaskLayout, TGLayout, MixTGLayout]] = tg_layout if tg_layout is not None else tgnomask_layout
+        block_mask: Optional[Union[BlockMask, TGNoMaskLayout, TGLayout, MixTGLayout]] = tg_layout
         if structured_flex:
             if attention_bias.dtype == torch.bool:
                 flex_mask = attention_bias
@@ -2066,10 +2070,11 @@ class OLMo(nn.Module):
                 and past_key_values is None
             )
             if tg_layout is not None:
-                backend = "tg_mixed_typed" if isinstance(tg_layout, MixTGLayout) else "tg_typed"
-                structured_route_reason = "explicit_layout"
-            elif tgnomask_layout is not None:
-                backend = "tgnomask_typed"
+                backend = ("tg_mixed_typed" if isinstance(tg_layout, MixTGLayout) else
+                           "tgnomaskaug_typed" if isinstance(tg_layout, TGNoMaskLayout) and tg_layout.augmented else
+                           "tgnomask_typed" if isinstance(tg_layout, TGNoMaskLayout) else "tg_typed")
+                if tg_layout.device.type != "cuda":
+                    backend = "tg_cpu_sdpa"
                 structured_route_reason = "explicit_layout"
             elif structured_flex:
                 backend = "flex_structured"

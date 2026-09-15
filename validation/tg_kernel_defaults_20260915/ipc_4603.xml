@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="3.034" timestamp="2026-09-15T17:43:22.192101+08:00" hostname="rtx3090b"><testcase classname="tests.test_tg_input_pipeline" name="test_pinned_ipc_async_lifetime[2]" time="0.441" /></testsuite></testsuites>

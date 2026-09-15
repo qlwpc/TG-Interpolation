@@ -23,10 +23,10 @@ def vocab():
     return SentencepieceVocab.from_vocab_file(VOCAB)
 
 
-def reference(tokens):
+def reference(tokens, augmented=False):
     masks, labels = [], []
     for row in tokens:
-        gen = KProximal_TG_attention_bias(VOCAB, max(2048, row.numel()), max(2048, row.numel()), False)
+        gen = KProximal_TG_attention_bias(VOCAB, max(2048, row.numel()), max(2048, row.numel()), augmented)
         m, l = gen(row)
         masks.append(m); labels.append(l)
     return torch.stack(masks)[:, None], torch.stack(labels)
@@ -38,18 +38,20 @@ def real_tokens(n, start=0, batch=2):
 
 
 @pytest.mark.parametrize("n,start", [(1,0),(2,79),(17,13),(127,0),(128,79),(129,13),(511,4096),(2048,8192)])
-def test_real_metadata(vocab, n, start):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_real_metadata(vocab, n, start, augmented):
     tokens = real_tokens(n,start)
     if n > 7:
         tokens[0,-7:] = vocab.pad
-    layout = build_tgnomask_layout(tokens,vocab)
-    mask, labels = reference(tokens)
+    layout = build_tgnomask_layout(tokens,vocab, augmented=augmented)
+    mask, labels = reference(tokens, augmented)
     assert torch.equal(layout.dense_mask(),mask)
     assert torch.equal(layout.label_mask,labels)
 
 
 @pytest.mark.parametrize("case", ["causal","pads","internal_pad","nested","repeated_close","unbalanced","wide"])
-def test_edge_metadata(vocab, case):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_edge_metadata(vocab, case, augmented):
     op, cl, pad = vocab.opening_non_terminals[0], vocab.closing_non_terminals[0], vocab.pad
     examples = {"causal":[1,2,3,4],"pads":[pad]*17,
         "internal_pad":[op,1,pad,2,cl,cl,3,pad],
@@ -58,20 +60,21 @@ def test_edge_metadata(vocab, case):
         "unbalanced":[cl,1,cl+1,cl+1,op,op+1,3,cl,cl],
         "wide":[op]+[1]*70+[cl,cl]}
     tokens = torch.tensor([examples[case]])
-    layout = build_tgnomask_layout(tokens,vocab)
-    mask,labels=reference(tokens)
+    layout = build_tgnomask_layout(tokens,vocab, augmented=augmented)
+    mask,labels=reference(tokens, augmented)
     assert torch.equal(layout.dense_mask(),mask)
     assert torch.equal(layout.label_mask,labels)
 
 
-def test_random_unbalanced_metadata(vocab):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_random_unbalanced_metadata(vocab, augmented):
     rng = np.random.default_rng(101)
     choices = [1,2,3,vocab.pad,vocab.opening_non_terminals[0],vocab.opening_non_terminals[0]+1,
                vocab.closing_non_terminals[0],vocab.closing_non_terminals[0]+1,vocab.eos]
     for _ in range(20):
         tokens = torch.tensor(rng.choice(choices,size=(2,31)),dtype=torch.long)
-        layout = build_tgnomask_layout(tokens,vocab)
-        mask,labels=reference(tokens)
+        layout = build_tgnomask_layout(tokens,vocab, augmented=augmented)
+        mask,labels=reference(tokens, augmented)
         assert torch.equal(layout.dense_mask(),mask)
     assert torch.equal(layout.label_mask,labels)
 
@@ -133,14 +136,15 @@ def test_model_rejects_ambiguous_layout(vocab,extra):
 @GPU
 @pytest.mark.parametrize("kind", ["causal","causal_single","pads","self_only","mixed","wide"])
 @pytest.mark.parametrize("dtype", [torch.float32,torch.bfloat16])
-def test_gpu_edge_gradients(vocab,kind,dtype):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_gpu_edge_gradients(vocab,kind,dtype, augmented):
     op,cl,pad=vocab.opening_non_terminals[0],vocab.closing_non_terminals[0],vocab.pad
     cases={"causal":[1,2,3,4],"causal_single":[1],"pads":[pad]*17,"self_only":[cl],
            "mixed":[op,1,op+1,2,cl+1,cl+1,cl,cl,pad],
            "wide":[op]+[1]*70+[cl,cl]}
     tokens=torch.tensor([cases[kind]])
-    layout=build_tgnomask_layout(tokens,vocab,device="cuda")
-    mask,_=reference(tokens)
+    layout=build_tgnomask_layout(tokens,vocab,device="cuda", augmented=augmented)
+    mask,_=reference(tokens, augmented)
     torch.manual_seed(92)
     inputs=[torch.randn(1,2,tokens.numel(),32,device="cuda",dtype=dtype,requires_grad=True) for _ in range(3)]
     refs=[x.detach().clone().requires_grad_() for x in inputs]
@@ -161,13 +165,14 @@ def test_gpu_edge_gradients(vocab,kind,dtype):
 @GPU
 @pytest.mark.parametrize("dtype", [torch.float32,torch.bfloat16])
 @pytest.mark.parametrize("group_size", [1,2])
-def test_full_model_logits_loss_gradients(vocab,dtype,group_size):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_full_model_logits_loss_gradients(vocab,dtype,group_size, augmented):
     torch.manual_seed(203)
-    model=OLMo(model_config(block_group_size=group_size)).cuda().to(dtype).train()
+    model=OLMo(model_config(block_group_size=group_size, transformer_grammar_type="tgnomaskaug" if augmented else "tgnomask")).cuda().to(dtype).train()
     tokens=real_tokens(127,13).cuda()
     tokens[0,-5:]=vocab.pad
-    mask,label=reference(tokens.cpu())
-    layout=build_tgnomask_layout(tokens,vocab,device="cuda")
+    mask,label=reference(tokens.cpu(), augmented)
+    layout=build_tgnomask_layout(tokens,vocab,device="cuda", augmented=augmented)
     target=tokens[:,1:].reshape(-1)
     def run(typed):
         model.zero_grad(set_to_none=True)
@@ -195,12 +200,13 @@ def test_full_model_logits_loss_gradients(vocab,dtype,group_size):
 @GPU
 @pytest.mark.parametrize("stride_kind", ["qkv_projection", "feature_stride", "broadcast_grad"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_fused_strides_and_gradient_accumulation(vocab,stride_kind,dtype):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_fused_strides_and_gradient_accumulation(vocab,stride_kind,dtype, augmented):
     """Exercise real fused-QKV views, unusual strides, dO broadcasts and accumulation."""
     tokens=real_tokens(129,79)
     tokens[0,-7:]=vocab.pad
-    layout=build_tgnomask_layout(tokens,vocab,device="cuda")
-    mask,_=reference(tokens)
+    layout=build_tgnomask_layout(tokens,vocab,device="cuda", augmented=augmented)
+    mask,_=reference(tokens, augmented)
     b,n=tokens.shape
     h,d=2,32
     torch.manual_seed(419)
@@ -228,16 +234,17 @@ def test_fused_strides_and_gradient_accumulation(vocab,stride_kind,dtype):
 
 
 @GPU
-def test_fused_unwritten_tails_are_never_read(vocab,monkeypatch):
+@pytest.mark.parametrize("augmented", [False, True])
+def test_fused_unwritten_tails_are_never_read(vocab,monkeypatch, augmented):
     # Fused packing leaves unused rows unwritten. Poison every work buffer to
     # ensure zero-count batches and rounded tile tails cannot leak those rows.
-    import olmo.attention_kernels.tgnomask_kernels as kernels
+    import olmo.attention_kernels.kernels as kernels
     monkeypatch.setattr(kernels,"_empty_qkv",lambda q,number:[
         torch.full(q.shape,float("nan"),device=q.device,dtype=q.dtype) for _ in range(number)])
     tokens=real_tokens(129,13)
     tokens[0,:]=vocab.pad
-    layout=build_tgnomask_layout(tokens,vocab,device="cuda")
-    mask,_=reference(tokens)
+    layout=build_tgnomask_layout(tokens,vocab,device="cuda", augmented=augmented)
+    mask,_=reference(tokens, augmented)
     torch.manual_seed(602)
     inputs=[torch.randn(2,2,129,80,device="cuda",dtype=torch.bfloat16,requires_grad=True) for _ in range(3)]
     refs=[x.detach().clone().requires_grad_() for x in inputs]

@@ -1,0 +1,23 @@
+{
+  "_ordinary": true,
+  "_prepare": true,
+  "_dkv": true,
+  "_TG": true,
+  "typed_tg_attention": true,
+  "_join_gradients": true,
+  "join_gradients": true,
+  "_prefix_fwd": true,
+  "_prefix_dq": true,
+  "_prefix_dkv": true,
+  "_load_rows": true,
+  "_sparse_rows": true,
+  "_pack_qkv": true,
+  "_prepare_backward": true,
+  "_merge_dkv": true,
+  "_parameters": true,
+  "_strides": true,
+  "_empty_qkv": true,
+  "_configs_for": true,
+  "_FusedTyped": true,
+  "typed_attention": true
+}

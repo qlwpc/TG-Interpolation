@@ -8,7 +8,7 @@ from ..config import DataConfig, TrainConfig, TGConfig
 from ..exceptions import OLMoConfigurationError
 from ..tokenizer import Tokenizer
 from ..torch_util import barrier, get_global_rank, get_world_size
-from .collator import DataCollator
+from .collator import DataCollator, use_typed_tg
 from .iterable_dataset import IterableDataset
 from .memmap_dataset import MemMapDataset
 from .tg_mask import TG_attention_bias, KProximal_TG_attention_bias, Height_TG_attention_bias, SentencepieceVocab
@@ -253,7 +253,7 @@ def build_memmap_dataset(
         generate_doc_lengths=data_config.generate_doc_lengths,
         label_mask_paths=cast(Optional[List[PathOrStr]], data_config.label_mask_paths),
         instance_filter_config=data_config.instance_filter,
-        generate_TG_attention_bias=(None if train_config.model.tg_typed_attention else get_TG_generate_bias_func(train_config)),
+        generate_TG_attention_bias=(None if use_typed_tg(train_config, data_config) else get_TG_generate_bias_func(train_config)),
         transformer_grammar_type=train_config.model.transformer_grammar_type
     )
 
@@ -265,13 +265,7 @@ def build_eval_dataloader(
     shuffle: bool = True,
 ) -> DataLoader:
     dataset = build_memmap_dataset(train_config, data_config, include_instance_metadata=True)
-    collator = DataCollator(pad_direction=data_config.pad_direction, pad_token_id=train_config.model.pad_token_id, 
-                            generate_attention_mask=False, shuffle_tree=train_config.model.transformer_grammar_type)
-    collator.vocab = SentencepieceVocab.from_vocab_file(train_config.tokenizer.vocabulary)
-    if train_config.model.tg_typed_attention:
-        typed_collator = DataCollator.from_train_config(train_config)
-        collator.tg_typed_attention = typed_collator.tg_typed_attention
-        collator.mix_head_type = typed_collator.mix_head_type
+    collator = DataCollator.from_train_config(train_config, data_config)
     if data_config.drop_last:
         # Make sure batch size is small enough.
         samples_per_device = len(dataset) // get_world_size()

@@ -346,11 +346,14 @@ class ModelConfig(BaseConfig):
     causal attention to FlashAttention/SDPA.
     """
 
-    tg_typed_attention: bool = False
-    """Build compact TG layouts in the pretraining data pipeline and use the
-    dedicated CUDA TG/mixed-head operators. Supports fresh-segment sequential
-    MHA, tg or mixing(tg/tgnomask/tgtree), no extra masks/bias/dropout/cache.
-    Layouts are shared across layers; the default preserves existing backends.
+    tg_typed_attention: Optional[bool] = None
+    """Use compact CPU layouts and dedicated CUDA TG-family operators.
+
+    None (default) enables supported fresh-segment tg/tgnomask/tgnomaskaug and
+    mixing(tg/tgnomask/tgnomaskaug/tgtree) sequential MHA configurations. Extra
+    masks, dropout, ALiBi, unsupported head sizes and finetuning use the existing
+    backend. True requires a supported configuration; False opts out explicitly.
+    CPU model execution uses SDPA with the equivalent reconstructed mask.
     """
 
     flex_attention_train_min_sequence_length: int = 1024
@@ -814,6 +817,10 @@ class DataConfig(BaseConfig):
     pin_memory: bool = False
     prefetch_factor: Optional[int] = None
     persistent_workers: bool = False
+    cuda_prefetch: bool = False
+    """Overlap worker output transfer with training on a separate CUDA stream."""
+    tg_layout_backend: str = "native"
+    """CPU layout builder: native (default, required), auto (native with fallback), or python."""
     timeout: int = 0
     seed: Optional[int] = None
     instance_filter: Optional[InstanceFilterConfig] = None
