@@ -66,6 +66,9 @@ def get_fs_local_rank() -> int:
 
 
 def move_to_device(o: T, device: torch.device) -> T:
+    from .attention_kernels.tg_attention import TGLayout, MixTGLayout
+    if isinstance(o, (TGLayout, MixTGLayout)):
+        return o.to(device)  # type: ignore[return-value]
     if isinstance(o, torch.Tensor):
         return o.to(device)  # type: ignore[return-value]
     elif isinstance(o, dict):

@@ -184,3 +184,17 @@ def test_gpst_evaluator_emits_complete_documents_and_skips_resumed_ids(monkeypat
     assert resumed.document_count == 1
     assert resumed.sentence_count == 1
     assert resumed.log_likelihood == pytest.approx(documents[1]["log_likelihood"])
+
+
+def test_model_best_aggregation_weights_selection_ratio_by_sentences():
+    first = {**pushdown_row(0), "prefix_policy": "model_best",
+             "non_candidate0_count": 1, "non_candidate0_ratio": 0.5}
+    second = {**pushdown_row(1), "prefix_policy": "model_best", "sentence_count": 8,
+              "non_candidate0_count": 2, "non_candidate0_ratio": 0.25}
+    merged = aggregate_rows("pushdown", [first, second])
+    assert merged["non_candidate0_count"] == 3
+    assert merged["non_candidate0_ratio"] == pytest.approx(0.3)
+    with pytest.raises(ValueError, match="mismatch"):
+        aggregate_rows("pushdown", [first, pushdown_row(1)])
+    with pytest.raises(ValueError, match="invalid non_candidate0"):
+        aggregate_rows("pushdown", [{**first, "non_candidate0_count": 3}])

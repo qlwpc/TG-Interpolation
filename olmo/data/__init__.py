@@ -253,7 +253,7 @@ def build_memmap_dataset(
         generate_doc_lengths=data_config.generate_doc_lengths,
         label_mask_paths=cast(Optional[List[PathOrStr]], data_config.label_mask_paths),
         instance_filter_config=data_config.instance_filter,
-        generate_TG_attention_bias=get_TG_generate_bias_func(train_config),
+        generate_TG_attention_bias=(None if train_config.model.tg_typed_attention else get_TG_generate_bias_func(train_config)),
         transformer_grammar_type=train_config.model.transformer_grammar_type
     )
 
@@ -268,6 +268,10 @@ def build_eval_dataloader(
     collator = DataCollator(pad_direction=data_config.pad_direction, pad_token_id=train_config.model.pad_token_id, 
                             generate_attention_mask=False, shuffle_tree=train_config.model.transformer_grammar_type)
     collator.vocab = SentencepieceVocab.from_vocab_file(train_config.tokenizer.vocabulary)
+    if train_config.model.tg_typed_attention:
+        typed_collator = DataCollator.from_train_config(train_config)
+        collator.tg_typed_attention = typed_collator.tg_typed_attention
+        collator.mix_head_type = typed_collator.mix_head_type
     if data_config.drop_last:
         # Make sure batch size is small enough.
         samples_per_device = len(dataset) // get_world_size()

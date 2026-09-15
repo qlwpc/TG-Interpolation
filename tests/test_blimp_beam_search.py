@@ -173,7 +173,7 @@ def _dummy_train_cfg(model_cfg, vocab_path):
 
 def test_beam_search_smoke():
     """Plumbing check: word_sync_beam_search returns finite beam logprobs."""
-    ckpt = "saved_models/treereg/step33862-unsharded"
+    ckpt = "saved_models/treereg_layer9/step34354-unsharded"
     if not os.path.isdir(ckpt):
         ckpt = "saved_models/pushdown/step33862-unsharded"
     if not os.path.isdir(ckpt):

@@ -79,8 +79,14 @@ def validate_row(model: str, row: dict) -> None:
     for key in PROTOCOL_FIELDS[model]:
         if row.get(key) is None:
             raise ValueError(f"missing required protocol metadata {key}")
-    if row["prefix_policy"] != "candidate0" or row["ppl_denominator"] != "terminal_count":
+    if row["prefix_policy"] not in ("candidate0", "model_best") or row["ppl_denominator"] != "terminal_count":
         raise ValueError("unsupported prefix policy or PPL denominator")
+    if row["prefix_policy"] == "model_best":
+        count = row.get("non_candidate0_count")
+        if type(count) is not int or not 0 <= count <= row["sentence_count"]:
+            raise ValueError("invalid non_candidate0_count")
+        if not math.isclose(row.get("non_candidate0_ratio", -1), count / row["sentence_count"]):
+            raise ValueError("invalid non_candidate0_ratio")
     if type(row["deduplicated_trees"]) is not bool:
         raise ValueError("deduplicated_trees must be boolean")
     if model == "pushdown":
@@ -131,6 +137,9 @@ def aggregate_rows(model: str, rows: list[dict], expected_ids: set[int] | None =
         if set(ids) != expected_ids:
             raise ValueError(f"incomplete document results: missing={sorted(expected_ids-set(ids))[:10]} unexpected={sorted(set(ids)-expected_ids)[:10]}")
     result = {key: sum(row[key] for row in rows) for key in COUNTS}
+    if reference["prefix_policy"] == "model_best":
+        result["non_candidate0_count"] = sum(row["non_candidate0_count"] for row in rows)
+        result["non_candidate0_ratio"] = result["non_candidate0_count"] / result["sentence_count"]
     result.update({field: reference[field] for field in fields if field in reference})
     for field in LIKELIHOODS[model]:
         ll = math.fsum(row[field] for row in rows)

@@ -17,7 +17,7 @@ from olmo.config import DataConfig, EvaluatorConfig, EvaluatorType, TrainConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINTS = {
-    "treereg": ROOT / "saved_models/treereg/step34354-unsharded",
+    "treereg": ROOT / "saved_models/treereg_layer9/step34354-unsharded",
     "pushdown": ROOT / "saved_models/pushdown_terminalonly/step34354-unsharded",
 }
 

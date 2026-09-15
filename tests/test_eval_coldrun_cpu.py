@@ -241,7 +241,7 @@ def test_treereg_forward_parsed(cfg, label):
             )
         assert out.logits.shape[:2] == batch["input_ids"].shape
         assert torch.isfinite(out.logits).all()
-        # treereg_hidden capture should also work (layer 6).
+        # treereg_hidden capture should also work at the configured layer.
         if out.treereg_hidden is not None:
             ok(f"{label} forward(tree_spans=given) -> logits finite, treereg_hidden {tuple(out.treereg_hidden.shape)}")
         else:
