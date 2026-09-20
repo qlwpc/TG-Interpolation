@@ -40,8 +40,10 @@ python datatools/parse_test_docppl_data/generate_native_topk.py finalize \
 from frozen canonical sentence/word/BPE boundaries. `labeled_topk.py` replaces
 the historical autograd KMax decoder with lazy canonical A/B CKY enumeration;
 `audit_labeled_topk.py` independently checks every candidate. The complete
-reserved-clean test workflow, local Slurm commands and output contracts are in
-[`bbc_reserved_clean_top300.md`](../../docs/bbc_reserved_clean_top300.md).
+reserved-clean matching rules and build stages are documented in the
+[clean corpus builder](../reserved_clean/README.md). Use
+`python datatools/parse_test_docppl_data/generate_labeled_topk.py --help`
+for candidate-generation options.
 
 `tree_to_tg.py` converts `testppl_tree` by duplicating every closing
 non-terminal token in place. It streams multi-GB arrays through mmap, updates
@@ -62,9 +64,9 @@ or `--split test`), compares the
 current pretraining conversion with the historical GPT-2 encoding, audits
 terminal differences, and rebuilds the current test streams. It also supports
 a frozen delta recipe so raw-derived reconstruction does not require tree300
-after the recipe has been saved. See
-[`bbc_test_version_reproduction.md`](../../docs/bbc_test_version_reproduction.md)
-for the verified hashes and commands.
+after the recipe has been saved. Run
+`python datatools/parse_test_docppl_data/reproduce_bbc_test.py --help`
+for reconstruction commands; each run records its output hashes in its manifest.
 `build-raw --encoding legacy` reconstructs the selected dev/test split;
 `verify-raw` checks all three arrays against archived reference files.
 Add `--normalize-adj` to `build-raw` to map ADJ constituents to real ADJP

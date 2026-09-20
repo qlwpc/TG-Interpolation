@@ -3,7 +3,7 @@
 
 The ``extract`` command is stdlib-only and can run through ``ssh ... python -``.
 It emits selected raw rows as JSONL, preserving the released JSON index order.
-See docs/bbc_test_version_reproduction.md for the verified version recipes.
+See datatools/parse_test_docppl_data/README.md for reconstruction commands.
 """
 from __future__ import annotations
 
