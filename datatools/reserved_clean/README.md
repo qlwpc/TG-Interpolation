@@ -4,7 +4,8 @@ Builds a new corpus in its own directory. Every input scan is read-only and
 checks frozen file fingerprints. An interrupted stage has no `complete.json`;
 downstream stages refuse to consume it. Use a new output directory for reruns.
 
-The data design is in [the proposal](../../docs/bbc_reserved_clean_test_plan.md).
+The frozen rules are documented below. Each run records data fingerprints and
+completion evidence in its manifests and validation receipts.
 The implementation run is tracked under
 `artifacts/bbc_reserved_clean_20260906/run_status.json`; remote scan logs and
 receipts live at

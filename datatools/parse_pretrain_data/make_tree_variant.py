@@ -1,6 +1,6 @@
 """Generate tree-linearization variant token streams from a LIN1 (tree) .npy.
 
-Generalizes the dev-only prototype ``datatools/process_bbc.py`` into a
+Generalizes the archived dev-only prototype ``history/datatools/process_bbc.py`` into a
 parameterized, streaming generator for the paper's causal-attention variants
 (Table 1/3):
 

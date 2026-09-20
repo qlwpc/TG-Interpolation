@@ -44,7 +44,7 @@ def _gpt_config_to_olmo_model_config(gpt_config, init_device: str = "cpu") -> Mo
         n_kv_heads=None,  # plain multi-head attention, like GPT2
         n_layers=gpt_config.n_layer,
         mlp_ratio=gpt_config.n_inner or (4 * gpt_config.n_embd) // gpt_config.n_embd,
-        # Aligned with train_configs/terminal.yaml (OLMo-300M baseline):
+        # Aligned with the OLMo-300M terminal baseline:
         # swiglu + RMSNorm + weight tying, so the only structural difference
         # vs the baseline is GPST's composition model + learned wpe.
         # RoPE stays off — GPST feeds tree-ordered position_ids that RoPE
