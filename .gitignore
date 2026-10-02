@@ -1,54 +1,75 @@
-*.out
-*.npy
+# Generated binaries, caches and local environments.
+__pycache__/
 *.pyc
 *.so
 *.o
-*.log
-*.wandb
-__pycache__/
 .pytest_cache/
 .ruff_cache/
-.local/texlive/
-slmmask/
-some_note.md
-some_note_new.md
-*.txt
-# These are source/evidence files despite their conventional .txt suffix.
-!olmo/data/tgmasking/CMakeLists.txt
-!validation/environment/*.txt
-!datatools/parse_pretrain_data/bbc_train_shards.txt
-
-build310/
+node_modules/
 build/
 build_*/
-*/build/
+build310/
+.local/
+.agents/
+.codex/
+.claude/
+.claudeignore
 
+# Local collaboration and historical work records (kept on disk).
+/AGENTS.md
+/CLAUDE.md
+/EXPERIMENT_REPRODUCTION_RECORD.md
+/REPOSITORY_CLEANUP_MEMORY.md
+/history/
+/reports/
+/validation/
+/diagnostics/results/
+/docs/cleanup_review.md
+/docs/cleanup_manifest.json
+/docs/5090_model_sync.md
+/docs/pretraining_execution_audit_20260920.md
+/docs/pretraining_data_pipeline_repair.md
+/docs/bbc_reserved_clean_test_implementation.md
+/docs/bbc_reserved_clean_top300.md
+/docs/diagnostics/
+/docs/superpowers/
+/scripts/collect_bbc_dedup_500m_results.py
+some_note.md
+some_note_new.md
+
+# Data, model weights, submissions and running campaigns. Public evidence is
+# copied explicitly to reproducibility/; never whitelist an entire campaign.
+/artifacts/
+/analysis-output/
+/analysis/
+/saved_models/
+/camera_ready/
+/corpus/
+/logs/
+/train_logs/
+/run_folder/
+/run_logs/
+/run_scripts/
+/workspace/
+/slmmask/
+*.npy
 *.pt
 *.safetensors
-train_logs/
-saved_models/
-run_folder/
-/run_scripts/
+*.wandb
+*.log
+*.out
+*.err
+*.pdf
+*.aux
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
 /dataset/*
 !/dataset/fewshot_sources.py
 !/dataset/bbc-news/
 /dataset/bbc-news/*
 !/dataset/bbc-news/dev_index.json
 !/dataset/bbc-news/test_index.json
-dataset.tar
-
-# GPST lazy corpora (multi-GB generated data, not tracked)
-corpus/
-logs/
-
-# Generated analysis output / tokenized eval data
-analysis-output/
-analysis/
-/artifacts/
-evaluation/SG/tokenized_qwen3/
-
-# Research paper PDFs (kept locally as references, not tracked)
-*.pdf
-
-# Keep local manuscript and submission materials out of Git.
-/camera_ready/
+/dataset.tar
+/evaluation/SG/tokenized_qwen3/

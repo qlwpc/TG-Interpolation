@@ -1,0 +1,56 @@
+{
+  "status": "complete",
+  "verified_at": "2026-09-29T08:55:07.293831+00:00",
+  "tasks_complete": 220,
+  "model_count": 10,
+  "verification": "All task receipts complete with successful exit and matching task identities; full-evaluation metrics and five fine-tuning seeds; saved strict DocPPL coverage/contracts; post-evaluation SHA-256 of inputs and checkpoint model/config/trainer files against original campaign manifests.",
+  "campaigns": {
+    "bbc_dedup_500m_local_20260919": {
+      "status": "complete",
+      "verified_at": "2026-09-29T08:55:07.293831+00:00",
+      "models": [
+        "terminal",
+        "tgtree",
+        "tree"
+      ],
+      "tasks_complete": 66,
+      "input_files_rehashed": 77,
+      "checkpoint_files_rehashed": 9,
+      "results_sha256": "15f8043ab050bd94a1650ea3cbb6139d344db456e16a99a410383850d4c2d213",
+      "local_final_receipt_sha256": "f2a60d9a59844884e98e662670fe4db28591742a4ceae0b79a9ffc1c2ca2a508",
+      "scope": "Local files rehashed after evaluation against original campaign manifests."
+    },
+    "bbc_dedup_500m_pause_noont_20260922": {
+      "status": "complete",
+      "verified_at": "2026-09-29T08:55:07.293831+00:00",
+      "models": [
+        "pause1",
+        "pause2",
+        "tree_noont"
+      ],
+      "tasks_complete": 66,
+      "input_files_rehashed": 77,
+      "checkpoint_files_rehashed": 9,
+      "results_sha256": "f1ad0672763279440db2d0412a85f99db6b10eacf2ce78c10d369dc0c9a6be85",
+      "local_final_receipt_sha256": "b3c6234f922dd18da71f637b009918fac625330546a033bf684bb245b9ad7186",
+      "scope": "Local files rehashed after evaluation against original campaign manifests."
+    },
+    "bbc_dedup_500m_sist_20260922": {
+      "status": "complete",
+      "verified_at": "2026-09-29T08:55:07.293831+00:00",
+      "models": [
+        "tg",
+        "tgnomask",
+        "tgnomask_mix_tg",
+        "tgtree_mix_tg"
+      ],
+      "tasks_complete": 88,
+      "input_files_rehashed": 72,
+      "checkpoint_files_rehashed": 12,
+      "results_sha256": "5118a003c099c034c446f184170acfda5680edf5ca4e26937dfa6cc5c1542c66",
+      "local_final_receipt_sha256": "7bc977fe231dd30b77ef4234e93f391f18dd0274085ae321ad102ba57fd26d09",
+      "scope": "Local mirror rehash against the original SIST preflight manifests; not a fresh hash of remote SIST storage."
+    }
+  },
+  "limitation": "SIST post-evaluation hashes were checked on the local synchronized mirror; remote SIST storage was hashed during its original preflight, not rehashed by this final local audit."
+}

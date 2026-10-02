@@ -371,7 +371,7 @@ def sync_campaign_files(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-config", type=Path, default=REPO_ROOT / "train_configs/terminal.yaml")
+    parser.add_argument("--base-config", type=Path, default=REPO_ROOT / "train_configs/templates/terminal.yaml")
     parser.add_argument("--terminal-data", type=Path, default=REPO_ROOT / "dataset/bbc-news/terminal/train.npy")
     parser.add_argument("--tokenizer", type=Path, default=REPO_ROOT / "dataset/bbc-news/TG_GPT2_tokenizer.json")
     parser.add_argument("--campaign-dir", type=Path, default=REPO_ROOT / "artifacts/experiment/pause_sep_100m_sist_20260828")

@@ -28,7 +28,7 @@ cd /home/wangpch/TG-Interpolation
 mkdir -p analysis-output/blimp_beam/smoke analysis-output/blimp_beam/logs
 
 CFG=train_configs/eval_per_metric/treereg_BLiMP_beam_smoke.yaml
-CKPT=/home/wangpch/TG-Interpolation/saved_models/treereg/step33862-unsharded
+CKPT=/home/wangpch/TG-Interpolation/saved_models/treereg_layer9/step34354-unsharded
 
 echo "=== [$(date)] BLiMP beam smoke (1 GPU, subset_num_batches=4) ==="
 echo "CFG=$CFG  CKPT=$CKPT"

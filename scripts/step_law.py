@@ -14,7 +14,7 @@ computable and auditable:
   * raw mode     — plain ``--params N --tokens D`` calculator.
 
 Usage:
-    python scripts/step_law.py --config train_configs/terminal.yaml
+    python scripts/step_law.py --config train_configs/templates/terminal.yaml
     python scripts/step_law.py --params 1.13e8 --tokens 1.0e10 --seq-len 2048
 """
 

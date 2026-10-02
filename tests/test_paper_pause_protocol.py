@@ -25,7 +25,7 @@ def test_repeat_weights_cannot_be_relabelled_by_a_sep_override(variant):
         _load_checkpoint_config(source, ["model.pause_token_id=50261"], variant)
     cfg = _load_checkpoint_config(source, [], f"{variant}-repeat")
     assert cfg.model.pause_token_id is None
-    assert model_paths[f"{variant}-repeat"].lstrip("/") == str(source.parent.relative_to(REPO_ROOT))
+    assert model_paths[f"{variant}-repeat"].lstrip("/") == runs[f"bbc_100m_{variant}_repeat"]["source_checkpoint"]
 
 
 @pytest.mark.parametrize("override", ["model.pause_token_id=null", "model.transformer_grammar_type=pause2"])

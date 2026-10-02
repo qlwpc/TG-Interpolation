@@ -1,52 +1,20 @@
-# Documentation index
+# 文档索引
 
-This directory contains current protocols, implementation records, and dated diagnostic
-material. Experimental values and checkpoint identity have one authoritative registry:
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md). Before citing an
-older report, check [`REPOSITORY_CLEANUP_MEMORY.md`](../REPOSITORY_CLEANUP_MEMORY.md) for known
-corrections and scope limits.
+| 阅读目的 | 入口 |
+|---|---|
+| 运行一个复现实验 | [预训练工作流](pretraining_workflow.md) |
+| 理解论文结果、旧模型重测与适用边界 | [论文结果说明](paper_results.md) |
+| 新增 dedup 500M 实验 | [结果及完成范围](bbc_dedup_500m_evaluation_results_20260925.md)、[配置生成器](bbc_dedup_500m_pretraining.md) |
+| 数据、权重与证据获取 | [公开材料与资产状态](../reproducibility/README.md)、[数据版本与污染说明](bbc_data_provenance.md) |
+| 按模型和任务评测 | [Evaluation](../Evaluation.md) |
 
-## Primary entry points
+## 复现时按需阅读
 
-| Document | Purpose |
-| --- | --- |
-| [`README.md`](../README.md) | repository setup, data preparation, training, and evaluation entry points |
-| [`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md) | model identity, run status, and result registry |
-| [`Evaluation.md`](../Evaluation.md) | current evaluator, data-entry, configuration, and protocol routing; results remain in the registry |
-| [`pretraining_reproduction.md`](pretraining_reproduction.md) | reproducible pretraining data and campaign workflow |
-| [`pretraining_data_pipeline_repair.md`](pretraining_data_pipeline_repair.md) | supplied BBC split fingerprints, data-integrity fixes, offline tests, and full-corpus verification limits |
-| [`pause_protocol.md`](pause_protocol.md) | final-paper SEP Pause identities, pretraining configs, v2 evaluation, and explicit historical controls |
-| [`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](pushdown_word_atom_strict_binary_document_ppl_protocol.md) | current Pushdown fixed-word-atom Document-PPL protocol |
-| [`FSDP_DOWNSTREAM_EVAL_RISKS.md`](FSDP_DOWNSTREAM_EVAL_RISKS.md) | unresolved multi-rank evaluation risks and operating rule |
+- 数据构建与历史配置：[预训练细则](pretraining_reproduction.md)、[clean 数据筛选](../datatools/reserved_clean/README.md)、[候选生成](../datatools/parse_test_docppl_data/README.md)。
+- 模型实现：[Pause](pause_protocol.md)、[TG 输入与内核](tg_input_pipeline.md)、[GPST](gpst_implementation.md)。
+- 文档 PPL：[clean 评测](bbc_reserved_docppl_sist_20260907.md)、[model-best 历史](document_ppl_model_best_history.md)、[续跑与严格合并](native_document_ppl_recovery.md)。
+- 候选与概率：[native top-K](native_model_topk_300_v2_format.md)、[binary 存储](native_binary_storage.md)、[n-ary 兼容格式](native_nary_300_format.md)、[Pushdown 概率](pushdown_word_atom_strict_binary_document_ppl_protocol.md)、[GPST binary 对照](gpst_binary_pushdown_document_ppl_protocol.md)、[Pushdown 实现比较](pushdown_vs_original_repo.md)。
+- 分布式限制：[FSDP 下游评测](FSDP_DOWNSTREAM_EVAL_RISKS.md)。
 
-## Evaluation and data contracts
-
-| Document | Status and scope |
-| --- | --- |
-| [`gpst_binary_pushdown_document_ppl_protocol.md`](gpst_binary_pushdown_document_ppl_protocol.md) | current GPST strict-binary to Pushdown evaluation contract |
-| [`native_model_topk_300_v2_format.md`](native_model_topk_300_v2_format.md) | current model-native top-300 storage format |
-| [`native_document_ppl_recovery.md`](native_document_ppl_recovery.md) | resumable GPST/Pushdown native Doc-PPL execution, strict merging, and the RTX3090 integration record |
-| [`native_binary_storage.md`](native_binary_storage.md) | native-binary corpus storage contract |
-| [`pushdown_vs_original_repo.md`](pushdown_vs_original_repo.md) | semantic comparison with the original Pushdown repository; use current protocol documents for final values |
-| [`native_nary_300_format.md`](native_nary_300_format.md) | legacy shared n-ary top-300 format; not the current model-native format |
-
-## Implementation and active design work
-
-| Document | Status and scope |
-| --- | --- |
-| [`gpst_implementation.md`](gpst_implementation.md) | completed GPST architecture and implementation record |
-| [`PLAN_pushdown_ppl_2x2.md`](PLAN_pushdown_ppl_2x2.md) | active auxiliary 2x2 comparison associated with the current uncommitted evaluator work |
-| [`pushdown_gold300_document_ppl_design.md`](pushdown_gold300_document_ppl_design.md) | historical design-stage record; not a directly runnable current protocol |
-| [`superpowers/specs/2026-05-22-robust-contributions-design.md`](superpowers/specs/2026-05-22-robust-contributions-design.md) | dated repository design record |
-
-## Diagnostics and historical reports
-
-| Document | Scope |
-| --- | --- |
-| [`tree300_vs_test_boundary_report.md`](tree300_vs_test_boundary_report.md) | `tree_300` and test-corpus boundary audit |
-| [`diagnostics/2026-08-20-tree300-eval-failure-report.md`](diagnostics/2026-08-20-tree300-eval-failure-report.md) | full tree-300 failure diagnosis |
-| [`reports/pushdown_gpu_optimization_20260802.md`](../reports/pushdown_gpu_optimization_20260802.md) | consolidated outcome of the completed Pushdown GPU optimization campaign |
-| [`reports/`](../reports/) | dated audits and run reports; they do not replace the result registry |
-
-Completed campaign plans and checklists are intentionally removed once their durable
-architecture, protocol, or failure evidence has been incorporated into the documents above.
+结果表从冻结稿或原实验凭据提取，新增结果页由收集器生成。修改结果需同时更新对应证据，
+不能把历史结果改贴为当前协议。日常协作登记、排队状态与修复过程仅在本地保存。

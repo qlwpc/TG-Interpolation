@@ -28,7 +28,7 @@ mkdir -p analysis-output/blimp_beam/2gpu analysis-output/blimp_beam/logs
 
 # Dedicated smoke config with subset_num_batches=5 (odd -> 3/2 split across 2 ranks).
 CFG=train_configs/eval_per_metric/treereg_BLiMP_beam_2gpu.yaml
-CKPT=/home/wangpch/TG-Interpolation/saved_models/treereg/step33862-unsharded
+CKPT=/home/wangpch/TG-Interpolation/saved_models/treereg_layer9/step34354-unsharded
 
 echo "=== [$(date)] BLiMP beam 2-GPU unequal-count regression (subset=5) ==="
 echo "CFG=$CFG  CKPT=$CKPT"

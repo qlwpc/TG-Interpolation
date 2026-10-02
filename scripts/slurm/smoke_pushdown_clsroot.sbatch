@@ -20,4 +20,4 @@ export NUMEXPR_NUM_THREADS=1
 export PYTHONPATH=/home/wangpch/TG-Interpolation${PYTHONPATH:+:$PYTHONPATH}
 
 /home/wangpch/.conda/envs/LLM/bin/torchrun --standalone --nnodes=1 --nproc-per-node=1 \
-  scripts/train.py train_configs/pushdown_smoke.yaml
+  scripts/train.py train_configs/diagnostics/pushdown_smoke.yaml

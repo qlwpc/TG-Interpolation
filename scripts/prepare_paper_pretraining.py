@@ -4,7 +4,7 @@
 The historical checkpoint ``config.yaml`` (or a hash-pinned submitted training
 config for BBC SEP Pause) is the architecture/optimizer source of truth.
 ``train_configs/paper_pretraining_manifest.json`` records the fields
-audited in ``EXPERIMENT_REPRODUCTION_RECORD.md`` and maps every model to its
+audited in ``docs/paper_results.md`` and maps every model to its
 input representation.  This program verifies the two sources agree, copies the
 checkpoint config, and replaces only run-local state and canonical data paths.
 
@@ -36,6 +36,7 @@ SCALE_SHAPES = {
     "1B": (2048, 16, 16),
 }
 PAPER_GPU_COUNTS = {"100M": 4, "500M": 4, "1B": 64}
+REPRO_STOP_AT = 2_000_000_000
 
 
 def utc_now() -> str:
@@ -283,6 +284,10 @@ def materialize_config(
     put("device_train_grad_accum", None)
     put("precision", "amp_bf16")
     put("max_duration", "1ep")
+    # Fresh runs should finish their own epoch, not inherit checkpoint-local
+    # early-stop limits (including Trainer's historical max_steps + 10).
+    put("stop_at", REPRO_STOP_AT)
+    put("stop_after", None)
     put("data.paths", paths)
     put("data.parse_tree_paths", parse_tree_paths)
     put("data.memmap_dtype", run["dtype"])
@@ -512,6 +517,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         generate_launch(launch, config, workspace, gpu_count, run)
         protocol = {
             **run,
+            "stopping_policy": {
+                "max_duration": "1ep",
+                "stop_at": REPRO_STOP_AT,
+                "stop_after": None,
+                "reason": "Fresh reproduction: no historical early stop; user decision 2026-09-15",
+            },
             "run_name": run_name,
             "paper_gpu_count": gpu_count,
             "source_config_sha256": sha256_file(source),

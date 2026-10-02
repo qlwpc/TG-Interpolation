@@ -1,0 +1,39 @@
+{
+  "complete": true,
+  "claim_type": "computed",
+  "train_documents": 15187326,
+  "train_tokens": 10061025584,
+  "unique_strict_train": 2071964,
+  "unique_normalized_train": 2059169,
+  "train_sha256": "8f900f2acd1b19109dab522d74a0d1af35171838fbf547ee569a205d1649ceb1",
+  "strict_matches": [],
+  "test": {
+    "documents": 5000,
+    "normalized_exact": 0,
+    "near_at_threshold": {
+      "0.8": 0,
+      "0.7": 0,
+      "0.6": 0
+    },
+    "unmasked_13gram_coverage_ge_30pct": 41,
+    "any_shared_13gram": 2290,
+    "max_jaccard": 0.23628691983122363,
+    "max_eligible_containment": 0.5474452554744526,
+    "max_unmasked_coverage": 0.4387755102040816
+  },
+  "test_docppl_1000": {
+    "documents": 1000,
+    "normalized_exact": 0,
+    "near_at_threshold": {
+      "0.8": 0,
+      "0.7": 0,
+      "0.6": 0
+    },
+    "unmasked_13gram_coverage_ge_30pct": 7,
+    "any_shared_13gram": 454,
+    "max_jaccard": 0.22953736654804271,
+    "max_eligible_containment": 0.48175182481751827,
+    "max_unmasked_coverage": 0.4380952380952381
+  },
+  "limits": "Lexical overlap audit of this frozen BBC training array only; lower similarities and semantic relations are not excluded."
+}

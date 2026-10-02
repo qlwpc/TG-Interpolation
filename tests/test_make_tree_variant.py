@@ -1,6 +1,6 @@
 """Tests for datatools/make_tree_variant.py — LIN variant stream generation.
 
-Generalizes the dev-only prototype ``datatools/process_bbc.py`` into a
+Generalizes the archived dev-only prototype ``history/datatools/process_bbc.py`` into a
 parameterized, streaming generator for the paper's causal-attention tree
 linearization variants (Table 1/3):
 

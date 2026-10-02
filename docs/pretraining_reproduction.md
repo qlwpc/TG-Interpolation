@@ -1,9 +1,12 @@
 # 论文预训练复现细则
 
-本文保存 README 背后的完整自动化协议。模型身份与超参数以
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md) §2/§2A
-为人工核对来源；[`train_configs/paper_pretraining_manifest.json`](../train_configs/paper_pretraining_manifest.json)
-是机器可读映射。若二者与 checkpoint config 不一致，campaign 生成会直接失败。
+> 开展新预训练任务时，先遵循 [预训练工作流](pretraining_workflow.md)。当前 BBC 默认使用
+> dedup train + 新 clean dev/test；本文中的固定索引和历史配置流程仅用于明确选择的对应复现，
+> 不覆盖新工作流的数据版本、评估频率、W&B 和 GPU 探测要求。
+
+模型、语料、配置身份由 [paper_pretraining_manifest.json](../train_configs/paper_pretraining_manifest.json)
+及其固定哈希的 `paper_sources/` 保存，生成器核对配置字段后才生成新 run。
+这些配置副本与权重目录分离；论文数值及解释见[论文结果说明](paper_results.md)。
 BBC SEP Pause 使用固定 SHA-256 的原始提交配置副本，并单独登记最终 checkpoint 身份；
 详见 [`pause_protocol.md`](pause_protocol.md)。
 
@@ -81,9 +84,11 @@ python -m datatools.parse_pretrain_data.build_pretrain_data assemble --corpus bb
 索引协议如下：
 
 - dev 为 4,980 个文档，test 为 5,025 个文档；各覆盖 89 个 config，无重复或交叉选择。
-- config 顺序使用 `bbc_configs.txt`；每个 config 内的 dev/test 文档保留 JSON 列表的原顺序，
+- 下载/解析全集为 `bbc_configs.txt` 的 94 个分片；训练组装顺序使用
+  `bbc_train_shards.txt` 的 89 个历史分片。每个 config 内的 dev/test 文档保留 JSON 列表的原顺序，
   不排序、不转集合；train 保留源文档顺序，排除 dev/test 的并集。
-- `CC-MAIN-2023-{06,14,23,40,50}` 没有留出索引，五个 config 全部进入 train。
+- `CC-MAIN-2023-{06,14,23,40,50}` 是五个预留分片；当前组装显式拒绝它们进入 train。
+  “没有 dev/test 索引即全部纳入 train”是已修复的旧行为，不能用来替代当前保护。
 - 未知 config、重复 ID、负数/非整数、dev/test 交叉、越界 ID 都直接报错；不跳过缺失 shard。
 
 `assemble` 在写任何输出前，检查全部源/目标、dtype、逐 shard 文档数及 split 范围。
@@ -94,7 +99,12 @@ python -m datatools.parse_pretrain_data.build_pretrain_data assemble --corpus bb
 注意：旧 `gen_final_train.py` 会原地给索引列表追加哨兵文档，且跨表示累积；新流程不复刻
 这一副作用。提供的索引锁定“选哪些文档及其顺序”，不能单独证明重新下载/解析后的 token 流
 与历史训练流逐字节一致。现有 4,966 文档 DocPPL 语料是另一个评测契约，不能用本次生成的
-5,025 文档 `test.npy` 自动替换；历史边界见 [`tree300_vs_test_boundary_report.md`](tree300_vs_test_boundary_report.md)。
+5,025 文档 `test.npy` 自动替换；历史边界见 [BBC 数据溯源](bbc_data_provenance.md#versions)。
+
+2026-09-06 已从 RTX3090 归档 parsed 文档逐字节复现 5,025 文档旧 test，并验证本地当前
+`test.npy` 已是 4,966 文档 DocPPL 对齐版。现行转换器与旧版还存在括号编码差异；旧版兼容
+模式、6 篇正文修订及当前版精确构建脚本见
+[BBC 数据溯源](bbc_data_provenance.md#versions)。
 
 若要做新的 split 实验，必须显式指定独立目录，再同时传入两个自定义索引：
 
@@ -191,9 +201,13 @@ BBC 使用 `benepar_en3_large`，FineWeb-Edu 的历史流程使用 `benepar_en3`
 - Hub revision、上游 Arrow cache 版本及 parser/model 权重尚未全部固定。因此这里验证的是
   数据协议、已提供索引和本次构建身份，不宣称已经复现整套历史训练数据或论文指标。
 
-本次修复的离线验证范围及命令见 [`pretraining_data_pipeline_repair.md`](pretraining_data_pipeline_repair.md)。
+数据回归入口：`tests/test_pretraining_reproduction_pipeline.py`、`tests/test_pretraining_data_integrity.py`。
 
 ## 2. 全部论文模型的预训练 campaign
+
+配置模板、固定来源与诊断配置见[配置入口](../train_configs/README.md)。
+29 份原始配置均位于 `train_configs/paper_sources/`，由 manifest 固定 SHA-256；
+生成配置不依赖权重目录、旧配置目录或本地审计材料。
 
 列出机器可读清单：
 
@@ -217,6 +231,10 @@ python scripts/prepare_paper_pretraining.py --groups bbc-100m-baselines bbc-500m
 python scripts/prepare_paper_pretraining.py --groups bbc-1b-supplementary
 python scripts/prepare_paper_pretraining.py --groups fineweb-edu-1b
 ```
+
+从零重训统一使用 `max_duration=1ep`、`stop_at=2000000000`、`stop_after=null`，
+不继承历史 checkpoint 的提前停止上限；Trainer 通常按本次 epoch 结束。
+该用户确认的策略写入 `protocol.json.stopping_policy`，不改写来源配置。
 
 每个 run 目录包含：
 
@@ -284,5 +302,5 @@ PYTHONPATH=. python -m pytest -q \
 ```
 
 预训练结果和 checkpoint 身份仍统一回填到
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md)；不要在 README
+[论文结果说明](paper_results.md)；不要在 README
 另建一份会漂移的人工超参数表。

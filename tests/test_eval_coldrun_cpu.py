@@ -38,7 +38,7 @@ PY = sys.executable
 
 def load_cfg(yaml_name):
     from olmo.config import TrainConfig
-    yaml_path = REPO / "train_configs" / yaml_name
+    yaml_path = REPO / "train_configs" / "diagnostics" / yaml_name
     cfg = TrainConfig.load(yaml_path, [])
     # Force CPU init.
     cfg.model.init_device = "cpu"

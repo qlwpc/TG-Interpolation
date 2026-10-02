@@ -16,11 +16,37 @@ from omegaconf import OmegaConf as om
 
 sys.path.append(os.path.expanduser("~/TG-Interpolation"))
 
-from olmo.config import TrainConfig, EvaluatorConfig, EvaluatorType, TGConfig
+from olmo.config import TrainConfig, EvaluatorConfig, EvaluatorType, TGConfig, DDPConfig, DistributedStrategy
 from olmo.exceptions import OLMoCliError
 from olmo.util import clean_opt, prepare_cli_environment
 
 log = logging.getLogger(__name__)
+ROOT = Path(__file__).resolve().parents[1]
+
+TOKENIZER_PROFILES = {
+    "bbc": {
+        "path": "dataset/bbc-news/TG_GPT2_tokenizer.json",
+        "vocab_size": 50320, "eos_token_id": 50256, "pad_token_id": 50258,
+    },
+    "fineweb": {
+        "path": "dataset/TG_QWEN3_tokenizer.json",
+        "vocab_size": 151732, "eos_token_id": 151643, "pad_token_id": 151670,
+    },
+}
+
+
+def _tokenizer_profile(modelname: str):
+    return TOKENIZER_PROFILES["fineweb" if modelname.endswith("-fwedu-1B") else "bbc"]
+
+
+def _check_tokenizer_identity(modelname: str, model_config) -> None:
+    profile = _tokenizer_profile(modelname)
+    for key in ("vocab_size", "eos_token_id", "pad_token_id"):
+        if model_config is None or model_config.get(key) != profile[key]:
+            raise OLMoCliError(
+                f"{modelname} requires {profile['path']} with {key}={profile[key]}; "
+                "checkpoint/tokenizer family mismatch."
+            )
 
 class BashCL:
     def __init__(self):
@@ -316,7 +342,10 @@ date
     print(f"已生成sbatch脚本: {script_filename}")
     return script_filename
 
-PAUSE_TOKEN_IDS = {"pause1": 50261, "pause2": 50261, "pause1-repeat": None, "pause2-repeat": None}
+PAUSE_TOKEN_IDS = {
+    "pause1": 50261, "pause2": 50261, "pause1-repeat": None, "pause2-repeat": None,
+    "pause1-fwedu-1B": 151673, "pause2-fwedu-1B": 151673,
+}
 
 
 def _check_pause_identity(modelname: str, model_config) -> None:
@@ -340,8 +369,13 @@ def _load_checkpoint_config(
     checkpoint_config_path: Path, overrides: List[str], modelname: str
 ) -> TrainConfig:
     """Load a checkpoint config, repairing only known legacy null grammar."""
+    TrainConfig._register_resolvers(validate_paths=False)
     raw = TrainConfig.update_legacy_settings(om.load(str(checkpoint_config_path)))
+    # Some Qwen checkpoints contain a self-referential workspace interpolation.
+    # Resolve checkpoint fields locally before replacing the runtime paths.
+    raw.workspace = str(ROOT)
     model_raw = raw.get("model")
+    _check_tokenizer_identity(modelname, model_raw)
     _check_pause_identity(modelname, model_raw)
     if model_raw is not None and model_raw.get("transformer_grammar_type") is None:
         # Some original terminal checkpoints predate this required field.  The
@@ -352,6 +386,7 @@ def _load_checkpoint_config(
     conf = om.merge(om.structured(TrainConfig), raw)
     if overrides:
         conf = om.merge(conf, om.from_dotlist(overrides))
+    _check_tokenizer_identity(modelname, conf.model)
     _check_pause_identity(modelname, conf.model)
     return om.to_object(conf)
 
@@ -366,15 +401,20 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     """
     if modelname not in model_paths:
         raise OLMoCliError(f"Unknown or unmapped model: {modelname}")
+    is_fineweb = modelname.endswith("-fwedu-1B")
+    if is_fineweb and task not in {"SG", "blimp"}:
+        raise OLMoCliError(
+            "FineWeb-Edu models use this entry point for SG/blimp only. "
+            "Use the dedicated Qwen3 OLMES configs for 11-task evaluation; "
+            "BBC DocPPL/finetuning/pretraining recipes cannot be reused."
+        )
     if modelname in {"pause1", "pause2"} and task in {"xsum_finetune", "xsum_test", "boolq"}:
         raise OLMoCliError(
             "Paper SEP Pause downstream runs require scripts/pause_eval_campaign.py prepare "
             "with the SEP checkpoint (see scripts/pause_eval/README.md). "
             "That entry point enforces the five-seed XSum v2/BoolQ contract."
         )
-    checkpoint_path = Path(
-        os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])
-    ).resolve()
+    checkpoint_path = (ROOT / model_paths[modelname].lstrip("/")).resolve()
     checkpoint_config_path = checkpoint_path / "config.yaml"
     if not checkpoint_config_path.is_file():
         raise FileNotFoundError(
@@ -400,7 +440,9 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     cfg.load_path = str(checkpoint_path)
     cfg.load_path_sharded_checkpointer = None
     cfg.try_load_latest_save = False
-    cfg.tokenizer.vocabulary = cfg.tokenizer.identifier = f"{workspace}/dataset/bbc-news/TG_GPT2_tokenizer.json"
+    profile = _tokenizer_profile(modelname)
+    cfg.tokenizer.vocabulary = cfg.tokenizer.identifier = f"{workspace}/{profile['path']}"
+    cfg.tokenizer.use_bracket_mapping = is_fineweb
     modelConfig = Models[modelname]
     input_format = None
     for form, grammar in INPUTFORMAT.items():
@@ -408,7 +450,7 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
             input_format = form
             break
     if input_format is None:
-        raise OLMoCliError(f"No BBC News input format registered for {modelname}")
+        raise OLMoCliError(f"No input format registered for {modelname}")
 
     # Tree-Shuffle is a tree-format training checkpoint, but the requested
     # comparison is terminal-only inference.  Keep the checkpoint weights and
@@ -423,7 +465,34 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
     # FineWeb shards in place and makes an otherwise BBC-only evaluator fail
     # while its unused training dataloader is constructed.
     cfg.data.paths = [train_path]
+    cfg.data.memmap_dtype = "uint16"
+    cfg.data.datasets = None
+    cfg.data.label_mask_paths = None
     cfg.data.parse_tree_paths = None
+    if is_fineweb:
+        # The Trainer constructs a train loader even for eval_no_save runs.
+        # Supply a tiny Qwen-ID buffer solely for that unused loader, instead
+        # of requiring FineWeb training shards or reinterpreting BBC uint16.
+        import numpy as np
+
+        placeholder = save_path.resolve().with_suffix(".eval-only.npy")
+        placeholder.parent.mkdir(parents=True, exist_ok=True)
+        np.save(placeholder, np.full(cfg.model.max_sequence_length * GPU_tasks[task],
+                                    cfg.model.eos_token_id, dtype=np.uint32))
+        # Like the generated YAML passed to torchrun, this sidecar stays in
+        # the campaign directory (also when H800 stages dataset/ in /dev/shm).
+        cfg.data.paths = [str(placeholder)]
+        cfg.data.memmap_dtype = "uint32"
+        cfg.data.memmap_format = "npy"
+        cfg.data.generate_doc_lengths = False
+        cfg.global_train_batch_size = GPU_tasks[task]
+        cfg.device_train_microbatch_size = 1
+        # Do not inherit the checkpoint's training-time FSDP strategy for SG
+        # variable-work generation or uneven BLiMP partitions.
+        cfg.distributed_strategy = DistributedStrategy.ddp
+        cfg.ddp = DDPConfig()
+        cfg.fsdp = None
+        cfg.model.init_device = "cuda"
     # TreeReg's train loader is still constructed for eval_on_load. It requires
     # parse-aligned metadata even though terminal_doc itself does not consume
     # the auxiliary supervision tensors.
@@ -470,6 +539,10 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         # mutation for one model from leaking into the next generated config.
         evaluators = copy.deepcopy(Evaltasks[task])
 
+    if task == "SG":
+        # SGDataset adds /qwen3 for the canonical Qwen tokenizer vocabulary.
+        evaluators[0].sg_dataset_path = f"{workspace}/evaluation/SG/tokenized"
+
     # Tree-Shuffle is terminal at inference for the requested comparison. The
     # explicit protocol prevents auto mode from selecting latent beam/gold paths.
     if modelname == "tree_shuffle" and task in {"SG", "blimp"}:
@@ -494,6 +567,8 @@ def generate_config(save_path: Path, args_list: List[str], Device:str, modelname
         # checkpoint.  Evaluation is model-only and must never resume a run.
         cfg.eval_on_load = True
         cfg.eval_no_save = True
+        cfg.finetune_task = None
+        cfg.eval_subset_num_batches = -1
         cfg.max_duration = "0ep"
         cfg.stop_at = 0
         cfg.reset_optimizer_state = True
@@ -668,7 +743,7 @@ def run_campaign(args: argparse.Namespace) -> None:
     for modelname in args.models:
         if modelname not in Models or modelname not in model_paths:
             raise OLMoCliError(f"Unknown or unmapped model: {modelname}")
-        load_path = Path(os.path.expanduser("~/TG-Interpolation" + model_paths[modelname])).resolve()
+        load_path = (ROOT / model_paths[modelname].lstrip("/")).resolve()
         if not load_path.is_dir():
             raise FileNotFoundError(f"Missing checkpoint directory: {load_path}")
         for task in args.tasks:

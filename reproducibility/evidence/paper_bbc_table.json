@@ -1,0 +1,197 @@
+{
+  "source": "frozen camera_ready/paper.tex, tab:exp1-results",
+  "source_sha256": "5b4e17f515b8dbbc0638a3b6e6176c71a77dad1842e81753381eeab558935481",
+  "metric_units": "percent except DocPPL; XSum R-AVG; SD across five finetuning seeds",
+  "models": [
+    {
+      "model": "Terminal-100M",
+      "xsum_mean": 22.02,
+      "xsum_sample_sd": 0.06,
+      "boolq_mean": 66.7,
+      "boolq_sample_sd": 0.36,
+      "sg": 69.8,
+      "blimp": 70.77,
+      "docppl": 9.89
+    },
+    {
+      "model": "Tree-100M",
+      "xsum_mean": 22.84,
+      "xsum_sample_sd": 0.03,
+      "boolq_mean": 68.07,
+      "boolq_sample_sd": 0.35,
+      "sg": 81.4,
+      "blimp": 80.95,
+      "docppl": 10.01
+    },
+    {
+      "model": "TGTree-100M",
+      "xsum_mean": 23.03,
+      "xsum_sample_sd": 0.02,
+      "boolq_mean": 68.12,
+      "boolq_sample_sd": 0.62,
+      "sg": 79.47,
+      "blimp": 81.46,
+      "docppl": 10.21
+    },
+    {
+      "model": "TG-100M",
+      "xsum_mean": 20.15,
+      "xsum_sample_sd": 0.04,
+      "boolq_mean": 64.5,
+      "boolq_sample_sd": 0.4,
+      "sg": 79.19,
+      "blimp": 83.28,
+      "docppl": 11.02
+    },
+    {
+      "model": "TGNomask-100M",
+      "xsum_mean": 21.91,
+      "xsum_sample_sd": 0.04,
+      "boolq_mean": 66.66,
+      "boolq_sample_sd": 0.45,
+      "sg": 78.62,
+      "blimp": 81.78,
+      "docppl": 9.97
+    },
+    {
+      "model": "TGNomask-Aug-100M",
+      "xsum_mean": 22.12,
+      "xsum_sample_sd": 0.02,
+      "boolq_mean": 67.01,
+      "boolq_sample_sd": 0.28,
+      "sg": 78.68,
+      "blimp": 83.63,
+      "docppl": 10.08
+    },
+    {
+      "model": "Tree-NoONT-100M",
+      "xsum_mean": 22.41,
+      "xsum_sample_sd": 0.04,
+      "boolq_mean": 68.67,
+      "boolq_sample_sd": 0.32,
+      "sg": 85.38,
+      "blimp": 81.0,
+      "docppl": 9.95
+    },
+    {
+      "model": "Tree-Compress-100M",
+      "xsum_mean": 22.7,
+      "xsum_sample_sd": 0.05,
+      "boolq_mean": 68.48,
+      "boolq_sample_sd": 0.49,
+      "sg": 78.27,
+      "blimp": 81.4,
+      "docppl": 9.91
+    },
+    {
+      "model": "Tree-TripleCNT-100M",
+      "xsum_mean": 22.43,
+      "xsum_sample_sd": 0.04,
+      "boolq_mean": 68.09,
+      "boolq_sample_sd": 0.12,
+      "sg": 81.57,
+      "blimp": 83.42,
+      "docppl": 10.26
+    },
+    {
+      "model": "Tree-Shuffle-100M",
+      "xsum_mean": 21.56,
+      "xsum_sample_sd": 0.09,
+      "boolq_mean": 68.08,
+      "boolq_sample_sd": 0.33,
+      "sg": 76.56,
+      "blimp": 67.77,
+      "docppl": 13.41
+    },
+    {
+      "model": "TGNomask-Mix-TG-100M",
+      "xsum_mean": 21.87,
+      "xsum_sample_sd": 0.04,
+      "boolq_mean": 66.13,
+      "boolq_sample_sd": 0.54,
+      "sg": 75.77,
+      "blimp": 83.14,
+      "docppl": 10.01
+    },
+    {
+      "model": "TGTree-Mix-TG-100M",
+      "xsum_mean": 22.16,
+      "xsum_sample_sd": 0.07,
+      "boolq_mean": 67.91,
+      "boolq_sample_sd": 0.36,
+      "sg": 78.84,
+      "blimp": 82.75,
+      "docppl": 10.0
+    },
+    {
+      "model": "Pause-1-100M",
+      "xsum_mean": 22.38,
+      "xsum_sample_sd": 0.05,
+      "boolq_mean": 62.04,
+      "boolq_sample_sd": 0.19,
+      "sg": 75.11,
+      "blimp": 70.85,
+      "docppl": 9.77
+    },
+    {
+      "model": "Pause-2-100M",
+      "xsum_mean": 22.25,
+      "xsum_sample_sd": 0.06,
+      "boolq_mean": 65.7,
+      "boolq_sample_sd": 3.45,
+      "sg": 76.97,
+      "blimp": 72.59,
+      "docppl": 10.32
+    },
+    {
+      "model": "Pushdown-100M",
+      "xsum_mean": 21.06,
+      "xsum_sample_sd": 0.05,
+      "boolq_mean": 65.54,
+      "boolq_sample_sd": 0.29,
+      "sg": 74.86,
+      "blimp": 74.97,
+      "docppl": 13.29
+    },
+    {
+      "model": "Terminal-500M",
+      "xsum_mean": 20.75,
+      "xsum_sample_sd": 0.06,
+      "boolq_mean": 69.69,
+      "boolq_sample_sd": 0.6,
+      "sg": 71.11,
+      "blimp": 64.74,
+      "docppl": 2.83
+    },
+    {
+      "model": "Tree-500M",
+      "xsum_mean": 22.25,
+      "xsum_sample_sd": 0.05,
+      "boolq_mean": 70.72,
+      "boolq_sample_sd": 0.35,
+      "sg": 63.13,
+      "blimp": 76.09,
+      "docppl": 3.18
+    },
+    {
+      "model": "TGTree-500M",
+      "xsum_mean": 22.01,
+      "xsum_sample_sd": 0.08,
+      "boolq_mean": 70.63,
+      "boolq_sample_sd": 0.32,
+      "sg": 65.95,
+      "blimp": 77.65,
+      "docppl": 3.28
+    },
+    {
+      "model": "TGNomask-Aug-500M",
+      "xsum_mean": 21.77,
+      "xsum_sample_sd": 0.06,
+      "boolq_mean": 70.78,
+      "boolq_sample_sd": 0.74,
+      "sg": 57.58,
+      "blimp": 75.97,
+      "docppl": 3.19
+    }
+  ]
+}

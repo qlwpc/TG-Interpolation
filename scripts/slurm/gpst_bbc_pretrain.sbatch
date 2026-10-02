@@ -9,7 +9,7 @@
 #SBATCH --time=72:00:00
 #SBATCH --output=logs/gpst_bbc_pretrain_%j.log
 
-# GPST unsupervised pretrain, aligned with train_configs/terminal.yaml (OLMo-300M):
+# GPST unsupervised pretrain, aligned with train_configs/templates/terminal.yaml (OLMo-300M):
 #   - data:    BBC tree-stream → lazy (terminal + sentence boundaries)
 #   - model:   768/12/12, vocab 50320, swiglu/rms/flash (RoPE off, GPST constraint)
 #   - budget:  num_samples 2.08M × 8GPU × batch32 × seq2048 ≈ 4.26B tokens (0.42 ep, matches baseline)

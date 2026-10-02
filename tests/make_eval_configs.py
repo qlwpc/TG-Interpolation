@@ -23,7 +23,7 @@ DOWNSTREAM = [
 
 
 def build(base_yaml, label, ckpt_path):
-    cfg = TrainConfig.load(REPO / "train_configs" / base_yaml, [])
+    cfg = TrainConfig.load(REPO / "train_configs" / "diagnostics" / base_yaml, [])
     cfg.workspace = str(REPO)
     cfg.run_name = f"{label}_eval_coldrun"
     cfg.save_folder = str(REPO / "saved_models" / f"random_init_{label}")

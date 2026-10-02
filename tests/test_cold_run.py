@@ -542,14 +542,13 @@ class TestConfigSmoke:
     """Load real YAML configs and check key fields."""
 
     @pytest.mark.parametrize("yaml_file,expected_type", [
-        ("TG.yaml", "tg"),
-        ("terminal.yaml", "terminal"),
-        ("tree.yaml", "tree"),
+        ("train_configs/paper_sources/bbc_100m_tg.yaml", "tg"),
+        ("train_configs/templates/terminal.yaml", "terminal"),
+        ("train_configs/templates/tree-500M.yaml", "tree"),
     ])
     def test_config_loads(self, yaml_file, expected_type):
-        yaml_path = Path(_WORKSPACE) / "train_configs" / yaml_file
-        if not yaml_path.exists():
-            pytest.skip(f"{yaml_file} not found")
+        yaml_path = Path(_WORKSPACE) / yaml_file
+        assert yaml_path.is_file(), f"Required generator source not found: {yaml_path}"
 
         from omegaconf import OmegaConf
         from olmo.config import TrainConfig
@@ -563,11 +562,10 @@ class TestConfigSmoke:
             OmegaConf.clear_resolver("workspace")
         assert cfg.model.transformer_grammar_type == expected_type
 
-    def test_tg_yaml_model_size(self):
-        """TG.yaml 100M model size: 768 dim, 12 layers, 12 heads."""
-        yaml_path = Path(_WORKSPACE) / "train_configs" / "TG.yaml"
-        if not yaml_path.exists():
-            pytest.skip("TG.yaml not found")
+    def test_registered_tg_model_size(self):
+        """The registered TG source has 768 dim, 12 layers, and 12 heads."""
+        yaml_path = Path(_WORKSPACE) / "train_configs/paper_sources/bbc_100m_tg.yaml"
+        assert yaml_path.is_file(), f"Required generator source not found: {yaml_path}"
 
         from omegaconf import OmegaConf
         from olmo.config import TrainConfig

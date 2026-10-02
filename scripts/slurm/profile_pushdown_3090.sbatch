@@ -64,7 +64,7 @@ nvidia-smi
   --nnodes=1 \
   --nproc-per-node=8 \
   scripts/train.py \
-  train_configs/pushdown_profile_3090.yaml \
+  train_configs/diagnostics/pushdown_profile_3090.yaml \
   "run_name=pushdown-profile-${profile_variant}-${SLURM_JOB_ID}" \
   "save_folder=${run_dir}" \
   "${profile_overrides[@]}"

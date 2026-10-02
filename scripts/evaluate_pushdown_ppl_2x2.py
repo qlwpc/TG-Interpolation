@@ -7,7 +7,7 @@ Axes:
 
 All four cells use one trained checkpoint, sum joint ``p(x,y)`` mass without a
 ``1/K`` factor, and divide the final negative log likelihood by the same number
-of sentence-content terminal tokens. See ``docs/PLAN_pushdown_ppl_2x2.md``.
+of sentence-content terminal tokens.
 """
 
 from __future__ import annotations

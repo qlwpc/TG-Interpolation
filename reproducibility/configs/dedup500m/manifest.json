@@ -1,0 +1,220 @@
+{
+  "models": [
+    {
+      "model": "pause1",
+      "path": "reproducibility/configs/dedup500m/pause1.yaml",
+      "sha256": "bad5f222dc36d3b0d1231bd0e6915c362b6b2e0c1f848f8a445fec57c5a2f037",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/pause1/step15039-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "01a797857ce808bb217b628ca0131076f63062d2664c25c1df5d566d2eac96d0"
+        },
+        "config.yaml": {
+          "size": 7096,
+          "sha256": "bad5f222dc36d3b0d1231bd0e6915c362b6b2e0c1f848f8a445fec57c5a2f037"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "08a57dbb2de769423ebf847fa1b96ef0853cfd06d7f22ef1e45698d6eec61561"
+        }
+      }
+    },
+    {
+      "model": "pause2",
+      "path": "reproducibility/configs/dedup500m/pause2.yaml",
+      "sha256": "50249e25dec646e8273c12900414e9e78f9e47d58900525817408335018dc762",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/pause2/step18321-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "0ad5983d31f55cf8d980f140947794f0d24c4b308fa1c46d518299b96e11f4f7"
+        },
+        "config.yaml": {
+          "size": 7096,
+          "sha256": "50249e25dec646e8273c12900414e9e78f9e47d58900525817408335018dc762"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "b8b6e8b46646ef3815635f87adc7d84fe551eb6dd1139157ca18f9e683024f6c"
+        }
+      }
+    },
+    {
+      "model": "terminal",
+      "path": "reproducibility/configs/dedup500m/terminal.yaml",
+      "sha256": "f1b22ca6ef4f95abbd186a0fff37a27e281093df73f364e0e4a03ad06ce71701",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/terminal/step11501-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "ff405b700fcb55053e77e9028a913d51b884ba33bc438e18036505db57cffde0"
+        },
+        "config.yaml": {
+          "size": 6910,
+          "sha256": "f1b22ca6ef4f95abbd186a0fff37a27e281093df73f364e0e4a03ad06ce71701"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "d901f36fb88738034addfa79805ec78aef2414461dabaa5701941b765f435243"
+        }
+      }
+    },
+    {
+      "model": "tg",
+      "path": "reproducibility/configs/dedup500m/tg.yaml",
+      "sha256": "85ec5fe9f2fb5adac4ff9310b494328d5738bb98d6c207b3a8f90ffc88bb3c25",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tg/step18825-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "9d1c8bf20c1e6504852757ba2b4c9622cc145021316ed9a5df4a3e52bae3f1fc"
+        },
+        "config.yaml": {
+          "size": 7061,
+          "sha256": "85ec5fe9f2fb5adac4ff9310b494328d5738bb98d6c207b3a8f90ffc88bb3c25"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "f9d1397ee6e27751f321a9582efa0087eecdd0e68c632e2f69f296fda6d0adcf"
+        }
+      }
+    },
+    {
+      "model": "tgnomask",
+      "path": "reproducibility/configs/dedup500m/tgnomask.yaml",
+      "sha256": "faa74b70246019d67f10faae196d37b28e6bb95aba285af7bf6c9b22dd940c77",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tgnomask/step18825-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "3acde5ff13977ba166607ad3cc9786e63ba5487581d4ae0ab19f33ff16ef4acc"
+        },
+        "config.yaml": {
+          "size": 7091,
+          "sha256": "faa74b70246019d67f10faae196d37b28e6bb95aba285af7bf6c9b22dd940c77"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "50090862dadb331cc3fab48771247798bc73a69f8006ba1d7536930dd53763f0"
+        }
+      }
+    },
+    {
+      "model": "tgnomask_mix_tg",
+      "path": "reproducibility/configs/dedup500m/tgnomask_mix_tg.yaml",
+      "sha256": "c2e179c08c71b62e5f2f2f74cb426882badf42d7a297497ecb27e52c8f60eb0a",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tgnomask_mix_tg/step18825-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "bcabc9011e31ad2b4d0a6241740d132bead5473637d11498fd71047d218c9be2"
+        },
+        "config.yaml": {
+          "size": 7192,
+          "sha256": "c2e179c08c71b62e5f2f2f74cb426882badf42d7a297497ecb27e52c8f60eb0a"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "94e825855ad8e036e303b8a6ef59146e86d3cc60494ff67bc6d95515488202ef"
+        }
+      }
+    },
+    {
+      "model": "tgtree",
+      "path": "reproducibility/configs/dedup500m/tgtree.yaml",
+      "sha256": "18fc6303de6f5bd822704563a0397fcb2835d828aa605bdf391037f15a1ebf1a",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tgtree/step18825-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "c13850e22d300918c171735844ed73300e252be5d5d05c6411dae8cad8c9a1fc"
+        },
+        "config.yaml": {
+          "size": 6884,
+          "sha256": "18fc6303de6f5bd822704563a0397fcb2835d828aa605bdf391037f15a1ebf1a"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "4707838e8c44ee957932927bfadf4c03968b9e8c70f16b25b2ffc5d58afa1274"
+        }
+      }
+    },
+    {
+      "model": "tgtree_mix_tg",
+      "path": "reproducibility/configs/dedup500m/tgtree_mix_tg.yaml",
+      "sha256": "fb0e317ed4702313e71faeb44232003be0b9d57aa7e35d89ccc7e1decd82dbb4",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tgtree_mix_tg/step18825-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "8486bcd6e21455394e4672197465fdc4072f53f0d9ab30190307bf417d558fff"
+        },
+        "config.yaml": {
+          "size": 7196,
+          "sha256": "fb0e317ed4702313e71faeb44232003be0b9d57aa7e35d89ccc7e1decd82dbb4"
+        },
+        "train.pt": {
+          "size": 15125,
+          "sha256": "3a17b273d2e08f46d104379f16721b17dfc5388051ef4f3a2ccfc5fd31e2bfa1"
+        }
+      }
+    },
+    {
+      "model": "tree",
+      "path": "reproducibility/configs/dedup500m/tree.yaml",
+      "sha256": "99edff6431f42920ff4b9d4e5f9fa0ca81bbbd6bab1da260aa77756711d8c6e4",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tree/step16529-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "e3a56be67acfd25f28972dca7bab4e7826a57d41eba7e94e6d32610fdd866cc2"
+        },
+        "config.yaml": {
+          "size": 6882,
+          "sha256": "99edff6431f42920ff4b9d4e5f9fa0ca81bbbd6bab1da260aa77756711d8c6e4"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "7a6e91cbf431440394d4db512d2990e0d72d6d81379515a2bd16e48a69a1d8a2"
+        }
+      }
+    },
+    {
+      "model": "tree_noont",
+      "path": "reproducibility/configs/dedup500m/tree_noont.yaml",
+      "sha256": "64336566419e0af9c5b6d2f73472be5e577863e8dee86f4d62b46148782984d8",
+      "source_checkpoint": "saved_models/bbc_dedup_500m_scvi5090/tree_noont/step14670-unsharded",
+      "kind": "frozen checkpoint config; deployment paths require adaptation",
+      "checkpoint_files": {
+        "model.pt": {
+          "size": 2315048039,
+          "sha256": "90cebf69556069ba1798cd17606c9296d15f8ca81100a326ed1dcdaab1b67a0d"
+        },
+        "config.yaml": {
+          "size": 7121,
+          "sha256": "64336566419e0af9c5b6d2f73472be5e577863e8dee86f4d62b46148782984d8"
+        },
+        "train.pt": {
+          "size": 15061,
+          "sha256": "0a9e5220af16cc639771a1f39e69017aa82bd6bf00e441710f8e126e519b2862"
+        }
+      }
+    }
+  ],
+  "scope": "ten dedup 500M checkpoints used by the additional evaluation; configs copied byte-for-byte, not fresh portable launchers",
+  "identity_evidence": {
+    "source_sha256": "07da6cc5654ea598b46c5e6844006b067834827fe4a8d41a6f00780598b2e38e",
+    "verified_at": "2026-09-22T01:53:26+08:00",
+    "scope": "original checkpoint synchronization hash receipt; no new weight hashing in this publication cleanup"
+  }
+}

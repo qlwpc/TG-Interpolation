@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "authority": "EXPERIMENT_REPRODUCTION_RECORD.md#2A",
+  "authority": "docs/paper_results.md",
   "common": {
     "seed": 6198,
     "precision": "amp_bf16",
@@ -17,13 +17,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "terminal",
-      "source_config": "saved_models/Terminal-lr005-bs144/step34115-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_terminal.yaml",
       "grammar": "terminal",
       "learning_rate": 0.005,
       "global_batch": 144,
       "microbatch": 32,
       "final_step": 34115,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/Terminal-lr005-bs144/step34115-unsharded",
+      "source_config_sha256": "3714884ccd2e6f8a46cce260324640d115fa44c5f61099f2f6b52f33459acd04"
     },
     {
       "id": "bbc_100m_tree",
@@ -33,13 +35,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tree",
-      "source_config": "saved_models/Tree_test/step49440-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tree.yaml",
       "grammar": "tree",
       "learning_rate": 0.007,
       "global_batch": 244,
       "microbatch": 32,
       "final_step": 49440,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/Tree_test/step49440-unsharded",
+      "source_config_sha256": "f787865f1a8c1961f0d2ec16ab222bdf0b688b0e0407423c64e62154aaa75d4b"
     },
     {
       "id": "bbc_100m_tgtree",
@@ -49,13 +53,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TGtree/step69817-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tgtree.yaml",
       "grammar": "tree",
       "learning_rate": 0.0076,
       "global_batch": 224,
       "microbatch": 28,
       "final_step": 69817,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/TGtree/step69817-unsharded",
+      "source_config_sha256": "f75a7e1ff9d700e34b792757aae9ca4901b8b79c014fb22e643b810f2b99c7f3"
     },
     {
       "id": "bbc_100m_tg",
@@ -65,13 +71,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TG_test/step55457-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tg.yaml",
       "grammar": "tg",
       "learning_rate": 0.0076,
       "global_batch": 282,
       "microbatch": 30,
       "final_step": 55457,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/TG_test/step55457-unsharded",
+      "source_config_sha256": "44ef67a2b5c9fbfbe3c7c4c76211dd56db374bf7ed52a59a7f876576a0b51d4b"
     },
     {
       "id": "bbc_100m_tgnomask",
@@ -81,13 +89,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/nomask_test/step55853-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tgnomask.yaml",
       "grammar": "tgnomask",
       "learning_rate": 0.0076,
       "global_batch": 280,
       "microbatch": 30,
       "final_step": 55853,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/nomask_test/step55853-unsharded",
+      "source_config_sha256": "4d64ac06d141f4a270d244c1a3ad8091672a6c6db5769b07268d62b200ad9e4d"
     },
     {
       "id": "bbc_100m_tgnomask_aug",
@@ -97,13 +107,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TGnomask_aug_pretrain/step55853-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tgnomask_aug.yaml",
       "grammar": "tgnomask_aug",
       "learning_rate": 0.0076,
       "global_batch": 280,
       "microbatch": 30,
       "final_step": 55853,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/TGnomask_aug_pretrain/step55853-unsharded",
+      "source_config_sha256": "4688c277b0b79bd6a4e92665507637747dd995df209fb283f30698083a44c625"
     },
     {
       "id": "bbc_100m_tree_noont",
@@ -113,13 +125,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tree_noont",
-      "source_config": "saved_models/tree_noont/step42440-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tree_noont.yaml",
       "grammar": "tgtree",
       "learning_rate": 0.006296,
       "global_batch": 200,
       "microbatch": 25,
       "final_step": 42440,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/tree_noont/step42440-unsharded",
+      "source_config_sha256": "b663f0282fe420aeb1e26bddedce1a345d5c396796ed8ba34fcb5bc93844f380"
     },
     {
       "id": "bbc_100m_tree_compress",
@@ -129,13 +143,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tree_compress",
-      "source_config": "saved_models/tree_compress/step45965-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tree_compress.yaml",
       "grammar": "tgtree",
       "learning_rate": 0.006644,
       "global_batch": 220,
       "microbatch": 30,
       "final_step": 45965,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/tree_compress/step45965-unsharded",
+      "source_config_sha256": "d2aa49513de4210cca7eb392466bf63b3cb85c120dc789493e44af06a81d6dc4"
     },
     {
       "id": "bbc_100m_tree_triplecnt",
@@ -145,13 +161,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tree_triplecnt",
-      "source_config": "saved_models/tree_triplecnt/step60045-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tree_triplecnt.yaml",
       "grammar": "tgtree",
       "learning_rate": 0.008091,
       "global_batch": 320,
       "microbatch": 30,
       "final_step": 60045,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/tree_triplecnt/step60045-unsharded",
+      "source_config_sha256": "62d248d5676e477c25cede5966e37b3c577b45cbd0f2a9ab60d780e67a8ddf37"
     },
     {
       "id": "bbc_100m_tree_shuffle",
@@ -161,13 +179,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tree",
-      "source_config": "saved_models/Tree_shuffle_pretrain/step49440-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tree_shuffle.yaml",
       "grammar": "tree_shuffle",
       "learning_rate": 0.007,
       "global_batch": 244,
       "microbatch": 28,
       "final_step": 49440,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/Tree_shuffle_pretrain/step49440-unsharded",
+      "source_config_sha256": "80240b0b47842557fead8c128ae100c24e27006b57e4e845586af156d0b189a1"
     },
     {
       "id": "bbc_100m_tgnomask_mix_tg",
@@ -177,14 +197,25 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tgnomask_mix_tg.yaml",
       "grammar": "mixing",
       "learning_rate": 0.0076,
       "global_batch": 224,
       "microbatch": 28,
       "final_step": 69817,
       "dtype": "uint16",
-      "mix_heads": [["tg", 6], ["tgnomask", 6]]
+      "mix_heads": [
+        [
+          "tg",
+          6
+        ],
+        [
+          "tgnomask",
+          6
+        ]
+      ],
+      "source_checkpoint": "saved_models/TG_mix_nomask_bs240_lr0076/step69817-unsharded",
+      "source_config_sha256": "72ab71ec9e7384f8e065e2a885d3dac1e0284be84bcb6336a4632e236f006eb4"
     },
     {
       "id": "bbc_100m_tgtree_mix_tg",
@@ -194,14 +225,25 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/tgtree_mix_tg_pretrain/step69817-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_tgtree_mix_tg.yaml",
       "grammar": "mixing",
       "learning_rate": 0.0076,
       "global_batch": 224,
       "microbatch": 28,
       "final_step": 69817,
       "dtype": "uint16",
-      "mix_heads": [["tgtree", 6], ["tg", 6]]
+      "mix_heads": [
+        [
+          "tgtree",
+          6
+        ],
+        [
+          "tg",
+          6
+        ]
+      ],
+      "source_checkpoint": "saved_models/tgtree_mix_tg_pretrain/step69817-unsharded",
+      "source_config_sha256": "dc37c4339814d772228f7a65a6b9cac9c329ca9f74cfb649b7f3d96441ee02a3"
     },
     {
       "id": "bbc_100m_pause1_sep",
@@ -266,7 +308,7 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "terminal",
-      "source_config": "saved_models/pretrain_pause1_100M/step45487-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_pause1_repeat.yaml",
       "grammar": "pause1",
       "learning_rate": 0.006585,
       "global_batch": 216,
@@ -276,7 +318,9 @@
       "pause_protocol": "repeat_token",
       "pause_token_id": null,
       "sequence_length": 2048,
-      "protocol_note": "historical repeat-token control; not the paper Table 4 Pause-1 model"
+      "protocol_note": "historical repeat-token control; not the paper Table 4 Pause-1 model",
+      "source_checkpoint": "saved_models/pretrain_pause1_100M/step45487-unsharded",
+      "source_config_sha256": "49be79c9a0c17002af58b25c8db92fc2f4222bf1240e4f87e56a89ac2d4e04fa"
     },
     {
       "id": "bbc_100m_pause2_repeat",
@@ -287,7 +331,7 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "terminal",
-      "source_config": "saved_models/pretrain_pause2_100M/step52609-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_pause2_repeat.yaml",
       "grammar": "pause2",
       "learning_rate": 0.007595,
       "global_batch": 280,
@@ -297,7 +341,9 @@
       "pause_protocol": "repeat_token",
       "pause_token_id": null,
       "sequence_length": 2049,
-      "protocol_note": "historical repeat-token control; not the paper Table 4 Pause-2 model"
+      "protocol_note": "historical repeat-token control; not the paper Table 4 Pause-2 model",
+      "source_checkpoint": "saved_models/pretrain_pause2_100M/step52609-unsharded",
+      "source_config_sha256": "a4557c1286e1b0eb228bbfe06a43b43d88ac195d9190a1c51ec6698781665c64"
     },
     {
       "id": "bbc_100m_treereg_l9",
@@ -307,13 +353,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "treereg",
-      "source_config": "saved_models/treereg_layer9/step34354-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_treereg_l9.yaml",
       "grammar": "treereg",
       "learning_rate": 0.005323,
       "global_batch": 144,
       "microbatch": 12,
       "final_step": 34354,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/treereg_layer9/step34354-unsharded",
+      "source_config_sha256": "13b4fe4bd1a44748676c889633886b0f52156888c2ba1e53181e4fd1abc30e11"
     },
     {
       "id": "bbc_100m_pushdown",
@@ -323,13 +371,15 @@
       "scale": "100M",
       "corpus": "bbc",
       "input": "pushdown",
-      "source_config": "saved_models/pushdown_terminalonly/step34354-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_100m_pushdown.yaml",
       "grammar": "pushdown",
       "learning_rate": 0.005323,
       "global_batch": 144,
       "microbatch": 12,
       "final_step": 34354,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/pushdown_terminalonly/step34354-unsharded",
+      "source_config_sha256": "f42af482c7c8a5fcdd30fc0bd0a11c1298a9519a1192e814c90473aefa9456c1"
     },
     {
       "id": "bbc_500m_terminal",
@@ -339,13 +389,15 @@
       "scale": "500M",
       "corpus": "bbc",
       "input": "terminal",
-      "source_config": "saved_models/terminal_500M/step34115-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_500m_terminal.yaml",
       "grammar": "terminal",
       "learning_rate": 0.001308,
       "global_batch": 144,
       "microbatch": 16,
       "final_step": 34115,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/terminal_500M/step34115-unsharded",
+      "source_config_sha256": "a81976d3bf255918f1a00011de04b880eeccc7684f86c0859bf99950ced4a697"
     },
     {
       "id": "bbc_500m_tree",
@@ -355,13 +407,15 @@
       "scale": "500M",
       "corpus": "bbc",
       "input": "tree",
-      "source_config": "saved_models/Tree_500M/step49440-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_500m_tree.yaml",
       "grammar": "tree",
       "learning_rate": 0.001723,
       "global_batch": 244,
       "microbatch": 16,
       "final_step": 49440,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/Tree_500M/step49440-unsharded",
+      "source_config_sha256": "50f92cc1a6a91f02ecc6d7152ac7b188c7934bc23a69eefe8fcc1c4ede3b7a13"
     },
     {
       "id": "bbc_500m_tgtree",
@@ -371,13 +425,15 @@
       "scale": "500M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TGTree_500M/step55853-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_500m_tgtree.yaml",
       "grammar": "tree",
       "learning_rate": 0.001866,
       "global_batch": 280,
       "microbatch": 16,
       "final_step": 55853,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/TGTree_500M/step55853-unsharded",
+      "source_config_sha256": "4e2a4361a8d0c76d4cd563d13b25cf1024d2f0df74a0962754291dbe403570c3"
     },
     {
       "id": "bbc_500m_tgnomask_aug",
@@ -387,13 +443,15 @@
       "scale": "500M",
       "corpus": "bbc",
       "input": "tg",
-      "source_config": "saved_models/TGnomaskaug_500M/step55853-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_500m_tgnomask_aug.yaml",
       "grammar": "tgnomask_aug",
       "learning_rate": 0.001866,
       "global_batch": 280,
       "microbatch": 12,
       "final_step": 55853,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/TGnomaskaug_500M/step55853-unsharded",
+      "source_config_sha256": "d3fe39deabe91b0bc349627d90098fac8434cd436eb2b251f34d5ca09d043823"
     },
     {
       "id": "bbc_1b_terminal",
@@ -403,13 +461,15 @@
       "scale": "1B",
       "corpus": "bbc",
       "input": "terminal",
-      "source_config": "saved_models/terminal_1B/step34115-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_1b_terminal.yaml",
       "grammar": "terminal",
       "learning_rate": 0.000766,
       "global_batch": 144,
       "microbatch": 12,
       "final_step": 34115,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/terminal_1B/step34115-unsharded",
+      "source_config_sha256": "f75f39e33cbeb206c820c529e6fb84b49dfb60ba532a292be3055bc03ace64ef"
     },
     {
       "id": "bbc_1b_tree",
@@ -419,13 +479,15 @@
       "scale": "1B",
       "corpus": "bbc",
       "input": "tree",
-      "source_config": "saved_models/Tree_1B/step49440-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/bbc_1b_tree.yaml",
       "grammar": "tree",
       "learning_rate": 0.00101,
       "global_batch": 244,
       "microbatch": 12,
       "final_step": 49440,
-      "dtype": "uint16"
+      "dtype": "uint16",
+      "source_checkpoint": "saved_models/Tree_1B/step49440-unsharded",
+      "source_config_sha256": "fa44d99d27dd5960ee4ba2d1ac625c9b8223e23ee698dfa8e148a3459fcfd2af"
     },
     {
       "id": "fwedu_1b_terminal",
@@ -435,13 +497,15 @@
       "scale": "1B",
       "corpus": "fineweb-edu",
       "input": "terminal",
-      "source_config": "saved_models/A800_models/terminal_1B/step94299-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/fwedu_1b_terminal.yaml",
       "grammar": "terminal",
       "learning_rate": 0.001546,
       "global_batch": 512,
       "microbatch": 4,
       "final_step": 94299,
-      "dtype": "uint32"
+      "dtype": "uint32",
+      "source_checkpoint": "saved_models/A800_models/terminal_1B/step94299-unsharded",
+      "source_config_sha256": "5c83cd80cbaad0001fbb37ba5bef458f1549a6ac38d9bf5ae09de24f1ec11446"
     },
     {
       "id": "fwedu_1b_tree",
@@ -451,13 +515,15 @@
       "scale": "1B",
       "corpus": "fineweb-edu",
       "input": "tree",
-      "source_config": "saved_models/A800_models/tree_1B/step137217-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/fwedu_1b_tree.yaml",
       "grammar": "tree",
       "learning_rate": 0.002013,
       "global_batch": 832,
       "microbatch": 5,
       "final_step": 137217,
-      "dtype": "uint32"
+      "dtype": "uint32",
+      "source_checkpoint": "saved_models/A800_models/tree_1B/step137217-unsharded",
+      "source_config_sha256": "9c1b1027afbe7033c6696c604dc94e49d4260b08ca37bd8612c05f13576a6754"
     },
     {
       "id": "fwedu_1b_tgtree",
@@ -467,13 +533,15 @@
       "scale": "1B",
       "corpus": "fineweb-edu",
       "input": "tg",
-      "source_config": "saved_models/A800_models/tgtree_1B/step143658-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/fwedu_1b_tgtree.yaml",
       "grammar": "tgtree",
       "learning_rate": 0.002176,
       "global_batch": 1024,
       "microbatch": 5,
       "final_step": 143658,
-      "dtype": "uint32"
+      "dtype": "uint32",
+      "source_checkpoint": "saved_models/A800_models/tgtree_1B/step143658-unsharded",
+      "source_config_sha256": "e3ab858418162c1e873f0961ced5e39601751fa768a617027a21d877faad54d5"
     },
     {
       "id": "fwedu_1b_pause1_sep",
@@ -483,7 +551,7 @@
       "scale": "1B",
       "corpus": "fineweb-edu",
       "input": "terminal",
-      "source_config": "saved_models/A800_models/pause1_1B_SEP/step116061-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/fwedu_1b_pause1_sep.yaml",
       "grammar": "pause1",
       "learning_rate": 0.002013,
       "global_batch": 832,
@@ -492,7 +560,9 @@
       "dtype": "uint32",
       "pause_protocol": "dedicated_sep",
       "pause_token_id": 151673,
-      "sequence_length": 2048
+      "sequence_length": 2048,
+      "source_checkpoint": "saved_models/A800_models/pause1_1B_SEP/step116061-unsharded",
+      "source_config_sha256": "9ec5575f04a436bfe43f98d402c2d557569a58f23f13eafd44e99d9cdbcabb95"
     },
     {
       "id": "fwedu_1b_pause2_sep",
@@ -502,7 +572,7 @@
       "scale": "1B",
       "corpus": "fineweb-edu",
       "input": "terminal",
-      "source_config": "saved_models/A800_models/pause2_1B_SEP/step141380-unsharded/config.yaml",
+      "source_config": "train_configs/paper_sources/fwedu_1b_pause2_sep.yaml",
       "grammar": "pause2",
       "learning_rate": 0.002176,
       "global_batch": 1024,
@@ -511,7 +581,9 @@
       "dtype": "uint32",
       "pause_protocol": "dedicated_sep",
       "pause_token_id": 151673,
-      "sequence_length": 2049
+      "sequence_length": 2049,
+      "source_checkpoint": "saved_models/A800_models/pause2_1B_SEP/step141380-unsharded",
+      "source_config_sha256": "ff7cc03001f04b39e80fe20fe1ea9738ae9d83216a1499789dc2b0a1f4a7169a"
     }
   ]
 }

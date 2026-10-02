@@ -1,101 +1,38 @@
-# Native document-PPL recovery and RTX3090 integration record
+# Native DocPPL：续跑、缓存和严格合并
 
-Updated 2026-09-05. This record describes the durable parts recovered from
-`RTX3090:/home/wangpch/TG-Interpolation` after comparing its dirty worktree with
-GitHub `main` at `1c9e2a8`. Untracked files were outside the audit. The remote
-checkout had no unique commits, was 12 commits behind `main`, and contained 15
-modified tracked files at local HEAD `f5f8da6`. The original read-only snapshot and patch are retained
-locally under `/tmp/rtx3090-tracked-audit/` for this integration session.
+当前 Pushdown 历史策略为 [model-best](document_ppl_model_best_history.md)；GPST-model
+自身的历史策略不由这项改动定义。数据版本选择见 [Evaluation](../Evaluation.md)。
 
-## Integrated behavior
+## 可复用行为
 
-- Native Pushdown scoring can reuse candidate-0 transformer K/V, final hidden
-  states, input IDs, and sentence IDs. When complete-sentence context truncation
-  slides the window, the evaluator discards the stale cache and rebuilds it from
-  the retained suffix. `--no-kv-cache` remains the full-prefix correctness
-  reference.
-- The attachment head computes embeddings and its MLP only for the requested
-  query range. Cached and full-prefix paths retain the selected versioned
-  attachment normalization: v1 `stack_legal` or v2 `sentence_causal`.
-- GPST and Pushdown bound candidate batches by both their linear token/action
-  budget and `batch × context_length²`. Pushdown retries the same candidate
-  group at half the batch size after CUDA OOM, down to one candidate.
-- Both evaluators can atomically commit one JSON result per completed document.
-  `--resume-document-results` skips only documents already stored under an
-  identical run fingerprint. The fingerprint binds checkpoint, corpus,
-  tokenizer, model type, and scoring settings. `--max-sentences` is rejected for
-  resumable output because it can stop inside a document.
-- The shard launcher reads document and candidate counts from the finalized
-  corpus manifest, waits for every worker, refuses to publish an aggregate after
-  any worker failure, and supports explicit complete `DOCUMENT_BOUNDS`.
-- The merger validates finite likelihoods, positive counts, candidate counts,
-  protocol agreement, duplicate IDs, filename/ID agreement, exact document
-  coverage, and the expected candidates per sentence. It writes the aggregate
-  atomically only after all checks pass.
+- Pushdown 缓存被选历史的 K/V、final hidden、tokens 和 sentence IDs；完整句滑窗后重建缓存。
+  `--no-kv-cache` 保留 full-prefix 正确性参考，v1/v2 normalization 各自不变。
+- 候选 batch 同时受 token/action 和二次 attention 预算限制。Pushdown OOM 时从同一候选区间
+  减半重试，最低为 1；不跳过候选，不复用失败批次的部分结果。
+- 完整文档原子写入独立 JSON；`--resume-document-results` 仅在 run fingerprint 相同才复用。
+  fingerprint 绑定 checkpoint、corpus、tokenizer、模型类型及计分设置；改变历史策略或 cache 等
+  设置使用新目录。`--max-sentences` 可能截断文档，不能与可恢复文档输出合用。
+- launcher 从 finalized manifest 读取文档/候选数，等待所有 worker；任何失败均不发布汇总。
+- merge 拒绝非有限 NLL、无效计数、重复 ID、文件名/ID 不符、协议或候选计数不符和覆盖缺口；
+  完成全部检查后原子发布 aggregate。相同文件名不是相同运行身份。
 
-The corpus default follows the current evaluation entry:
-`dataset/bbc-news/testppl/native_model_topk_300_v2`. A host that keeps the
-finalized corpus at `dataset/bbc-news/native_model_topk_300_v2` can pass that
-path explicitly or set `NATIVE_DATA` in the Slurm wrapper.
-
-## Full resumable run
-
-```bash
-PYTHON_BIN=/home/wangpch/.conda/envs/LLM/bin/python \
-PUSHDOWN_CHECKPOINT=saved_models/pushdown/step34354-unsharded \
-bash scripts/run_native_document_ppl_shards.sh pushdown 8 \
-  dataset/bbc-news/testppl/native_model_topk_300_v2 \
-  docppl_runs/pushdown_native_full
-```
-
-Re-running the same command resumes completed documents. Changing the
-checkpoint, corpus metadata, tokenizer, normalization, context policy, or cache
-mode requires a new result directory. The launcher publishes
-`aggregate.json` only when every corpus document is present exactly once.
-
-For an individual process, the equivalent controls are:
+## 入口
 
 ```bash
 PYTHONPATH=. python scripts/evaluate_pushdown_document_ppl.py \
-  --checkpoint <checkpoint> \
-  --native-data <native_model_topk_300_v2> \
-  --start-document 0 --end-document 621 \
+  --checkpoint /path/to/pushdown-checkpoint \
+  --native-data dataset/bbc-news-reserved-clean-v1/native_model_topk_300_v2/test \
+  --start-document 0 --end-document 5000 \
   --attachment-normalization stack_legal \
-  --document-result-dir <run>/documents \
-  --resume-document-results
+  --document-result-dir /path/to/new-run/documents --resume-document-results
 ```
 
-GPST uses `scripts/gpst/evaluate_document_ppl.py` with the same document-result
-flags. `scripts/merge_native_document_ppl.py` can independently validate and
-merge an atomic document directory. Exact coverage requires
-`--expected-documents`; old shard totals without per-document IDs can still be
-combined only when this exact-coverage option is omitted.
+按设备预算分成完整文档区间。`scripts/run_native_document_ppl_shards.sh` 支持显式语料、
+checkpoint、输出目录及 `DOCUMENT_BOUNDS`；旧默认路径须核对后覆盖。
+GPST 使用 `scripts/gpst/evaluate_document_ppl.py` 的同名 document-result 参数。
+`scripts/merge_native_document_ppl.py --expected-documents N` 才要求精确全量覆盖；旧 shard
+总数在省略该选项时可汇总，不代表检查了逐文档完整性。clean campaign 使用其专用
+[输入审计/终验合同](bbc_reserved_docppl_sist_20260907.md)。
 
-## Audit decisions
-
-The integration did not copy the remote tree wholesale. Current `main` already
-has the more general `compute_depth_rows_gpu()` implementation, so the remote
-`compute_last_depth_rows_gpu()` duplicate was represented by parity tests rather
-than a second API. Current v1/v2 protocol metadata and corpus paths were kept.
-
-Two remote defects were corrected during integration:
-
-- `scripts/merge_native_document_ppl.py` referenced `protocol` outside the
-  function where it was created;
-- `scripts/profile_native_document_ppl.py` used `prefix` in the Pushdown branch
-  without initializing it and used only the immediately preceding GPST sentence
-  instead of the evaluator's bounded candidate-0 history.
-
-The RTX3090-only `--mem=2M`, two-CPU allocation, and thread-count changes were
-not copied as repository defaults because those values are cluster-policy and
-host specific. The portable allocator override, configurable output directory,
-explicit checkpoint/data settings, and recovery behavior were retained.
-
-## Verification boundary
-
-CPU regression tests cover cached/full-prefix token, attachment, and joint NLL
-parity for both v1 and v2, tied and untied output heads, context-window rebuilds,
-OOM retry bookkeeping, GPST/Pushdown document skip behavior, depth-row parity,
-atomic writes, run-fingerprint rejection, and strict merge failures. A real
-multi-GPU full-corpus rerun is still required before replacing any registered
-paper value; this implementation change alone is not result evidence.
+回归覆盖缓存/完整前缀等价、滑窗、OOM 重试、fingerprint 拒绝和严格合并。
+结果解释见[论文结果说明](paper_results.md)。

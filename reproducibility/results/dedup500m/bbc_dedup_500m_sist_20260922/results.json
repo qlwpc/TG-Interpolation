@@ -1,0 +1,1339 @@
+{
+  "status": "complete",
+  "models": {
+    "tg": {
+      "document_coverage": 5000,
+      "document_fingerprints": [
+        "af83811e6dc38ffa0beafef94e015bfbb501484f8470ce23ac11336fd03683c7"
+      ],
+      "DocPPL": 15.465372686331607,
+      "SG": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "Agreement": 0.8421052631578947,
+            "Center_Embedding": 0.9107142857142857,
+            "Garden_Path_Effects": 0.7894736842105263,
+            "Gross_Syntactic_Expectation": 0.7391304347826086,
+            "Licensing": 0.7894736842105263,
+            "Long_Distance_Dependencies": 0.7018348623853211,
+            "avg": 0.7954553690768605
+          },
+          "coverage": {
+            "syntactic_generalization": {
+              "dataset_length": 841,
+              "loader_batches": 421,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "blimp": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "anaphor_agreement/anaphor_gender_agreement": 0.96,
+            "anaphor_agreement/anaphor_number_agreement": 0.995,
+            "anaphor_agreement/overall": 0.9775,
+            "argument_structure/animate_subject_passive": 0.76,
+            "argument_structure/animate_subject_trans": 0.838,
+            "argument_structure/causative": 0.724,
+            "argument_structure/drop_argument": 0.78,
+            "argument_structure/inchoative": 0.656,
+            "argument_structure/intransitive": 0.783,
+            "argument_structure/passive_1": 0.874,
+            "argument_structure/passive_2": 0.849,
+            "argument_structure/transitive": 0.862,
+            "argument_structure/overall": 0.7917777777777778,
+            "binding/principle_A_c_command": 0.78,
+            "binding/principle_A_case_1": 1.0,
+            "binding/principle_A_case_2": 0.955,
+            "binding/principle_A_domain_1": 0.977,
+            "binding/principle_A_domain_2": 0.641,
+            "binding/principle_A_domain_3": 0.651,
+            "binding/principle_A_reconstruction": 0.439,
+            "binding/overall": 0.7775714285714286,
+            "control_raising/existential_there_object_raising": 0.895,
+            "control_raising/existential_there_subject_raising": 0.892,
+            "control_raising/expletive_it_object_raising": 0.769,
+            "control_raising/tough_vs_raising_1": 0.656,
+            "control_raising/tough_vs_raising_2": 0.925,
+            "control_raising/overall": 0.8274,
+            "determiner_noun_agreement/determiner_noun_agreement_1": 0.976,
+            "determiner_noun_agreement/determiner_noun_agreement_2": 0.967,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_1": 0.867,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_2": 0.958,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_2": 0.938,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_1": 0.896,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_2": 0.928,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adjective_1": 0.956,
+            "determiner_noun_agreement/overall": 0.93575,
+            "ellipsis/ellipsis_n_bar_1": 0.882,
+            "ellipsis/ellipsis_n_bar_2": 0.767,
+            "ellipsis/overall": 0.8245,
+            "filler_gap_dependency/wh_questions_object_gap": 0.855,
+            "filler_gap_dependency/wh_questions_subject_gap": 0.96,
+            "filler_gap_dependency/wh_questions_subject_gap_long_distance": 0.9,
+            "filler_gap_dependency/wh_vs_that_no_gap": 0.973,
+            "filler_gap_dependency/wh_vs_that_no_gap_long_distance": 0.982,
+            "filler_gap_dependency/wh_vs_that_with_gap": 0.703,
+            "filler_gap_dependency/wh_vs_that_with_gap_long_distance": 0.536,
+            "filler_gap_dependency/overall": 0.8441428571428572,
+            "irregular_forms/irregular_past_participle_adjectives": 0.996,
+            "irregular_forms/irregular_past_participle_verbs": 0.906,
+            "irregular_forms/overall": 0.951,
+            "island_effects/adjunct_island": 0.909,
+            "island_effects/complex_NP_island": 0.703,
+            "island_effects/coordinate_structure_constraint_complex_left_branch": 0.783,
+            "island_effects/coordinate_structure_constraint_object_extraction": 0.935,
+            "island_effects/left_branch_island_echo_question": 0.133,
+            "island_effects/left_branch_island_simple_question": 0.905,
+            "island_effects/sentential_subject_island": 0.474,
+            "island_effects/wh_island": 0.873,
+            "island_effects/overall": 0.714375,
+            "npi_licensing/matrix_question_npi_licensor_present": 0.988,
+            "npi_licensing/npi_present_1": 0.793,
+            "npi_licensing/npi_present_2": 0.714,
+            "npi_licensing/only_npi_licensor_present": 0.937,
+            "npi_licensing/only_npi_scope": 0.833,
+            "npi_licensing/sentential_negation_npi_licensor_present": 0.991,
+            "npi_licensing/sentential_negation_npi_scope": 0.697,
+            "npi_licensing/overall": 0.8504285714285714,
+            "quantifiers/existential_there_quantifiers_1": 0.987,
+            "quantifiers/existential_there_quantifiers_2": 0.277,
+            "quantifiers/superlative_quantifiers_1": 0.85,
+            "quantifiers/superlative_quantifiers_2": 0.83,
+            "quantifiers/overall": 0.736,
+            "subject_verb_agreement/distractor_agreement_relational_noun": 0.971,
+            "subject_verb_agreement/distractor_agreement_relative_clause": 0.926,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_1": 0.903,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_2": 0.912,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_1": 0.962,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_2": 0.929,
+            "subject_verb_agreement/overall": 0.9338333333333333,
+            "overall/overall": 0.8331641791044776
+          },
+          "coverage": {
+            "BLiMP": {
+              "dataset_length": 40200000,
+              "loader_batches": 1340000,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "boolq": [
+        {
+          "seed": 42,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6574923547400612
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6593272171253822
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6535168195718655
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6553516819571865
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6516819571865443
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        }
+      ],
+      "boolq_mean_sd": {
+        "eval/downstream/boolq_acc__": {
+          "mean": 0.655474006116208,
+          "sample_sd": 0.0030473818148876075
+        }
+      },
+      "xsum_finetune": [
+        {
+          "seed": 42,
+          "metrics": {
+            "rouge1": 0.29579299179828755,
+            "rouge2": 0.09457639504890084,
+            "rougeL": 0.23072826957373843,
+            "R-AVG": 0.2070325521403089
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "rouge1": 0.2958596069492032,
+            "rouge2": 0.09410700279544085,
+            "rougeL": 0.2306439284188526,
+            "R-AVG": 0.20687017938783223
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "rouge1": 0.2967112302143546,
+            "rouge2": 0.09463288988839733,
+            "rougeL": 0.23122738206478718,
+            "R-AVG": 0.20752383405584637
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "rouge1": 0.29574608213351616,
+            "rouge2": 0.0935055198191985,
+            "rougeL": 0.23071812518419227,
+            "R-AVG": 0.2066565757123023
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "rouge1": 0.2944138439783699,
+            "rouge2": 0.09291614423522218,
+            "rougeL": 0.22940880448438988,
+            "R-AVG": 0.20557959756599398
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        }
+      ],
+      "xsum_finetune_mean_sd": {
+        "rouge1": {
+          "mean": 0.2957047510147463,
+          "sample_sd": 0.0008235466613230715
+        },
+        "rouge2": {
+          "mean": 0.09394759035743194,
+          "sample_sd": 0.0007331013873166128
+        },
+        "rougeL": {
+          "mean": 0.23054530194519207,
+          "sample_sd": 0.0006763748912950961
+        },
+        "R-AVG": {
+          "mean": 0.20673254777245675,
+          "sample_sd": 0.0007193999230380246
+        }
+      },
+      "tasks_total": 22,
+      "tasks_complete": 22
+    },
+    "tgnomask": {
+      "document_coverage": 5000,
+      "document_fingerprints": [
+        "74c4f1c47892b6301823535225b00dc0a3bd0c6003fb5d0a8cafcb164e17fcb7"
+      ],
+      "DocPPL": 13.99520312667018,
+      "SG": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "Agreement": 0.7017543859649122,
+            "Center_Embedding": 0.9464285714285714,
+            "Garden_Path_Effects": 0.8289473684210527,
+            "Gross_Syntactic_Expectation": 0.7934782608695652,
+            "Licensing": 0.8308270676691729,
+            "Long_Distance_Dependencies": 0.7935779816513762,
+            "avg": 0.8158356060007751
+          },
+          "coverage": {
+            "syntactic_generalization": {
+              "dataset_length": 841,
+              "loader_batches": 421,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "blimp": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "anaphor_agreement/anaphor_gender_agreement": 0.97,
+            "anaphor_agreement/anaphor_number_agreement": 0.996,
+            "anaphor_agreement/overall": 0.983,
+            "argument_structure/animate_subject_passive": 0.734,
+            "argument_structure/animate_subject_trans": 0.857,
+            "argument_structure/causative": 0.719,
+            "argument_structure/drop_argument": 0.756,
+            "argument_structure/inchoative": 0.646,
+            "argument_structure/intransitive": 0.771,
+            "argument_structure/passive_1": 0.859,
+            "argument_structure/passive_2": 0.845,
+            "argument_structure/transitive": 0.835,
+            "argument_structure/overall": 0.7802222222222223,
+            "binding/principle_A_c_command": 0.725,
+            "binding/principle_A_case_1": 1.0,
+            "binding/principle_A_case_2": 0.954,
+            "binding/principle_A_domain_1": 0.981,
+            "binding/principle_A_domain_2": 0.711,
+            "binding/principle_A_domain_3": 0.639,
+            "binding/principle_A_reconstruction": 0.384,
+            "binding/overall": 0.7705714285714286,
+            "control_raising/existential_there_object_raising": 0.88,
+            "control_raising/existential_there_subject_raising": 0.875,
+            "control_raising/expletive_it_object_raising": 0.781,
+            "control_raising/tough_vs_raising_1": 0.636,
+            "control_raising/tough_vs_raising_2": 0.913,
+            "control_raising/overall": 0.817,
+            "determiner_noun_agreement/determiner_noun_agreement_1": 0.98,
+            "determiner_noun_agreement/determiner_noun_agreement_2": 0.978,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_1": 0.872,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_2": 0.973,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_2": 0.937,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_1": 0.898,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_2": 0.951,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adjective_1": 0.959,
+            "determiner_noun_agreement/overall": 0.9435,
+            "ellipsis/ellipsis_n_bar_1": 0.889,
+            "ellipsis/ellipsis_n_bar_2": 0.885,
+            "ellipsis/overall": 0.887,
+            "filler_gap_dependency/wh_questions_object_gap": 0.87,
+            "filler_gap_dependency/wh_questions_subject_gap": 0.963,
+            "filler_gap_dependency/wh_questions_subject_gap_long_distance": 0.925,
+            "filler_gap_dependency/wh_vs_that_no_gap": 0.98,
+            "filler_gap_dependency/wh_vs_that_no_gap_long_distance": 0.98,
+            "filler_gap_dependency/wh_vs_that_with_gap": 0.607,
+            "filler_gap_dependency/wh_vs_that_with_gap_long_distance": 0.501,
+            "filler_gap_dependency/overall": 0.8322857142857143,
+            "irregular_forms/irregular_past_participle_adjectives": 0.842,
+            "irregular_forms/irregular_past_participle_verbs": 0.928,
+            "irregular_forms/overall": 0.885,
+            "island_effects/adjunct_island": 0.938,
+            "island_effects/complex_NP_island": 0.716,
+            "island_effects/coordinate_structure_constraint_complex_left_branch": 0.805,
+            "island_effects/coordinate_structure_constraint_object_extraction": 0.89,
+            "island_effects/left_branch_island_echo_question": 0.243,
+            "island_effects/left_branch_island_simple_question": 0.892,
+            "island_effects/sentential_subject_island": 0.428,
+            "island_effects/wh_island": 0.811,
+            "island_effects/overall": 0.715375,
+            "npi_licensing/matrix_question_npi_licensor_present": 0.91,
+            "npi_licensing/npi_present_1": 0.848,
+            "npi_licensing/npi_present_2": 0.738,
+            "npi_licensing/only_npi_licensor_present": 0.961,
+            "npi_licensing/only_npi_scope": 0.931,
+            "npi_licensing/sentential_negation_npi_licensor_present": 0.994,
+            "npi_licensing/sentential_negation_npi_scope": 0.834,
+            "npi_licensing/overall": 0.888,
+            "quantifiers/existential_there_quantifiers_1": 0.985,
+            "quantifiers/existential_there_quantifiers_2": 0.246,
+            "quantifiers/superlative_quantifiers_1": 0.883,
+            "quantifiers/superlative_quantifiers_2": 0.811,
+            "quantifiers/overall": 0.73125,
+            "subject_verb_agreement/distractor_agreement_relational_noun": 0.955,
+            "subject_verb_agreement/distractor_agreement_relative_clause": 0.934,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_1": 0.856,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_2": 0.862,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_1": 0.949,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_2": 0.945,
+            "subject_verb_agreement/overall": 0.9168333333333333,
+            "overall/overall": 0.832089552238806
+          },
+          "coverage": {
+            "BLiMP": {
+              "dataset_length": 40200000,
+              "loader_batches": 1340000,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "boolq": [
+        {
+          "seed": 42,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.7036697247706422
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6938837920489297
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6926605504587156
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6877675840978593
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6987767584097859
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        }
+      ],
+      "boolq_mean_sd": {
+        "eval/downstream/boolq_acc__": {
+          "mean": 0.6953516819571866,
+          "sample_sd": 0.006079399946074204
+        }
+      },
+      "xsum_finetune": [
+        {
+          "seed": 42,
+          "metrics": {
+            "rouge1": 0.3117643509896899,
+            "rouge2": 0.10857735871480981,
+            "rougeL": 0.24619405638725694,
+            "R-AVG": 0.22217858869725218
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "rouge1": 0.309568110062795,
+            "rouge2": 0.10739618584207536,
+            "rougeL": 0.24388152357088452,
+            "R-AVG": 0.22028193982525165
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "rouge1": 0.31077262893953217,
+            "rouge2": 0.10808086856956982,
+            "rougeL": 0.24467285568926478,
+            "R-AVG": 0.22117545106612227
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "rouge1": 0.3110040528481264,
+            "rouge2": 0.1083362252029287,
+            "rougeL": 0.24478114703158693,
+            "R-AVG": 0.22137380836088064
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "rouge1": 0.31136651407623694,
+            "rouge2": 0.10827213389588783,
+            "rougeL": 0.24566054749977284,
+            "R-AVG": 0.22176639849063254
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        }
+      ],
+      "xsum_finetune_mean_sd": {
+        "rouge1": {
+          "mean": 0.31089513138327607,
+          "sample_sd": 0.0008315047634615458
+        },
+        "rouge2": {
+          "mean": 0.1081325544450543,
+          "sample_sd": 0.0004482536079828597
+        },
+        "rougeL": {
+          "mean": 0.2450380260357532,
+          "sample_sd": 0.0009028805711092522
+        },
+        "R-AVG": {
+          "mean": 0.22135523728802786,
+          "sample_sd": 0.0007126704167311199
+        }
+      },
+      "tasks_total": 22,
+      "tasks_complete": 22
+    },
+    "tgtree_mix_tg": {
+      "document_coverage": 5000,
+      "document_fingerprints": [
+        "1f4ee95dfe34d04179ba4aaa4bea1cdbc2e173845ab71caa9f371cc1b72a8e8a"
+      ],
+      "DocPPL": 13.784714330836037,
+      "SG": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "Agreement": 0.8421052631578947,
+            "Center_Embedding": 0.8928571428571429,
+            "Garden_Path_Effects": 0.8157894736842105,
+            "Gross_Syntactic_Expectation": 0.6630434782608695,
+            "Licensing": 0.8609022556390977,
+            "Long_Distance_Dependencies": 0.7110091743119266,
+            "avg": 0.7976177979851903
+          },
+          "coverage": {
+            "syntactic_generalization": {
+              "dataset_length": 841,
+              "loader_batches": 421,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "blimp": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "anaphor_agreement/anaphor_gender_agreement": 0.978,
+            "anaphor_agreement/anaphor_number_agreement": 0.992,
+            "anaphor_agreement/overall": 0.985,
+            "argument_structure/animate_subject_passive": 0.76,
+            "argument_structure/animate_subject_trans": 0.854,
+            "argument_structure/causative": 0.747,
+            "argument_structure/drop_argument": 0.769,
+            "argument_structure/inchoative": 0.637,
+            "argument_structure/intransitive": 0.768,
+            "argument_structure/passive_1": 0.872,
+            "argument_structure/passive_2": 0.855,
+            "argument_structure/transitive": 0.856,
+            "argument_structure/overall": 0.7908888888888889,
+            "binding/principle_A_c_command": 0.737,
+            "binding/principle_A_case_1": 1.0,
+            "binding/principle_A_case_2": 0.946,
+            "binding/principle_A_domain_1": 0.986,
+            "binding/principle_A_domain_2": 0.665,
+            "binding/principle_A_domain_3": 0.626,
+            "binding/principle_A_reconstruction": 0.25,
+            "binding/overall": 0.7442857142857143,
+            "control_raising/existential_there_object_raising": 0.909,
+            "control_raising/existential_there_subject_raising": 0.854,
+            "control_raising/expletive_it_object_raising": 0.822,
+            "control_raising/tough_vs_raising_1": 0.605,
+            "control_raising/tough_vs_raising_2": 0.909,
+            "control_raising/overall": 0.8198,
+            "determiner_noun_agreement/determiner_noun_agreement_1": 0.988,
+            "determiner_noun_agreement/determiner_noun_agreement_2": 0.974,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_1": 0.865,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_2": 0.932,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_2": 0.933,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_1": 0.909,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_2": 0.937,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adjective_1": 0.966,
+            "determiner_noun_agreement/overall": 0.938,
+            "ellipsis/ellipsis_n_bar_1": 0.902,
+            "ellipsis/ellipsis_n_bar_2": 0.869,
+            "ellipsis/overall": 0.8855,
+            "filler_gap_dependency/wh_questions_object_gap": 0.874,
+            "filler_gap_dependency/wh_questions_subject_gap": 0.958,
+            "filler_gap_dependency/wh_questions_subject_gap_long_distance": 0.942,
+            "filler_gap_dependency/wh_vs_that_no_gap": 0.983,
+            "filler_gap_dependency/wh_vs_that_no_gap_long_distance": 0.98,
+            "filler_gap_dependency/wh_vs_that_with_gap": 0.598,
+            "filler_gap_dependency/wh_vs_that_with_gap_long_distance": 0.556,
+            "filler_gap_dependency/overall": 0.8415714285714285,
+            "irregular_forms/irregular_past_participle_adjectives": 0.94,
+            "irregular_forms/irregular_past_participle_verbs": 0.883,
+            "irregular_forms/overall": 0.9115,
+            "island_effects/adjunct_island": 0.909,
+            "island_effects/complex_NP_island": 0.741,
+            "island_effects/coordinate_structure_constraint_complex_left_branch": 0.775,
+            "island_effects/coordinate_structure_constraint_object_extraction": 0.914,
+            "island_effects/left_branch_island_echo_question": 0.289,
+            "island_effects/left_branch_island_simple_question": 0.908,
+            "island_effects/sentential_subject_island": 0.491,
+            "island_effects/wh_island": 0.857,
+            "island_effects/overall": 0.7355,
+            "npi_licensing/matrix_question_npi_licensor_present": 0.96,
+            "npi_licensing/npi_present_1": 0.81,
+            "npi_licensing/npi_present_2": 0.694,
+            "npi_licensing/only_npi_licensor_present": 0.983,
+            "npi_licensing/only_npi_scope": 0.846,
+            "npi_licensing/sentential_negation_npi_licensor_present": 0.979,
+            "npi_licensing/sentential_negation_npi_scope": 0.742,
+            "npi_licensing/overall": 0.8591428571428571,
+            "quantifiers/existential_there_quantifiers_1": 0.988,
+            "quantifiers/existential_there_quantifiers_2": 0.234,
+            "quantifiers/superlative_quantifiers_1": 0.925,
+            "quantifiers/superlative_quantifiers_2": 0.833,
+            "quantifiers/overall": 0.745,
+            "subject_verb_agreement/distractor_agreement_relational_noun": 0.98,
+            "subject_verb_agreement/distractor_agreement_relative_clause": 0.927,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_1": 0.909,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_2": 0.865,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_1": 0.963,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_2": 0.948,
+            "subject_verb_agreement/overall": 0.932,
+            "overall/overall": 0.8336716417910448
+          },
+          "coverage": {
+            "BLiMP": {
+              "dataset_length": 40200000,
+              "loader_batches": 1340000,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "boolq": [
+        {
+          "seed": 42,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6951070336391437
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6981651376146789
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6929663608562691
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6892966360856269
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6948012232415902
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        }
+      ],
+      "boolq_mean_sd": {
+        "eval/downstream/boolq_acc__": {
+          "mean": 0.6940672782874617,
+          "sample_sd": 0.003255121490088143
+        }
+      },
+      "xsum_finetune": [
+        {
+          "seed": 42,
+          "metrics": {
+            "rouge1": 0.32551187079781885,
+            "rouge2": 0.11648712932135663,
+            "rougeL": 0.2576657710748653,
+            "R-AVG": 0.2332215903980136
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "rouge1": 0.32620095391770454,
+            "rouge2": 0.11679982418675197,
+            "rougeL": 0.2574888468442315,
+            "R-AVG": 0.23349654164956268
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "rouge1": 0.32592745317706034,
+            "rouge2": 0.115987922789619,
+            "rougeL": 0.25701831170088607,
+            "R-AVG": 0.23297789588918846
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "rouge1": 0.3262007800764587,
+            "rouge2": 0.11606237909405313,
+            "rougeL": 0.25729016514759784,
+            "R-AVG": 0.2331844414393699
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "rouge1": 0.3251710531979348,
+            "rouge2": 0.11538609059418467,
+            "rougeL": 0.25658173913411036,
+            "R-AVG": 0.23237962764207665
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        }
+      ],
+      "xsum_finetune_mean_sd": {
+        "rouge1": {
+          "mean": 0.32580242223339545,
+          "sample_sd": 0.00045171788957713496
+        },
+        "rouge2": {
+          "mean": 0.11614466919719309,
+          "sample_sd": 0.0005369566070201526
+        },
+        "rougeL": {
+          "mean": 0.2572089667803382,
+          "sample_sd": 0.0004252528859462293
+        },
+        "R-AVG": {
+          "mean": 0.23305201940364226,
+          "sample_sd": 0.00041877646818224025
+        }
+      },
+      "tasks_total": 22,
+      "tasks_complete": 22
+    },
+    "tgnomask_mix_tg": {
+      "document_coverage": 5000,
+      "document_fingerprints": [
+        "9a99eff1331a3204fd8fe06324b452ee0ba49e28b046d4684a708102b9634ce3"
+      ],
+      "DocPPL": 13.972620541305783,
+      "SG": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "Agreement": 0.7894736842105263,
+            "Center_Embedding": 0.9107142857142857,
+            "Garden_Path_Effects": 0.7763157894736842,
+            "Gross_Syntactic_Expectation": 0.75,
+            "Licensing": 0.8233082706766918,
+            "Long_Distance_Dependencies": 0.7568807339449541,
+            "avg": 0.8011154606700237
+          },
+          "coverage": {
+            "syntactic_generalization": {
+              "dataset_length": 841,
+              "loader_batches": 421,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "blimp": [
+        {
+          "seed": 6198,
+          "metrics": {
+            "anaphor_agreement/anaphor_gender_agreement": 0.967,
+            "anaphor_agreement/anaphor_number_agreement": 0.992,
+            "anaphor_agreement/overall": 0.9795,
+            "argument_structure/animate_subject_passive": 0.769,
+            "argument_structure/animate_subject_trans": 0.837,
+            "argument_structure/causative": 0.755,
+            "argument_structure/drop_argument": 0.766,
+            "argument_structure/inchoative": 0.635,
+            "argument_structure/intransitive": 0.794,
+            "argument_structure/passive_1": 0.88,
+            "argument_structure/passive_2": 0.861,
+            "argument_structure/transitive": 0.835,
+            "argument_structure/overall": 0.7924444444444444,
+            "binding/principle_A_c_command": 0.832,
+            "binding/principle_A_case_1": 1.0,
+            "binding/principle_A_case_2": 0.955,
+            "binding/principle_A_domain_1": 0.994,
+            "binding/principle_A_domain_2": 0.603,
+            "binding/principle_A_domain_3": 0.622,
+            "binding/principle_A_reconstruction": 0.517,
+            "binding/overall": 0.789,
+            "control_raising/existential_there_object_raising": 0.912,
+            "control_raising/existential_there_subject_raising": 0.899,
+            "control_raising/expletive_it_object_raising": 0.781,
+            "control_raising/tough_vs_raising_1": 0.587,
+            "control_raising/tough_vs_raising_2": 0.934,
+            "control_raising/overall": 0.8226,
+            "determiner_noun_agreement/determiner_noun_agreement_1": 0.983,
+            "determiner_noun_agreement/determiner_noun_agreement_2": 0.975,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_1": 0.854,
+            "determiner_noun_agreement/determiner_noun_agreement_irregular_2": 0.947,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_2": 0.952,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_1": 0.911,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adj_irregular_2": 0.935,
+            "determiner_noun_agreement/determiner_noun_agreement_with_adjective_1": 0.963,
+            "determiner_noun_agreement/overall": 0.94,
+            "ellipsis/ellipsis_n_bar_1": 0.88,
+            "ellipsis/ellipsis_n_bar_2": 0.847,
+            "ellipsis/overall": 0.8635,
+            "filler_gap_dependency/wh_questions_object_gap": 0.87,
+            "filler_gap_dependency/wh_questions_subject_gap": 0.957,
+            "filler_gap_dependency/wh_questions_subject_gap_long_distance": 0.937,
+            "filler_gap_dependency/wh_vs_that_no_gap": 0.977,
+            "filler_gap_dependency/wh_vs_that_no_gap_long_distance": 0.978,
+            "filler_gap_dependency/wh_vs_that_with_gap": 0.681,
+            "filler_gap_dependency/wh_vs_that_with_gap_long_distance": 0.582,
+            "filler_gap_dependency/overall": 0.8545714285714285,
+            "irregular_forms/irregular_past_participle_adjectives": 0.851,
+            "irregular_forms/irregular_past_participle_verbs": 0.898,
+            "irregular_forms/overall": 0.8745,
+            "island_effects/adjunct_island": 0.907,
+            "island_effects/complex_NP_island": 0.794,
+            "island_effects/coordinate_structure_constraint_complex_left_branch": 0.679,
+            "island_effects/coordinate_structure_constraint_object_extraction": 0.918,
+            "island_effects/left_branch_island_echo_question": 0.336,
+            "island_effects/left_branch_island_simple_question": 0.836,
+            "island_effects/sentential_subject_island": 0.424,
+            "island_effects/wh_island": 0.821,
+            "island_effects/overall": 0.714375,
+            "npi_licensing/matrix_question_npi_licensor_present": 0.982,
+            "npi_licensing/npi_present_1": 0.739,
+            "npi_licensing/npi_present_2": 0.606,
+            "npi_licensing/only_npi_licensor_present": 0.989,
+            "npi_licensing/only_npi_scope": 0.829,
+            "npi_licensing/sentential_negation_npi_licensor_present": 0.99,
+            "npi_licensing/sentential_negation_npi_scope": 0.715,
+            "npi_licensing/overall": 0.8357142857142857,
+            "quantifiers/existential_there_quantifiers_1": 0.97,
+            "quantifiers/existential_there_quantifiers_2": 0.15,
+            "quantifiers/superlative_quantifiers_1": 0.94,
+            "quantifiers/superlative_quantifiers_2": 0.886,
+            "quantifiers/overall": 0.7365,
+            "subject_verb_agreement/distractor_agreement_relational_noun": 0.97,
+            "subject_verb_agreement/distractor_agreement_relative_clause": 0.923,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_1": 0.907,
+            "subject_verb_agreement/irregular_plural_subject_verb_agreement_2": 0.873,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_1": 0.952,
+            "subject_verb_agreement/regular_plural_subject_verb_agreement_2": 0.918,
+            "subject_verb_agreement/overall": 0.9238333333333333,
+            "overall/overall": 0.8322238805970149
+          },
+          "coverage": {
+            "BLiMP": {
+              "dataset_length": 40200000,
+              "loader_batches": 1340000,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 0,
+          "max_steps": 0
+        }
+      ],
+      "boolq": [
+        {
+          "seed": 42,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6874617737003058
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6944954128440367
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6880733944954128
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6908256880733945
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "eval/downstream/boolq_acc__": 0.6920489296636085
+          },
+          "coverage": {
+            "boolq": {
+              "dataset_length": 6540,
+              "loader_batches": 3270,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1175,
+          "max_steps": 1175
+        }
+      ],
+      "boolq_mean_sd": {
+        "eval/downstream/boolq_acc__": {
+          "mean": 0.6905810397553517,
+          "sample_sd": 0.0028963328422144563
+        }
+      },
+      "xsum_finetune": [
+        {
+          "seed": 42,
+          "metrics": {
+            "rouge1": 0.31543570968840484,
+            "rouge2": 0.10874676842460533,
+            "rougeL": 0.24767637846478896,
+            "R-AVG": 0.22395295219259972
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 2026,
+          "metrics": {
+            "rouge1": 0.314706357676656,
+            "rouge2": 0.10782159885577362,
+            "rougeL": 0.24621670931583522,
+            "R-AVG": 0.2229148886160883
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 6198,
+          "metrics": {
+            "rouge1": 0.316187841177209,
+            "rouge2": 0.10861771891711983,
+            "rougeL": 0.24725136830878985,
+            "R-AVG": 0.22401897613437285
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 13171,
+          "metrics": {
+            "rouge1": 0.31537007431158826,
+            "rouge2": 0.10807576760873767,
+            "rougeL": 0.24703190683666282,
+            "R-AVG": 0.22349258291899624
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        },
+        {
+          "seed": 31723,
+          "metrics": {
+            "rouge1": 0.3160418013598506,
+            "rouge2": 0.10881786250690546,
+            "rougeL": 0.24819319829405956,
+            "R-AVG": 0.2243509540536052
+          },
+          "coverage": {
+            "xsum": {
+              "dataset_length": 11333,
+              "loader_batches": 5667,
+              "subset_num_batches": null
+            }
+          },
+          "full_evaluation": true,
+          "global_step": 1341,
+          "max_steps": 1341
+        }
+      ],
+      "xsum_finetune_mean_sd": {
+        "rouge1": {
+          "mean": 0.31554835684274174,
+          "sample_sd": 0.000592845752172857
+        },
+        "rouge2": {
+          "mean": 0.10841594326262838,
+          "sample_sd": 0.0004417755456457189
+        },
+        "rougeL": {
+          "mean": 0.24727391224402728,
+          "sample_sd": 0.0007388874708346363
+        },
+        "R-AVG": {
+          "mean": 0.22374607078313247,
+          "sample_sd": 0.0005563903556167138
+        }
+      },
+      "tasks_total": 22,
+      "tasks_complete": 22
+    }
+  },
+  "collected_at": "2026-09-29T05:45:20.429761+00:00",
+  "evidence_validation": "task identity/exit/full-evaluation; full DocPPL document/sentence/token coverage and saved contracts; no fresh checkpoint rehash"
+}

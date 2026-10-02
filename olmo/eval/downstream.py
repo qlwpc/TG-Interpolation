@@ -3182,8 +3182,8 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
         if pushdown_gold:
             self.SENT_SIZE = samples_per_sent
         elif force_terminal:
-            # Beam-search path: always load the terminal-only data and score one
-            # sequence per sentence (the model generates its own NT structure
+            # Beam-search path: consume terminal tokens and score one sequence
+            # per sentence (the model generates its own NT structure
             # during word_sync_beam_search; feeding a fixed tree/tg sequence would
             # defeat the parse-marginalization). Overrides grammar-type selection.
             self.SENT_SIZE = 1
@@ -3214,10 +3214,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
             self.dataset_name = "tree_300"
         else:
             self.dataset_name = "tg_300"
-        # Qwen3: all grammar types load from tree_300_qwen (tree format),
-        # then _convert_sequence handles format-specific conversion.  Skipped
-        # under force_terminal (beam path uses the standard terminal .npy).
-        if self.is_qwen3 and not force_terminal:
+        # Qwen3 must never read the GPT-2 terminal array, including terminal
+        # and beam protocols. Project its own candidate-0 tree to terminals.
+        if self.is_qwen3:
             self.dataset_name = "tree_300_qwen"
         self.dataset = np.load(os.path.join(self.dataset_path, f"blimp_{self.dataset_name}.npy"), mmap_mode='r')
         self.input_len = self.dataset.shape[1]
@@ -3251,7 +3250,9 @@ class BLiMPApproximationDataset(metaclass=abc.ABCMeta):
     def _convert_sequence(self, input_ids):
         if not isinstance(input_ids, np.ndarray):
             input_ids = np.array(input_ids)
-        if self.is_qwen3 and self.transformer_grammar_type in ("tg", "tgtree"):
+        if self.is_qwen3 and self.force_terminal:
+            input_ids = self.vocab.convert_treenpy_to_terminal(input_ids)
+        elif self.is_qwen3 and self.transformer_grammar_type in ("tg", "tgtree"):
             # Qwen3 data is tree format; convert to TG for tg/tgtree grammar
             input_ids = self.vocab.convert_treenpy_to_TG(input_ids)
         elif self.is_qwen3 and (self.transformer_grammar_type[:8] == "terminal" or self.transformer_grammar_type[:5] == "pause"):

@@ -1,0 +1,18 @@
+{
+  "claim_type": "computed",
+  "scan_complete": true,
+  "definition": "Full terminal document including whitespace, BOS and EOS; little-endian uint16.",
+  "train_file_sha256": "8f900f2acd1b19109dab522d74a0d1af35171838fbf547ee569a205d1649ceb1",
+  "train_data_sha256": "4ce7cffd475bd3b05b28b4206b67b6543425d22afd68e4ab6486386565af5afb",
+  "train_tokens": 10061025584,
+  "train_documents": 15187326,
+  "test_documents": 4966,
+  "unique_test_hashes": 4956,
+  "matched_test_documents": 4752,
+  "unmatched_test_documents": 214,
+  "matched_unique_test_hashes": 4742,
+  "matched_train_documents": 91394,
+  "test_train_matching_pairs": 91631,
+  "matched_test_percent": 95.69069673781716,
+  "validation_passed": true
+}

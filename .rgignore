@@ -1,0 +1,3 @@
+
+# Inactive source/config snapshots; inspect explicitly with rg --no-ignore.
+/history/

@@ -290,6 +290,29 @@ def test_fineweb_paths_use_the_historical_984_shard_partition():
     assert paths[-1].endswith("tree/*-00(980|981|982|983)*arrow.npy")
 
 
+def test_fresh_reproduction_does_not_inherit_early_stop(tmp_path):
+    from omegaconf import OmegaConf
+    from olmo.config import TrainConfig
+
+    run = next(r for r in load_manifest()["runs"] if r["id"] == "bbc_500m_tree")
+    source = tmp_path / "source.yaml"
+    cfg = OmegaConf.load(REPO_ROOT / run["source_config"])
+    cfg.stop_at = 49450
+    cfg.stop_after = 3
+    OmegaConf.save(cfg, source)
+    source_sha = sha256_file(source)
+    # This test intentionally creates a synthetic source with early-stop fields.
+    # Freeze that fixture's identity; production configs retain their manifest hash.
+    run = {**run, "source_config_sha256": source_sha}
+    output = tmp_path / "generated.yaml"
+    materialize_config(run, source, output, str(REPO_ROOT), "no_early_stop")
+    generated = TrainConfig.load(output, validate_paths=False)
+    assert generated.max_duration == "1ep"
+    assert generated.stop_at == 2_000_000_000
+    assert generated.stop_after is None
+    assert sha256_file(source) == source_sha
+
+
 def test_explicit_input_validation_rejects_plain_missing_paths(tmp_path):
     run = load_manifest(MANIFEST_PATH)["runs"][0]
     output = tmp_path / "missing-data.yaml"

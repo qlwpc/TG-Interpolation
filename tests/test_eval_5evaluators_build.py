@@ -28,7 +28,7 @@ def build_and_check(yaml_name, label):
     from olmo.eval import build_downstream_evaluator
     from olmo.tokenizer import Tokenizer
 
-    cfg = TrainConfig.load(REPO / "train_configs" / yaml_name, [])
+    cfg = TrainConfig.load(REPO / "train_configs" / "diagnostics" / yaml_name, [])
     cfg.model.init_device = "cpu"
     cfg.workspace = str(REPO)
     cfg.wandb = None

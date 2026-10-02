@@ -30,7 +30,7 @@ def main():
     from olmo.model import OLMo
 
     for label, yaml in CONFIGS:
-        cfg = TrainConfig.load(REPO / "train_configs" / yaml, [])
+        cfg = TrainConfig.load(REPO / "train_configs" / "diagnostics" / yaml, [])
         cfg.model.init_device = "cpu"          # build on CPU
         cfg.model.precision = cfg.precision
         cfg.workspace = str(REPO)

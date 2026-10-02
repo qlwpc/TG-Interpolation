@@ -29,7 +29,22 @@ data:
 
 每个 DDP rank 启动自己的 workers；CPU 预算应覆盖全部 ranks、workers、主训练线程及 pin-memory 线程。worker 数应通过目标机器实测调整，不能按整台主机 CPU 数给每个 rank 配置。本机 B4/B16 实测推荐每 rank 1 worker、prefetch factor 2；CPU 供给变慢时再测 2 workers。`num_workers=0` 仍可运行；若同时开启 `cuda_prefetch`，后台预取线程也执行 CPU 取数/构建。
 
-实测结果见 [报告](../validation/tg_input_pipeline_20260915/REPORT.md)。在这组小型紧凑 layout 上，专用 CUDA 预取线程没有稳定收益，推荐关闭；实现保留 `cuda_prefetch: true`，供其他传输负载比较。`pin_memory: true` 时 Trainer 的直接传输也使用 `non_blocking=True`。
+当前默认关闭专用 CUDA 预取线程；实现保留 `cuda_prefetch: true`，供其他传输负载比较。`pin_memory: true` 时 Trainer 的直接传输也使用 `non_blocking=True`。
+
+## 预训练启动条件
+
+本次500M TG/TGNomask/Mix正式使用 `tg_typed_attention=true`，Flash/Flex均false，
+train及两个eval的 `generate_attention_mask` / `generate_doc_lengths` 均false，
+Mix明确8个TG+8个TGNomask heads。不能只改训练loader而保留eval默认doc lengths。
+Tree-NoONT为独立的causal模型；TGNomask和aug语义不能互换。
+完整配置和条件表见 [预训练工作流§2.2](pretraining_workflow.md#22-四模型的实际路由合同)。
+
+worker 传输 layout 依赖真实多进程 tensor IPC。单进程 collator/kernel 测试不验证
+Unix socket 路径长度与 IPC。应在 Python 启动前设置
+短且独享的TMPDIR，先运行 [IPC预检](../scripts/pretraining/check_ipc.py)，再做真实数据、
+相同world size/microbatch/autocast的训练smoke。native builder缓存跟随TMPDIR；
+setup和训练若在不同节点/临时目录，训练仍须有编译器，不能假定setup缓存自动可见。
+
 
 ## 构建和传输
 
@@ -61,8 +76,6 @@ TGnomask 普通 query 的前缀排除重复 closing 和 pad key；aug 的普通 
 
 ## 验证与边界
 
-性能协议、作业日志、源码快照和测试结果保存在 [本轮验证目录](../validation/tg_input_pipeline_20260915/)。基准包含真实 MemMapDataset 取数和 12 次 attention 前反向，分别测试 local batch 4、16（microbatch 4），不包含投影、MLP、optimizer、DDP 通信，不能作为完整训练吞吐结论。首批启动与稳态分开计时。
-
-树退化时 tile union schedule 仍可能为二次规模，worker/prefetch 会增加相应的在途内存。此次优化不改变其表示复杂度。`cuda_prefetch` 默认关闭以保持已有配置行为；原生 CPU builder 和紧凑 storage 随 typed TG 路径启用。
-
-默认路由与本次整理的测试回执见 [验证记录](../validation/tg_kernel_defaults_20260915/REPORT.md)。
+单独 layout/attention 基准不能代替完整训练吞吐，应覆盖真实 MemMapDataset、所有
+模型层、optimizer 和 DDP，并区分初始化与稳态。树退化时 tile union schedule 仍可能
+为二次规模；workers/prefetch 会增加在途内存。CPU builder 与紧凑 storage 不改变这一复杂度。

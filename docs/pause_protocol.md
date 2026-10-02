@@ -36,7 +36,7 @@ Their SHA-256 values match the original `pause_sep_100m_sist_20260828` submissio
 manifest. They are explicitly labelled `submitted_training_config`; they are
 not exported final-checkpoint configs. This permits config generation without
 local model weights. Final checkpoint status and metrics remain in
-[`EXPERIMENT_REPRODUCTION_RECORD.md`](../EXPERIMENT_REPRODUCTION_RECORD.md).
+[paper results and scope](paper_results.md).
 Pause-2's recorded final checkpoint is on SIST; generation does not download it.
 
 [`scripts/submit_pause_sep_pretrain.py`](../scripts/submit_pause_sep_pretrain.py)

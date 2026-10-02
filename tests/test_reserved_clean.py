@@ -138,7 +138,7 @@ def test_canonical_encoding_and_native_adapter(tmp_path):
     from datatools.parse_test_docppl_data.reproduce_bbc_test import legacy_tokenizer
     from datatools.parse_test_docppl_data.generate_native_topk import CanonicalPPLCorpus,audit_alignment
     root=Path(__file__).resolve().parents[1]
-    tokenizer_path=root/'dataset/bbc-news/TG_GPT2_tokenizer.json'
+    tokenizer_path=root/'reproducibility/tokenizer-reference.json'
     tok=legacy_tokenizer(Tokenizer.from_file(str(tokenizer_path)))
     parsed='(S (NP (NNP Alice)) (VP (VBZ is) (ADJ (JJ happy))) (. .)) (Ċ Ċ) (S (NP (PRP She)) (VP (VBZ runs)) (. !))'
     arrays,bounds,repairs=encode_document(parsed,tok)
@@ -175,7 +175,7 @@ def test_build_propagates_contamination_through_content_groups(tmp_path):
     from datatools.reserved_clean.common import atomic_json,digest,emit,sha_file,RESERVED
     from datatools.parse_test_docppl_data.reproduce_bbc_test import legacy_tokenizer
     root=Path(__file__).resolve().parents[1]
-    tokpath=root/'dataset/bbc-news/TG_GPT2_tokenizer.json'
+    tokpath=root/'reproducibility/tokenizer-reference.json'
     tok=legacy_tokenizer(Tokenizer.from_file(str(tokpath)))
     c=tmp_path/'candidates';c.mkdir();rows=[]
     with gzip.open(c/'candidates.jsonl.gz','wt') as f:

@@ -1,0 +1,67 @@
+{
+  "scope": "selected public evidence; original work records remain local; source hashes identify extraction, not downloadable assets",
+  "files": [
+    {
+      "path": "reproducibility/evidence/old_checkpoint_clean.json",
+      "sha256": "11efdd6ab8190c4e0f63c687aa99ec13e8ba2e0811eb70a656f83c133f091f94",
+      "sources": [
+        {
+          "local_origin": "artifacts/evaluation/reserved_docppl_sist_20260907/results.json",
+          "sha256": "2d3f16d4d567879dca0e718cbbc5391443d6c4a38354ac3269ad13bbea52312e"
+        },
+        {
+          "local_origin": "artifacts/evaluation/reserved_docppl_sist_20260907/provenance.json",
+          "sha256": "d1678b9e72b48679aa8f0300dd9e18551bae5fe1e0d778915b4e24391af164bb"
+        },
+        {
+          "local_origin": "artifacts/evaluation/reserved_docppl_sist_20260907/grammar_fix_20260909/results.json",
+          "sha256": "9940a6ab9b54226ba1b80e3626a0c551d3a6b43a5dfd297be5a4ae2497362855"
+        },
+        {
+          "local_origin": "artifacts/evaluation/reserved_docppl_sist_20260907/grammar_fix_20260909/final_status.json",
+          "sha256": "60cfbd01594c0d38e495aeac32a083aa0ffe45e461b9d7113ccd645442a00963"
+        }
+      ]
+    },
+    {
+      "path": "reproducibility/evidence/historical_overlap.json",
+      "sha256": "e9da11460ba857f14fd32c4d85ef60d9548c6b894ad507809c5d0f0b0741a2e2",
+      "sources": [
+        {
+          "local_origin": "artifacts/bbc_all_test_train_overlap_20260906/summary.json",
+          "sha256": "52868ea0f48592bb09b848d8e03c58c69ca3cc991efebedf76f4ccb208305fb2"
+        }
+      ]
+    },
+    {
+      "path": "reproducibility/evidence/clean_overlap.json",
+      "sha256": "a6d8c5e04743536379bb65f1b2d466c8d442c6fbfd66f042ded42588c20d1b7a",
+      "sources": [
+        {
+          "local_origin": "artifacts/reserved_fuzzy_20260906/summary.json",
+          "sha256": "2fc909df7bb9596bbb56fb0049a2e6e3a7868002ed3a5561d3237709f2c1f71a"
+        }
+      ]
+    },
+    {
+      "path": "reproducibility/evidence/paper_bbc_table.json",
+      "sha256": "3fb977f81b5efc7de8b823c046c710af8031b2b73fdd6b396dfb3bff34cd82d3",
+      "sources": [
+        {
+          "local_origin": "camera_ready/paper.tex",
+          "sha256": "5b4e17f515b8dbbc0638a3b6e6176c71a77dad1842e81753381eeab558935481"
+        }
+      ]
+    },
+    {
+      "path": "reproducibility/tokenizer-reference.json",
+      "sha256": "7fc243801e0d0551948380e59031976ed1eed89bd0efe867fd8a70cfadc19cff",
+      "sources": [
+        {
+          "local_origin": "validation/pretrain_5090_dedup_structural_20260919/tokenizer-reference.json",
+          "sha256": "7fc243801e0d0551948380e59031976ed1eed89bd0efe867fd8a70cfadc19cff"
+        }
+      ]
+    }
+  ]
+}
