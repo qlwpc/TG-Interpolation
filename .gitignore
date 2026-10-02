@@ -49,3 +49,6 @@ evaluation/SG/tokenized_qwen3/
 
 # Research paper PDFs (kept locally as references, not tracked)
 *.pdf
+
+# Keep local manuscript and submission materials out of Git.
+/camera_ready/
