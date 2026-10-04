@@ -10,3 +10,15 @@ raw 普查与 split 原因审计直接读该 JSON；不依赖历史采样脚本�
 
 新候选生成/独立检查见 [DocPPL 数据入口](../datatools/parse_test_docppl_data/README.md)。
 旧修补脚本和逐次诊断只在本地保留。公开计数证据见[数据版本说明](../docs/bbc_data_provenance.md)。
+
+`audit_dataset_versions.py` 对 BBC 小型 dev/test 流做全量结构检查，对 top-300 索引求和、
+候选正文和预计算缓存做确定性抽样；只读数据，JSON 写到 stdout：
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python diagnostics/audit_dataset_versions.py \
+  --root dataset --host 3090B > /tmp/dataset-legality.json
+```
+
+需要 NumPy；不调用 parser/GPU，不扫描整个训练集。抽样通过不证明整个大文件合法，
+也不替代完整 SHA 或污染审计。具体版本判断记录在本地
+`reports/dataset_migration_20261002.md`（未随公开源码发布）。

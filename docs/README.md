@@ -4,6 +4,7 @@
 |---|---|
 | 运行一个复现实验 | [预训练工作流](pretraining_workflow.md) |
 | 理解论文结果、旧模型重测与适用边界 | [论文结果说明](paper_results.md) |
+| 区分新旧实验、准备后续论文数据修订 | [R-08 标准、路径与结果差异核定（2026-10-02）](r08_experiment_protocol_reassessment_20261002.md) |
 | 新增 dedup 500M 实验 | [结果及完成范围](bbc_dedup_500m_evaluation_results_20260925.md)、[配置生成器](bbc_dedup_500m_pretraining.md) |
 | 数据、权重与证据获取 | [公开材料与资产状态](../reproducibility/README.md)、[数据版本与污染说明](bbc_data_provenance.md) |
 | 按模型和任务评测 | [Evaluation](../Evaluation.md) |

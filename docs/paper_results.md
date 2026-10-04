@@ -1,7 +1,8 @@
 # 论文结果与补充实验的解释
 
-本文区分冻结论文、旧 checkpoint 的 clean 重测、新 dedup 训练三类结果。论文已冻结；
-后续测量不会回写成论文原值。训练配置身份见[配置 manifest](../train_configs/paper_pretraining_manifest.json)，
+本文区分冻结稿原值、旧 checkpoint 的 clean 重测、新 dedup 训练三类结果。本文保留原值身份；
+后续论文实验数据修订以 [R-08 差异核定](r08_experiment_protocol_reassessment_20261002.md)为依据，
+本次未修改论文。训练配置身份见[配置 manifest](../train_configs/paper_pretraining_manifest.json)，
 评测定义见[Evaluation](../Evaluation.md)。
 
 ## 冻结稿 BBC 主表与 clean 重测
@@ -36,6 +37,8 @@
 原始汇总中 NoONT/Compress/TripleCNT 的错误 grammar 结果已排除，上表使用三模型完成
 全量终验的修正值。Tree-Shuffle 使用 masked checkpoint；Pause 使用 dedicated SEP，
 不能换成 repeat-token 对照。TreeReg 及 BBC 1B 附加模型保存在 clean JSON 中，未混入论文主表。
+原 22 模型总终验回执仍为 `failed`，后续成功总回执的范围是三个 grammar 修正模型；
+有效逐行汇总与验收范围的区别见 [R-08 §7](r08_experiment_protocol_reassessment_20261002.md#7-完成状态证据可信度与未解决项)。
 
 ## 如何解释差异
 
@@ -76,7 +79,8 @@ seed；单个预训练 seed 不能证明预训练稳定性。十模型评测任�
 
 Pushdown 的 XSum reduce 上限、BoolQ supplied-span 评分、BLiMP token-only 候选得分与
 论文描述的区别保留在 [Evaluation §8](../Evaluation.md#pushdown-paper-discrepancies)。
-旧 91 篇结构差异的 parser 权重/候选分数仍缺证据，不能归因于统一的 top-1/top-2 交换。
+旧 91 篇结构差异的解析原因仍未知，不能归因于统一的 top-1/top-2 交换；
+2026-10-02 复核后按用户决定关闭 R-03，保留[历史重建限制](bbc_data_provenance.md#provenance)。
 这些影响解释的限制公开保留，逐次排错经过留在本地。
 
 数据/权重的下载入口尚未补齐，也未从外部干净环境完成完整重训；见[资产状态](../reproducibility/README.md)。

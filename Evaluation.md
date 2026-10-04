@@ -170,8 +170,15 @@ token-only 和 BPE-spliced topology 属于不同协议或诊断。定义及早�
 
 SG 使用 32 项、6 类公式，按 target-region surprisal 判断并汇总 category average。
 Terminal/Pause/Tree-Shuffle/TreeReg 使用 teacher-forced logits；Tree/TG 使用
-word-synchronous DFS beam=300，`nc=max(term_len,5)`、`pc=3`、
+word-synchronous DFS beam=300，计分时 sub-beam=300、terminal fast-track=30，
 `max_length=max(6*term_len,10)`；Pushdown 主协议使用 attachment beam=300。
+
+Tree/TG 的 SG 入口仍传入 `nc=max(term_len,5)`、`pc=3`，但这两个参数的 NT 数量限制
+**未启用**：`olmo/model.py::word_sync_beam_search` 虽构造 `Stop_Add_NT`，使用它屏蔽
+opening-NT logits 的两行代码已注释，因此不限制 opening NT 的总数或连续数量。
+不能将参数传入值登记为生效的搜索约束；上述总线性化长度上限仍生效。
+2026-10-02 核对调用路径及消费位置，Git 历史确认该屏蔽在 `c6c8f07`（2025-10-16）
+已被注释；camera_ready SG 附录“不另设 NT 数量限制”的表述与此一致。
 
 BLiMP full suite 为 67×1,000 minimal pairs。Terminal/Pause/Tree-Shuffle/TreeReg 每句 K=1；
 Tree/TG 读取已有 300 parses 并对 joint tree likelihood 做 truncated `logsumexp`；Pushdown
@@ -261,8 +268,10 @@ Validation-8 decomposition 和 Validation-10 是三套不同数据合同，不�
 ### 8.1 DocPPL 的历史结果与当前协议
 
 当前 Tree/TG 与 standalone Pushdown 已使用 model-best；旧 candidate-0 结果与新数据结果须分开。
-论文正文/附录残留差异及重测对结论的影响见 [2026-09-11 审计](docs/bbc_data_provenance.md#paper-impact)。
-论文已冻结，后续差异和结论适用范围在仓库文档中说明，不再以修改论文为待办。
+论文正文/附录残留差异及重测对结论的影响见 [数据说明](docs/bbc_data_provenance.md#paper-impact)。
+新旧标准、实验路径、结果差异与后续论文数据修订依据见
+[R-08 核定报告](docs/r08_experiment_protocol_reassessment_20261002.md)。本次只完成文档核定，
+未修改论文；后续修订须同时对齐主表、方法、附录与模型范围，不能给旧数值改贴新协议。
 
 <a id="pushdown-paper-discrepancies"></a>
 

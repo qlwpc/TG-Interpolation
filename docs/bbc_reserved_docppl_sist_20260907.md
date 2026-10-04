@@ -50,3 +50,6 @@ Pushdown 的完整调用示例见[续跑协议](native_document_ppl_recovery.md)
 公开 [clean JSON](../reproducibility/evidence/old_checkpoint_clean.json)是原结果与三项修正
 结果的有效合并，保留 NLL 和权重 hash。原始逐文档文件及完整运行凭据尚未随源码发布，
 见[资产状态](../reproducibility/README.md#assets)。本次整理没有重跑评测。
+原 22 模型总终验回执为 `failed`，后续三个 grammar 修正模型的 scoped final receipt
+为 `complete`；不能将三模型终验扩大为全部旧模型总终验成功。有效结果与验收边界见
+[R-08 §7](r08_experiment_protocol_reassessment_20261002.md#7-完成状态证据可信度与未解决项)。
