@@ -78,7 +78,7 @@ if [ "${TRAIN_PROCESS_RC}" -ne 0 ]; then
   fi
   echo "TRAIN_PROCESS_EXIT accepted_after_durable_final_checkpoint"
 fi
-"${RUNTIME_BIN}/python" "${SCRIPT_ROOT}/check_checkpoint_health.py" \
+"${RUNTIME_BIN}/python" "${SCRIPT_ROOT}/../diagnostics/models/check_checkpoint_health.py" \
   "${FINAL}/model.pt" --output "${RUN_DIR}/checkpoint_health.json"
 printf '%s\n' "${FINAL}" > "${RUN_DIR}/final_checkpoint.txt"
 sha256sum "${FINAL}/model.pt" > "${RUN_DIR}/final_model.sha256"

@@ -4,7 +4,7 @@
 The historical checkpoint ``config.yaml`` (or a hash-pinned submitted training
 config for BBC SEP Pause) is the architecture/optimizer source of truth.
 ``train_configs/paper_pretraining_manifest.json`` records the fields
-audited in ``docs/paper_results.md`` and maps every model to its
+audited in ``docs/results/paper.md`` and maps every model to its
 input representation.  This program verifies the two sources agree, copies the
 checkpoint config, and replaces only run-local state and canonical data paths.
 

@@ -8,10 +8,7 @@ import subprocess
 import sys
 
 import pytest
-import torch
 
-from olmo.gpst.eval import document_ppl as gpst_ppl
-from olmo.gpst.eval.document_ppl import GoldSegment
 from scripts.native_document_results import (
     DocumentResultStore,
     aggregate_rows,
@@ -138,52 +135,6 @@ def test_merge_cli_validates_and_atomically_writes_pushdown_result(tmp_path):
     assert result["legacy_log_likelihood"] == pytest.approx(-41.0)
 
 
-def test_gpst_evaluator_emits_complete_documents_and_skips_resumed_ids(monkeypatch):
-    candidate = (GoldSegment((10, 11), (0,)),)
-
-    class Corpus:
-        samples_per_sentence = 2
-        rows = [(0, (candidate, candidate)), (0, (candidate, candidate)),
-                (1, (candidate, candidate))]
-
-        def __len__(self):
-            return len(self.rows)
-
-        def __iter__(self):
-            return iter(self.rows)
-
-    class Model:
-        def eval(self):
-            return self
-
-    monkeypatch.setattr(
-        gpst_ppl,
-        "_score_items",
-        lambda _model, items, *_args: torch.ones(len(items), dtype=torch.float64),
-    )
-    documents = []
-    full = gpst_ppl.evaluate_gold_tree_document_ppl(
-        Model(), Corpus(), "cpu", document_complete=lambda _, row: documents.append(row)
-    )
-    assert [row["document_id"] for row in documents] == [0, 1]
-    assert sum(row["sentence_count"] for row in documents) == full.sentence_count == 3
-    assert sum(row["terminal_count"] for row in documents) == full.terminal_count
-    assert sum(row["log_likelihood"] for row in documents) == pytest.approx(
-        full.log_likelihood
-    )
-    aggregate = aggregate_rows("gpst", documents, {0, 1}, 2)
-    assert aggregate["complete"] is True
-    assert aggregate["candidate_aggregation"] == "truncated_joint_sum"
-
-    resumed_documents = []
-    resumed = gpst_ppl.evaluate_gold_tree_document_ppl(
-        Model(), Corpus(), "cpu", completed_document_ids={0},
-        document_complete=lambda _, row: resumed_documents.append(row),
-    )
-    assert [row["document_id"] for row in resumed_documents] == [1]
-    assert resumed.document_count == 1
-    assert resumed.sentence_count == 1
-    assert resumed.log_likelihood == pytest.approx(documents[1]["log_likelihood"])
 
 
 def test_model_best_aggregation_weights_selection_ratio_by_sentences():

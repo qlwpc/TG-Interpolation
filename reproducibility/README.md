@@ -1,17 +1,17 @@
 # 公开复现材料
 
-本目录只放复现所需的固定输入、有效结果和身份摘要。日常工作记录、失败尝试、队列状态、
+本目录只放复现所需的固定输入、结果快照和身份摘要。日常工作记录、失败尝试、队列状态、
 远端同步脚本及完整日志保留在本地，不作为读者的默认入口。
 
 | 内容 | 入口 |
 |---|---|
-| 历史论文模型与 29 份固定配置 | [manifest](../train_configs/paper_pretraining_manifest.json)、[生成指南](../docs/pretraining_reproduction.md) |
+| 历史论文模型与 29 份固定配置 | [manifest](../train_configs/paper_pretraining_manifest.json)、[生成指南](../docs/guides/historical_pretraining.md) |
 | BBC tokenizer 校验参考 | [reference JSON](tokenizer-reference.json) |
-| 冻结稿 19 行 BBC 结果 | [机器可读表](evidence/paper_bbc_table.json)、[解释](../docs/paper_results.md) |
-| 旧模型 clean 重测 | [22 模型有效结果](evidence/old_checkpoint_clean.json)，三项 grammar 修正已替换无效值 |
+| 冻结稿 19 行 BBC 结果 | [机器可读表](evidence/paper_bbc_table.json)、[解释](../docs/results/paper.md) |
+| 旧模型 clean 重测 | [22 模型历史汇总](evidence/old_checkpoint_clean.json)，已替换三项错误 grammar 值；NoONT/Compress 仍缺投影去重，旧 PPL 不再有效，见[当前协议](../docs/protocols/clean_document_ppl.md) |
 | BBC 重叠审计 | [旧数据 exact](evidence/historical_overlap.json)、[clean fuzzy](evidence/clean_overlap.json) |
 | 提取来源及内容校验 | [证据 manifest](evidence/manifest.json)；`local_origin` 仅标识原始来源，不是下载链接 |
-| 新增十模型评测 | [结果页](../docs/bbc_dedup_500m_evaluation_results_20260925.md)、[逐 seed/子项 JSON](results/dedup500m/)、[终验摘要](results/dedup500m/final_status.json) |
+| 新增十模型评测 | [结果页](../docs/results/bbc_dedup_500m.md)、[逐 seed/子项 JSON](results/dedup500m)、[历史终验摘要](results/dedup500m/final_status.json)；其中 NoONT DocPPL 须按投影去重协议重测 |
 
 <a id="dedup-configs"></a>
 ## 新增实验配置
@@ -19,9 +19,9 @@
 [十模型配置 manifest](configs/dedup500m/manifest.json)记录 checkpoint step、配置 SHA-256
 及原字节 YAML。配置是实际 checkpoint 的身份材料，保留当时的路径；新运行需要用生成器
 或适配到新目录，不能直接复用原保存目录。`tg/tgnomask/tgnomask_mix_tg/tree_noont`
-等八种配方使用[公共 CLI](../docs/bbc_dedup_500m_pretraining.md)；Pause 使用
-[SEP 入口](../docs/pause_protocol.md)。TGTree-Mix-TG 暂无统一 dedup CLI key，冻结配置
-提供具体配方，重新运行仍需完成[工作流](../docs/pretraining_workflow.md)的身份和 GPU 验证。
+等八种配方使用[公共 CLI](../docs/guides/bbc_dedup_500m.md)；Pause 使用
+[SEP 入口](../docs/models/pause.md)。TGTree-Mix-TG 暂无统一 dedup CLI key，冻结配置
+提供具体配方，重新运行仍需完成[工作流](../docs/guides/pretraining.md)的身份和 GPU 验证。
 
 <a id="assets"></a>
 ## 数据、权重和日志的可获取性

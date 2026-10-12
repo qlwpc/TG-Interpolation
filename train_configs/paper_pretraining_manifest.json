@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "authority": "docs/paper_results.md",
+  "authority": "docs/results/paper.md",
   "common": {
     "seed": 6198,
     "precision": "amp_bf16",

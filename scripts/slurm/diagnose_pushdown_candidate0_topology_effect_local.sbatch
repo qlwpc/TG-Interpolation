@@ -24,7 +24,7 @@ export WANDB_MODE=disabled
 export MPLCONFIGDIR=/tmp/pushdown-cand0-effect-mpl
 
 /home/wangpch/.conda/envs/LLM/bin/python \
-  scripts/diagnose_pushdown_candidate0_topology_effect.py \
+  diagnostics/models/diagnose_pushdown_candidate0_topology_effect.py \
   --checkpoint saved_models/pushdown_terminalonly/step34354-unsharded \
   --max-sentences 200 \
   --device cuda \

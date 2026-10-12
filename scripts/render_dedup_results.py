@@ -18,17 +18,20 @@ LABELS = {'terminal': 'Terminal', 'tree': 'Tree', 'tgtree': 'TGTree',
           'tgtree_mix_tg': 'TGTree-Mix-TG', 'tgnomask_mix_tg': 'TGNomask-Mix-TG'}
 
 
-def render_report(summaries: dict, root: Path = ROOT) -> None:
+def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) -> None:
     if set(summaries) != set(NAMES):
         raise ValueError('Expected the three registered campaign summaries')
     evidence = root / 'reproducibility/results/dedup500m'
     lines = ['# BBC dedup 500M 补充实验', '',
-             '这些模型使用新 dedup train 重新训练；不替换[冻结论文表](paper_results.md)。',
+             '这些模型使用新 dedup train 重新训练；不替换[冻结论文表](paper.md)。',
              'SG/BLiMP/BoolQ 为百分数，XSum 为 R-AVG 百分数；± 为五个微调 seed 的样本标准差。',
              '微调 seed：42、2026、6198、13171、31723；并非五个预训练 seed。',
              'DocPPL 使用 reserved-clean v1 完整 test：5,000 篇、129,085 句、3,068,713 个计分 token。',
              'Terminal/Pause 是单路径；结构模型是 valid top-300 joint sum、model-best 历史。',
              '截至 2026-09-29，十模型各 22/22 项测试完成；五 seed 指微调重复，并非预训练重复。', '',
+             '2026-10-07 复核发现 NoONT 投影后可能有重复候选。下表 NoONT 的旧 DocPPL 标记为 †，',
+             '仅保留历史记录，不能用于当前排名；须按[投影去重协议](../protocols/clean_document_ppl.md)重测。',
+             '原 JSON 与终验摘要仍保存当时字节和完成状态，不能认证新增的去重要求。', '',
              '## 结果', '',
              '| 执行地 | 模型 | 完成任务 | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |',
              '|---|---|---:|---:|---:|---:|---:|---:|']
@@ -50,6 +53,8 @@ def render_report(summaries: dict, root: Path = ROOT) -> None:
             if 'DocPPL' in entry and entry['document_coverage'] != 5000:
                 raise ValueError(f'{name}/{model}: PPL without complete document coverage')
             doc = f"{entry['DocPPL']:.6f}" if 'DocPPL' in entry else f"{entry['document_coverage']}/5000 篇"
+            if model == 'tree_noont' and 'DocPPL' in entry:
+                doc += ' †'
             lines.append('| ' + ' | '.join([
                 'SIST' if name == NAMES[2] else 'RTX3090B', LABELS[model],
                 f"{entry['tasks_complete']}/{entry['tasks_total']}", single('SG'), single('blimp'), doc,
@@ -61,34 +66,40 @@ def render_report(summaries: dict, root: Path = ROOT) -> None:
               'SIST 使用本地同步镜像，本次未重新扫描远端存储或重新评测。', '']
     for name in NAMES:
         result = summaries[name]
-        dest = evidence / name / 'results.json'
-        lines.append(f"- [{name}](../reproducibility/results/dedup500m/{name}/results.json)："
+        lines.append(f"- [{name}](../../reproducibility/results/dedup500m/{name}/results.json)："
                      f"`{result['status']}`，收集于 `{result.get('collected_at', '未记录')}`。")
-    lines += ['', '完整训练配置及身份见[补充实验配置](../reproducibility/README.md#dedup-configs)。',
+    lines += ['', '完整训练配置及身份见[补充实验配置](../../reproducibility/README.md#dedup-configs)。',
               '公共 dedup CLI 覆盖八种配方；本批 Pause-1/2 与 TGTree-Mix-TG 的冻结配置另行保存，',
               '不能用 TGNomask-Aug 或其他近名配方代替。数据、权重及完整日志的获取状态见',
-              '[公开资产清单](../reproducibility/README.md#assets)。', '',
+              '[公开资产清单](../../reproducibility/README.md#assets)。', '',
               '本页由 `scripts/render_dedup_results.py` 从上述 JSON 生成。三批任务、汇总与本地终验均完成；',
-              '核对数量、结果哈希和范围见[终验摘要](../reproducibility/results/dedup500m/final_status.json)。', '']
+              '核对数量、结果哈希和范围见[终验摘要](../../reproducibility/results/dedup500m/final_status.json)。', '']
     # Validate all rows before replacing any public files.
+    outputs = {root / 'docs/results/bbc_dedup_500m.md': '\n'.join(lines)}
     for name in NAMES:
-        dest = evidence / name / 'results.json'
+        outputs[evidence / name / 'results.json'] = (
+            json.dumps(summaries[name], indent=2, ensure_ascii=False, allow_nan=False) + '\n'
+        )
+    if check:
+        stale = [str(path.relative_to(root)) for path, content in outputs.items()
+                 if not path.is_file() or path.read_bytes() != content.encode('utf-8')]
+        if stale:
+            raise ValueError('Generated results are out of date: ' + ', '.join(stale))
+        return
+    for dest, content in outputs.items():
         dest.parent.mkdir(parents=True, exist_ok=True)
-        temp = dest.with_suffix('.json.tmp')
-        temp.write_text(json.dumps(summaries[name], indent=2, ensure_ascii=False, allow_nan=False) + '\n')
+        temp = dest.with_suffix(dest.suffix + '.tmp')
+        temp.write_text(content, encoding='utf-8')
         temp.replace(dest)
-    report = root / 'docs/bbc_dedup_500m_evaluation_results_20260925.md'
-    temp = report.with_suffix('.md.tmp')
-    temp.write_text('\n'.join(lines))
-    temp.replace(report)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--results-root', type=Path, default=ROOT / 'reproducibility/results/dedup500m')
+    parser.add_argument('--check', action='store_true', help='Verify generated files without writing them')
     args = parser.parse_args()
     summaries = {name: json.loads((args.results_root / name / 'results.json').read_text()) for name in NAMES}
-    render_report(summaries)
+    render_report(summaries, check=args.check)
 
 
 if __name__ == '__main__':

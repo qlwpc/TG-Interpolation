@@ -3,7 +3,7 @@
 | 工作 | 入口 |
 |---|---|
 | 新 BBC dedup + clean 预训练配置 | [配置生成器](../scripts/prepare_bbc_dedup_500m.py)；训练数据用 dedup train，评估数据用 clean dev/test |
-| BBC / FineWeb-Edu 下载、解析、组装 | `python -m datatools.parse_pretrain_data.build_pretrain_data`；[数据构建细则](../docs/pretraining_reproduction.md) |
+| BBC / FineWeb-Edu 下载、解析、组装 | `python -m datatools.parse_pretrain_data.build_pretrain_data`；[数据构建细则](../docs/guides/historical_pretraining.md) |
 | clean dev/test 筛选与冻结规则 | [reserved_clean/](reserved_clean/README.md) |
 | DocPPL 候选生产、边界对齐、历史重建 | [parse_test_docppl_data/](parse_test_docppl_data/README.md) |
 
@@ -22,6 +22,6 @@
 | 旧解析队列、手工启动脚本、reset 和状态 | `build_pretrain_data parse --corpus ... --task-index ...` |
 | `process_bbc.py` | `parse_pretrain_data/make_tree_variant.py` |
 
-下游数据采用直接发布已处理文件的方式，按 [Evaluation](../Evaluation.md) 的目录加载。
+下游数据采用直接发布已处理文件的方式，按 [Evaluation](../docs/guides/evaluation.md) 的目录加载。
 现有 sidecar/旧格式兼容工具仍有调用方；`rsync.sh` 被配置工具引用，`save_datasets.py`
 导出 MMLU-Redux。它们与上表正式预训练数据入口分开使用。

@@ -1,6 +1,7 @@
 """Resumable complete-document runner using the current Trainer scoring path.
 
-The physical candidate axis is kept on disk; only valid candidates are scored.
+The physical candidate axis is kept on disk; only distinct projected valid
+candidates are scored. Lossy projections require a complete input audit.
 Sentence-wide padding makes context cropping independent of microbatch size.
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ from olmo.eval.downstream import TGPerplexityApproximationDataset, TerminalDocum
 from olmo.model import OLMo
 from olmo.train import Trainer
 from scripts.native_document_results import input_identity
+from scripts.projected_candidate_utils import deduplicate_samples
 
 
 def digest(path):
@@ -73,12 +75,36 @@ def main():
     p.add_argument('--precision', choices=['bf16', 'fp32'], default='bf16')
     p.add_argument('--attention', choices=['config', 'sdpa'], default='config')
     p.add_argument('--document-ids', help='comma-separated complete documents for validation')
+    p.add_argument('--projection-audit', type=Path, help='complete audit_projected_docppl output directory')
     args = p.parse_args()
     torch.set_num_threads(min(4, int(os.environ.get('SLURM_CPUS_PER_TASK', '4'))))
     torch.manual_seed(6198)
     torch.backends.cuda.matmul.allow_tf32 = False
     cfg = TrainConfig.load(Path(args.checkpoint) / 'config.yaml', validate_paths=False)
     cfg.model.transformer_grammar_type = cfg.model.transformer_grammar_type or 'terminal'
+    grammar = cfg.model.transformer_grammar_type
+    audit = None
+    if grammar in ('tree_noont', 'tree_compress'):
+        if args.projection_audit is None or args.format != 'tree':
+            raise ValueError('NoONT/Compress require tree data and --projection-audit')
+    if args.projection_audit:
+        audit = json.loads((args.projection_audit / 'audit.json').read_text())
+        if audit['status'] != 'complete' or audit['scope'] != 'full_clean_test':
+            raise ValueError('projection audit is incomplete')
+        if audit['tokenizer_sha256'] != digest(args.tokenizer):
+            raise ValueError('tokenizer differs from projection audit')
+        for code in ('scripts/projected_candidate_utils.py', 'olmo/data/tgmasking/mask.cpp',
+                     'olmo/data/tg_mask.cpython-310-x86_64-linux-gnu.so'):
+            if digest(ROOT / code) != audit['source_files'][code]:
+                raise ValueError(f'projection code differs from audit: {code}')
+        for name in ('unique_counts', 'first_indices', 'inverse'):
+            relative = f'{grammar}/{name}.npy'
+            if digest(args.projection_audit / relative) != audit['artifacts'][relative]:
+                raise ValueError(f'audited mapping hash mismatch: {relative}')
+        audited_counts = np.load(args.projection_audit / grammar / 'unique_counts.npy', mmap_mode='r')
+        audited_first = np.load(args.projection_audit / grammar / 'first_indices.npy', mmap_mode='r')
+        audited_inverse = np.load(args.projection_audit / grammar / 'inverse.npy', mmap_mode='r')
+        audited_terms = np.load(args.projection_audit / 'sentence_terminal_counts.npy', mmap_mode='r')
     cfg.tokenizer.vocabulary = args.tokenizer
     model = OLMo.from_checkpoint(args.checkpoint, device='cuda')
     if args.attention == 'sdpa':
@@ -111,7 +137,11 @@ def main():
                     checkpoint_weights=input_identity(str(Path(args.checkpoint) / 'model.pt')),
                     checkpoint_config=digest(Path(args.checkpoint) / 'config.yaml'),
                     data=str(Path(args.data).resolve()), data_identity=input_identity(args.data), tokenizer=digest(args.tokenizer),
-                    format=args.format, history='model_best', aggregation='valid_candidate_joint_sum',
+                    format=args.format, grammar=grammar, history='model_best',
+                    aggregation='distinct_projected_candidate_joint_sum',
+                    deduplication='exact_unpadded_token_ids_stable_first_occurrence',
+                    projection_audit=digest(args.projection_audit / 'audit.json') if audit else None,
+                    deduplication_code=digest(ROOT / 'scripts/projected_candidate_utils.py'),
                     padding='sentence_wide', precision=args.precision, attention=args.attention,
                     context=cfg.model.max_sequence_length,
                     scorer=digest(ROOT / 'olmo/train.py'), runner=digest(__file__),
@@ -143,13 +173,21 @@ def main():
         for sent in range(int(ds.document_starts[docid]), int(ds.document_ends[docid])):
             valid = int(counts[sent])
             samples = [ds[sent * physical + k] for k in range(valid)]
+            samples, first_indices, inverse = deduplicate_samples(samples)
+            original_valid, valid = valid, len(samples)
+            if audit and (valid != int(audited_counts[sent])
+                          or not np.array_equal(first_indices, audited_first[sent, :valid])
+                          or not np.array_equal(inverse, audited_inverse[sent, :original_valid])):
+                raise ValueError(f'sentence {sent}: runtime projection differs from complete audit')
             lengths = [len(s['input_ids']) for s in samples]
             width = max(lengths)
             if width > cfg.model.max_sequence_length:
                 raise ValueError(f'sentence {sent} exceeds context: {width}; refusing silent token loss')
-            # Preserve current projection / masking and every real candidate.
+            # Preserve projection / masking and each distinct real candidate.
             term_count = int(samples[0].get('term_count', sum(
                 ds.vocab.is_terminal(t) or t == ds.vocab.eos for t in samples[0]['input_ids'])))
+            if audit and term_count != int(audited_terms[sent]):
+                raise ValueError(f'sentence {sent}: runtime denominator differs from audit')
             for s in samples:
                 pad = width - len(s['input_ids'])
                 s['input_ids'] = np.pad(s['input_ids'], (0, pad), constant_values=ds.vocab.pad)
@@ -169,7 +207,10 @@ def main():
             m = float(losses.min())
             nll = m - math.log(float(np.exp(m - losses).sum()))
             rows.append(dict(sentence_id=sent, nll=nll, terminal_count=term_count,
-                             valid_candidates=valid, selected_candidate=int(losses.argmin())))
+                             original_valid_candidates=original_valid, valid_candidates=valid,
+                             removed_candidates=original_valid-valid,
+                             selected_candidate=int(losses.argmin()),
+                             selected_original_candidate=int(first_indices[losses.argmin()])))
         result = dict(document_id=docid, fingerprint=fingerprint, sentences=rows,
                       sentence_count=len(rows), terminal_count=sum(r['terminal_count'] for r in rows),
                       total_nll=math.fsum(r['nll'] for r in rows),

@@ -24,7 +24,7 @@ cd "${PAUSE_WORKSPACE}"
 
 nvidia-smi
 exec "${PAUSE_RUNTIME_BIN}/python" \
-  "${PAUSE_WORKSPACE}/scripts/diagnose_pause_xsum_generation.py" \
+  "${PAUSE_WORKSPACE}/diagnostics/models/diagnose_pause_xsum_generation.py" \
   --checkpoint "${PAUSE_DEBUG_CHECKPOINT}" \
   --output-dir "${PAUSE_DEBUG_OUTPUT}" \
   --dataset-dir "${PAUSE_WORKSPACE}/dataset/Xsum" \

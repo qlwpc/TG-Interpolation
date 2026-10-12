@@ -2,13 +2,13 @@
 # Run one model's native document-PPL evaluation on complete document shards.
 set -euo pipefail
 
-model=${1:?missing model argument (gpst or pushdown)}
+model=${1:?missing model argument (pushdown; GPST moved to ~/GPST)}
 workers=${2:-8}
 native_data=${3:-dataset/bbc-news/testppl/native_model_topk_300_v2}
 output_dir=${4:-docppl_runs/${model}_native_full}
 python_bin=${PYTHON_BIN:-python}
-if [[ "$model" != gpst && "$model" != pushdown ]]; then
-  echo "model must be gpst or pushdown" >&2; exit 2
+if [[ "$model" != pushdown ]]; then
+  echo "model must be pushdown; use ~/GPST for GPST" >&2; exit 2
 fi
 if [[ ! "$workers" =~ ^[1-9][0-9]*$ ]]; then
   echo "workers must be a positive integer" >&2; exit 2
@@ -22,7 +22,6 @@ fi
 document_result_dir=${DOCUMENT_RESULT_DIR:-$output_dir/documents}
 result_prefix=${RESULT_PREFIX:-shard}
 max_batch_attention_elements=${PUSHDOWN_MAX_BATCH_ATTENTION_ELEMENTS:-16777216}
-gpst_max_batch_attention_elements=${GPST_MAX_BATCH_ATTENTION_ELEMENTS:-16777216}
 mkdir -p "$output_dir"
 mkdir -p "$document_result_dir"
 pids=()
@@ -56,16 +55,6 @@ for ((worker=0; worker<workers; worker++)); do
   gpu=$worker
   result="$output_dir/${result_prefix}_${worker}_of_${workers}.json"
   log="$output_dir/${result_prefix}_${worker}_of_${workers}.log"
-  if [[ "$model" == gpst ]]; then
-    CUDA_VISIBLE_DEVICES=$gpu PYTHONPATH=. \
-      "$python_bin" scripts/gpst/evaluate_document_ppl.py \
-      --checkpoint "${GPST_CHECKPOINT:-saved_models/gpst-bbc-unsup/model.bin}" --native-data "$native_data" \
-      --start-document "$start" --end-document "$end" --eval-batch-size 64 \
-      --max-batch-actions 65536 --max-batch-attention-elements "$gpst_max_batch_attention_elements" --log-every 100 \
-      --document-result-dir "$document_result_dir" --resume-document-results \
-      >"$result" 2>"$log" &
-    pids+=("$!")
-  elif [[ "$model" == pushdown ]]; then
     OLMO_FLEX_ATTENTION_NUM_STAGES=1 CUDA_VISIBLE_DEVICES=$gpu PYTHONPATH=. \
       "$python_bin" scripts/evaluate_pushdown_document_ppl.py \
       --checkpoint "${PUSHDOWN_CHECKPOINT:-saved_models/pushdown/step34354-unsharded}" --native-data "$native_data" \
@@ -75,9 +64,7 @@ for ((worker=0; worker<workers; worker++)); do
       --document-result-dir "$document_result_dir" --resume-document-results \
       >"$result" 2>"$log" &
     pids+=("$!")
-  else
-    echo "model must be gpst or pushdown" >&2; exit 2
-  fi
+
 done
 status=0
 for pid in "${pids[@]}"; do

@@ -8,6 +8,7 @@ This is a source/export check, not a clean-environment training validation.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import re
@@ -100,17 +101,55 @@ def check(names: set[str]) -> list[str]:
                 errors.append(f'{manifest}: missing or changed {name}')
     if 'reproducibility/tokenizer-reference.json' not in names:
         errors.append('Missing public tokenizer reference')
+    # These small frozen inputs are needed before any historical corpus can be
+    # assembled. A missing tracked file is absent from candidates(), and a path
+    # written in inline code is not a Markdown link, so check it explicitly.
+    splits = json.loads((ROOT / 'datatools/parse_pretrain_data/bbc_split_manifest.json').read_text())
+    for split in ('dev', 'test'):
+        name = f'dataset/bbc-news/{split}_index.json'
+        if name not in names:
+            errors.append(f'Missing public BBC split index: {name}')
+        elif hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != splits[split]['sha256']:
+            errors.append(f'BBC split index hash mismatch: {name}')
     return errors
+
+
+def check_syntax(names: set[str]) -> tuple[list[str], dict[str, int]]:
+    """Parse public entry points without importing models or requiring assets."""
+    errors = []
+    counts = {'python': 0, 'shell': 0}
+    for name in sorted(names):
+        path = ROOT / name
+        if not path.is_file():
+            continue  # Reported by check().
+        if path.suffix == '.py':
+            counts['python'] += 1
+            try:
+                ast.parse(path.read_bytes(), filename=name)
+            except (SyntaxError, ValueError) as exc:
+                errors.append(f'{name}: {exc}')
+        elif path.suffix in {'.sh', '.sbatch'}:
+            counts['shell'] += 1
+            result = subprocess.run(['bash', '-n', str(path)], capture_output=True, text=True)
+            if result.returncode:
+                errors.append(f'{name}: {result.stderr.strip()}')
+    return errors, counts
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--export', type=Path)
+    parser.add_argument('--syntax', action='store_true',
+                        help='Also parse all public Python and Bash sources; requires Bash, no Python packages')
     parser.add_argument('--allow-tracked-private', action='store_true',
                         help='Audit a cleanup in progress before removing private records from the index')
     args = parser.parse_args()
     names, tracked_private = candidates()
     errors = check(names)
+    syntax_counts = None
+    if args.syntax:
+        syntax_errors, syntax_counts = check_syntax(names)
+        errors.extend(syntax_errors)
     if tracked_private and not args.allow_tracked_private:
         errors.append(f'{len(tracked_private)} ignored files are still tracked; ignore rules alone do not untrack them')
     if errors:
@@ -133,7 +172,8 @@ def main() -> None:
             rows.append({'path': name, 'sha256': hashlib.sha256(output.read_bytes()).hexdigest()})
         (dest / '_public_source_manifest.json').write_text(json.dumps(rows, indent=2) + '\n')
     print(json.dumps({'public_files': len(names), 'tracked_private': len(tracked_private),
-                      'links_and_frozen_inputs': 'passed', 'export': str(args.export) if args.export else None}))
+                      'links_and_frozen_inputs': 'passed', 'syntax_files': syntax_counts,
+                      'export': str(args.export) if args.export else None}))
 
 
 if __name__ == '__main__':

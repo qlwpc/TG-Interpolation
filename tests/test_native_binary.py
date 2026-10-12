@@ -24,7 +24,7 @@ from datatools.native_binary import (
     pack_candidate_slots,
 )
 from olmo.data.parse_align import tree_spans
-from olmo.gpst.reader.dataset_gold import tree_to_merge_orders
+from olmo.data.parse_align import tree_to_merge_orders
 
 
 @lru_cache(maxsize=None)

@@ -2030,3 +2030,34 @@ if __name__ == "__main__":
             add_boundary_root=args.add_boundary_root,
             save_treereg_metadata=args.treereg_metadata,
         )
+
+
+def tree_to_merge_orders(tree, direction: str = "right") -> Tuple[List[int], List[int]]:
+    """Convert a (possibly n-ary) constituency tree to a merge-order sequence.
+
+    Returns ``(leaves, merge_orders)`` where ``leaves`` is the in-order list of
+    leaf token ids and ``merge_orders`` is the ``(L-1,)`` gap-index sequence
+    (bottom-up post-order) consumed by ``CPPChartTableManager``.
+
+    The tree is first binarized (``direction`` per NLTK
+    ``chomsky_normal_form(factor=...)``: ``'right'`` = right-recursive spine,
+    default) so every internal node has a real binary bifurcation. For a binary
+    node spanning leaves ``[left..right]`` that splits at ``split`` (left child
+    ``[left..split]``, right child ``[split+1..right]``), the gap index at merge
+    time is ``split`` (0-based, between leaves ``split`` and ``split+1``).
+    Emitted post-order (children before parents) so merges happen bottom-up.
+    """
+    # The released GPST preprocessing collapses unary chains before
+    # binarization.  Leaving unary nodes in place creates more internal nodes
+    # than gaps and therefore cannot be represented by an L-1 merge trajectory.
+    bin_tree = binarize_tree(collapse_unary_tree(tree), direction=direction)
+    leaves, spans = tree_spans(bin_tree)
+    # spans are already post-order (tree_spans emits children before parents).
+    merge_orders = [split for (_l, split, _r) in spans if _l != _r]
+    expected = list(range(max(len(leaves) - 1, 0)))
+    if sorted(merge_orders) != expected:
+        raise ValueError(
+            "gold merge orders are not a gap permutation: "
+            f"got={merge_orders}, expected={expected}"
+        )
+    return leaves, merge_orders

@@ -12,7 +12,7 @@ The final paper's BBC Table 4 uses SEP 50261: Pause-1 is
 Pause-2 is `saved_models/pretrain_pause2_100M_SEP50261_steplaw/step54156-unsharded`
 (recorded on SIST). `pause_token_id: null` weights are historical repeat-token
 controls and are rejected by this campaign. See
-[`docs/pause_protocol.md`](../../docs/pause_protocol.md) for pretraining and
+[`docs/models/pause.md`](../../docs/models/pause.md) for pretraining and
 checkpoint provenance. FineWeb-Edu/Qwen3 SEP 151673 uses its separate OLMES workflow.
 
 The driver freezes checkpoint-derived configs and records hashes before any
@@ -24,6 +24,8 @@ each array element receives its own GPU allocation directly from Slurm.
 All entry points honor `PAUSE_WORKSPACE`, `PAUSE_SCRIPT_ROOT`, and
 `PAUSE_RUNTIME_BIN`.  This allows a campaign-owned source snapshot on another
 cluster to run without editing or overwriting that cluster's existing worktree.
+The source snapshot must also include `diagnostics/` alongside `scripts/`:
+finetuning calls `diagnostics/models/check_checkpoint_health.py` before recording completion.
 
 ## Prepare a new Pause-2 campaign
 

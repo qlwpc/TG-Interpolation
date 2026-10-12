@@ -24,7 +24,7 @@ export WANDB_MODE=disabled
 export MPLCONFIGDIR=/tmp/pushdown-axis-metrics-mpl
 
 /home/wangpch/.conda/envs/LLM/bin/python \
-  scripts/diagnose_pushdown_candidate_axis_metrics.py \
+  diagnostics/models/diagnose_pushdown_candidate_axis_metrics.py \
   --checkpoint saved_models/pushdown_terminalonly/step34354-unsharded \
   --max-sentences 200 \
   --eval-batch-size 64 \
