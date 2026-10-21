@@ -11,13 +11,14 @@ they are not new evaluations performed for this documentation release.
 | Reproduce historical training settings | [Historical reproduction](guides/historical_pretraining.md) |
 | Evaluate a checkpoint | [Evaluation guide](guides/evaluation.md) |
 | Resume or merge document-PPL evaluation | [Recovery guide](guides/document_ppl_recovery.md) |
-| Inspect paper results | [Frozen paper results](results/paper.md), [additional dedup experiments](results/bbc_dedup_500m.md), [protocol comparison](results/protocol_comparison.md) |
+| Inspect paper results | [Revised paper and historical snapshots](results/paper.md), [dedup 500M results](results/bbc_dedup_500m.md), [historical protocol comparison](results/protocol_comparison.md) |
 | Obtain data, checkpoints and result evidence | [Asset availability](../reproducibility/README.md) |
 | Inspect or clean local FineWeb-Edu data | [Data identity and known issues](protocols/fineweb_edu_data.md), [cleaning and global deduplication](protocols/fineweb_edu_cleaning.md), [paired in-place bracket repair](protocols/fineweb_bracket_repair.md) |
 | Collect filtered FineWeb-Edu 20B with paired trees | [Collection, validation splits and storage protocol](protocols/fineweb_clean_20b.md) |
 
-Historical paper settings, later BBC experiments and October FineWeb data repairs
-are separate experiment scopes. Start with the [paper relationship](../README.md#relationship-to-the-paper)
+The revised paper incorporates historical 100M clean reevaluations and dedup 500M
+experiments; October FineWeb data repairs are a separate scope.
+Start with the [paper relationship](../README.md#relationship-to-the-paper)
 and retain each dataset/configuration identity when reproducing a result.
 FineWeb repair/collection validation does not resolve the
 [known ADJ-label leakage](protocols/fineweb_edu_data.md#adj-label-leak).
@@ -30,7 +31,7 @@ FineWeb repair/collection validation does not resolve the
 | `models/` | [Pause](models/pause.md), [TG](models/tg.md), [Pushdown implementation comparison](models/pushdown.md) |
 | `protocols/` | [BBC data provenance](protocols/bbc_data.md), [clean document PPL](protocols/clean_document_ppl.md), [document history selection](protocols/document_history.md), [distributed evaluation](protocols/distributed_evaluation.md) |
 | `protocols/` — candidates and probabilities | [Native top-K](protocols/native_topk.md), [binary storage](protocols/native_binary_storage.md), [n-ary format](protocols/native_nary.md), [Pushdown probabilities](protocols/pushdown_ppl.md), [GPST binary comparison](protocols/gpst_binary_ppl.md) |
-| `results/` | Paper values, clean reevaluation and additional experiments, each with its original scope |
+| `results/` | Revised paper values, completed clean reevaluation and historical snapshots, each with its own identity |
 
 Data construction is documented beside its implementation: [data tools](../datatools/README.md),
 [clean split selection](../datatools/reserved_clean/README.md) and

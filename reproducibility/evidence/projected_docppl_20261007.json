@@ -1,0 +1,258 @@
+{
+  "scope": "Completed projected-unique DocPPL reevaluation of three checkpoints, collected 2026-10-08; not a BLiMP reevaluation or a new training run.",
+  "status": "complete",
+  "completed_validation_at": "2026-10-08T09:33:56.986054+08:00",
+  "blimp": "deferred_by_user",
+  "protocol": {
+    "version": "projected_unique_v1",
+    "candidate_identity": "complete unpadded projected token sequence within one sentence",
+    "padding": "physical slots above original valid_counts excluded before projection",
+    "order": "first original occurrence retained",
+    "aggregation": "sum of distinct joint probabilities; no multiplicity, proposal weighting or division by K",
+    "history": "model_best; commit once after all distinct candidates; first original candidate wins exact ties",
+    "precision": "FP32, SDPA, TF32 disabled",
+    "microbatch": 16,
+    "max_batch_tokens": 4096,
+    "context": 2048,
+    "parallelism": "independent GPU replicas; disjoint complete-document shards; 100 documents per shard",
+    "denominator": "terminal plus EOS, excluding BOS and structure",
+    "audit": "all original physical candidates checked for terminal projection, balanced labeled brackets and padding; all logical candidates independently projected and exact-deduplicated",
+    "models": [
+      {
+        "id": "bbc_100m_tree_noont",
+        "grammar": "tree_noont",
+        "checkpoint": "tree_noont/step42440-unsharded",
+        "weights_sha256": "235db558bce2b7de9a1b0248109850266f289472cf25339a90285264abb975b8",
+        "original_config_sha256": "b663f0282fe420aeb1e26bddedce1a345d5c396796ed8ba34fcb5bc93844f380"
+      },
+      {
+        "id": "bbc_100m_tree_compress",
+        "grammar": "tree_compress",
+        "checkpoint": "tree_compress/step45965-unsharded",
+        "weights_sha256": "e312a11922c7bde04cd44647773200b8bc9197b26bb6caab29281c507a79fee2",
+        "original_config_sha256": "d2aa49513de4210cca7eb392466bf63b3cb85c120dc789493e44af06a81d6dc4"
+      },
+      {
+        "id": "bbc_dedup_500m_tree_noont",
+        "grammar": "tree_noont",
+        "checkpoint": "bbc_dedup_500m_scvi5090/tree_noont/step14670-unsharded",
+        "weights_sha256": "90cebf69556069ba1798cd17606c9296d15f8ca81100a326ed1dcdaab1b67a0d",
+        "original_config_sha256": "64336566419e0af9c5b6d2f73472be5e577863e8dee86f4d62b46148782984d8"
+      }
+    ],
+    "source_cluster": "RTX3090",
+    "training": "no training; preserve original checkpoint identities; 100M historical, 500M dedup",
+    "checkpoint_configs": "only grammar corrected in 100M copies before model/dataset construction; originals retained",
+    "acceptance": "full 5000 documents, 129085 sentences, 3068713 scored tokens per model; exact audited unique counts and selected-original mapping; finite NLL; one source/contract identity; full remote input hash preflight; microbatch and stress pilots"
+  },
+  "audit": {
+    "status": "complete",
+    "sha256": "c7b9aae1331477716b66b2aea91c66a903e28615b456befa50174df668b524c8",
+    "documents": 5000,
+    "sentences": 129085,
+    "terminal_count": 3068713,
+    "projections": {
+      "tree_noont": {
+        "sentences_with_collisions": 117847,
+        "removed_candidates": 3471347,
+        "original_candidates": 37524534,
+        "unique_candidates": 34053187,
+        "maximum_length": 393
+      },
+      "tree_compress": {
+        "sentences_with_collisions": 57733,
+        "removed_candidates": 346675,
+        "original_candidates": 37524534,
+        "unique_candidates": 37177859,
+        "maximum_length": 399
+      }
+    }
+  },
+  "results": [
+    {
+      "status": "complete",
+      "documents": 5000,
+      "sentences": 129085,
+      "terminal_count": 3068713,
+      "total_nll": 8326346.8073346615,
+      "docppl": 15.078992496103785,
+      "non_candidate0_count": 31152,
+      "non_candidate0_ratio": 0.24132935662547933,
+      "fingerprint": "88f9d71e589a8978f5176d9cee7cc1954358ce76d6b4091f708b1795ee7f0924",
+      "job_ids": [
+        "1028235"
+      ],
+      "model_id": "bbc_100m_tree_noont",
+      "weights_sha256": "235db558bce2b7de9a1b0248109850266f289472cf25339a90285264abb975b8",
+      "original_candidates": 37524534,
+      "unique_candidates": 34053187,
+      "removed_candidates": 3471347
+    },
+    {
+      "status": "complete",
+      "documents": 5000,
+      "sentences": 129085,
+      "terminal_count": 3068713,
+      "total_nll": 8258253.387092758,
+      "docppl": 14.748081113054113,
+      "non_candidate0_count": 33107,
+      "non_candidate0_ratio": 0.2564744160824263,
+      "fingerprint": "6b70c2cfe891b9232f8435bbed19c9e4504fd61f8121a7995aba5b3d0bf904f8",
+      "job_ids": [
+        "1028226"
+      ],
+      "model_id": "bbc_100m_tree_compress",
+      "weights_sha256": "e312a11922c7bde04cd44647773200b8bc9197b26bb6caab29281c507a79fee2",
+      "original_candidates": 37524534,
+      "unique_candidates": 37177859,
+      "removed_candidates": 346675
+    },
+    {
+      "status": "complete",
+      "documents": 5000,
+      "sentences": 129085,
+      "terminal_count": 3068713,
+      "total_nll": 8088623.221371531,
+      "docppl": 13.954969500128307,
+      "non_candidate0_count": 30190,
+      "non_candidate0_ratio": 0.23387690281597398,
+      "fingerprint": "eca9febc79f6ac0a2e10494f797f5aabbee2be895d3c5b7f6f0fc399261e6fbd",
+      "job_ids": [
+        "1028228",
+        "1028230",
+        "1028232",
+        "1028235"
+      ],
+      "model_id": "bbc_dedup_500m_tree_noont",
+      "weights_sha256": "90cebf69556069ba1798cd17606c9296d15f8ca81100a326ed1dcdaab1b67a0d",
+      "original_candidates": 37524534,
+      "unique_candidates": 34053187,
+      "removed_candidates": 3471347
+    }
+  ],
+  "comparison": [
+    {
+      "model_id": "bbc_100m_tree_noont",
+      "previous_repeated_candidate_docppl": 15.061133699572649,
+      "projected_unique_docppl": 15.078992496103785,
+      "absolute_change": 0.017858796531136534,
+      "relative_change_percent": 0.1185753800966749
+    },
+    {
+      "model_id": "bbc_100m_tree_compress",
+      "previous_repeated_candidate_docppl": 14.730862420157116,
+      "projected_unique_docppl": 14.748081113054113,
+      "absolute_change": 0.0172186928969964,
+      "relative_change_percent": 0.11688855958247313
+    },
+    {
+      "model_id": "bbc_dedup_500m_tree_noont",
+      "previous_repeated_candidate_docppl": 13.938350959780275,
+      "projected_unique_docppl": 13.954969500128307,
+      "absolute_change": 0.01661854034803234,
+      "relative_change_percent": 0.11922888436362022
+    }
+  ],
+  "shard_validation": {
+    "status": "complete",
+    "tasks": 150,
+    "documents_per_model": 5000,
+    "disjoint_complete_document_ranges": true
+  },
+  "remote_input_validation": "complete",
+  "failed_shards": [],
+  "slurm_final_states": [
+    {
+      "JobID": "1028226",
+      "State": "COMPLETED",
+      "ExitCode": "0:0",
+      "Start": "2026-10-07T16:05:17",
+      "End": "2026-10-08T04:18:14"
+    },
+    {
+      "JobID": "1028228",
+      "State": "COMPLETED",
+      "ExitCode": "0:0",
+      "Start": "2026-10-07T16:05:17",
+      "End": "2026-10-08T04:03:06"
+    },
+    {
+      "JobID": "1028230",
+      "State": "COMPLETED",
+      "ExitCode": "0:0",
+      "Start": "2026-10-07T16:05:17",
+      "End": "2026-10-08T04:39:35"
+    },
+    {
+      "JobID": "1028232",
+      "State": "COMPLETED",
+      "ExitCode": "0:0",
+      "Start": "2026-10-07T16:05:17",
+      "End": "2026-10-08T04:16:50"
+    },
+    {
+      "JobID": "1028235",
+      "State": "COMPLETED",
+      "ExitCode": "0:0",
+      "Start": "2026-10-07T16:07:19",
+      "End": "2026-10-08T05:55:13"
+    }
+  ],
+  "pilot_validation": {
+    "bbc_100m_tree_noont": {
+      "status": "complete",
+      "model_id": "bbc_100m_tree_noont",
+      "documents": [
+        0,
+        1
+      ],
+      "stress_document": 438,
+      "batches": [
+        1,
+        16
+      ],
+      "sentence_count": 27,
+      "max_absolute_sentence_nll_difference": 7.564017083439012e-05,
+      "selected_history_identical": true,
+      "input_validation_sha256": "279628640d2e7635ac87534d69f0cdc771526486bdef6dad504a56ba3c2bc8cc",
+      "job_id": "1028216"
+    },
+    "bbc_100m_tree_compress": {
+      "status": "complete",
+      "model_id": "bbc_100m_tree_compress",
+      "documents": [
+        0,
+        1
+      ],
+      "stress_document": 438,
+      "batches": [
+        1,
+        16
+      ],
+      "sentence_count": 27,
+      "max_absolute_sentence_nll_difference": 0.0009536613218728007,
+      "selected_history_identical": true,
+      "input_validation_sha256": "279628640d2e7635ac87534d69f0cdc771526486bdef6dad504a56ba3c2bc8cc",
+      "job_id": "1028218"
+    },
+    "bbc_dedup_500m_tree_noont": {
+      "status": "complete",
+      "model_id": "bbc_dedup_500m_tree_noont",
+      "documents": [
+        0,
+        1
+      ],
+      "stress_document": 438,
+      "batches": [
+        1,
+        16
+      ],
+      "sentence_count": 27,
+      "max_absolute_sentence_nll_difference": 4.449522283778151e-05,
+      "selected_history_identical": true,
+      "input_validation_sha256": "279628640d2e7635ac87534d69f0cdc771526486bdef6dad504a56ba3c2bc8cc",
+      "job_id": "1028220"
+    }
+  },
+  "availability": "Selected original receipt fields and full result aggregates are included; full document outputs, inputs and weights remain external assets."
+}

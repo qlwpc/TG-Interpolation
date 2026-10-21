@@ -4,6 +4,13 @@ Complete test: 5,000 articles, 129,085 sentences, 3,068,713 scored terminal/EOS 
 For valid results from the old checkpoint, see [paper results](../results/paper.md); for the new dedup model, see
 [supplementary experiments](../results/bbc_dedup_500m.md). This page preserves the reusable protocol.
 
+**Completed correction:** the full projected-unique DocPPL reevaluation of
+NoONT-100M, Compress-100M and dedup NoONT-500M completed on 2026-10-08.
+Their respective results are 15.078992496103785, 14.748081113054113 and
+13.954969500128307, and the revised manuscript reports 15.079, 14.748 and 13.955.
+The [result/receipt extract](../../reproducibility/evidence/projected_docppl_20261007.json)
+records coverage and identities. BLiMP was deferred and remains separately flagged.
+
 ## Inputs and Models
 
 The root directory is `dataset/bbc-news-reserved-clean-v1/`. Validate the base manifest, tokenizer,
@@ -19,8 +26,9 @@ Terminal input is `evaluation_terminal/`; the sentence-length/document-sentence-
 The historical configurations of NoONT, Compress, and TripleCNT have a residual `tgtree` grammar. The model and the converted data
 **must** be bound to `tree_noont/tree_compress/tree_triplecnt` respectively **before** construction. A shared underlying tree300 does not mean that the
 grammar can be shared. The three items with the old grammar error are permanently excluded. On 2026-10-07 it was further confirmed that the earlier grammar
-correction retest still did not handle NoONT/Compress projection duplication; their old PPL has been withdrawn from the revised draft, and they must be re-evaluated using a new output
-directory; it is not permitted to merely modify the summary file or relabel the old results with the deduplication protocol.
+correction retest still did not handle NoONT/Compress projection duplication.
+Those old PPL values were superseded by the complete 2026-10-08 reevaluation in a
+new output directory. They must not be relabeled as deduplicated results.
 Pause uses a dedicated SEP; Tree-Shuffle uses the masked checkpoint, and the base evaluation uses terminal.
 
 ## Probabilities and Numerics
@@ -59,7 +67,9 @@ candidate range and history counts, and consistency of all scoring fingerprints.
 Missing shards, wrong grammar, or identity conflicts cannot pass; Slurm 0:0, file existence, or complete coverage each alone is insufficient.
 
 The public [clean JSON](../../reproducibility/evidence/old_checkpoint_clean.json) is a historical merge of the original results and the three grammar-correction
-results, retaining NLL and weight hashes; its NoONT/Compress do not yet satisfy the projection deduplication protocol described above.
+results, retaining NLL and weight hashes; its NoONT/Compress entries predate projection
+deduplication. Their replacements are in the separate completed October result extract,
+so the historical JSON is preserved without silently changing its protocol identity.
 The original per-document files and complete run credentials have not yet been released with the source code;
 see [asset status](../../reproducibility/README.md#assets). This reorganization did not rerun the evaluation.
 The original total final receipt for 22 models is `failed`, and the scoped final receipts for the three subsequent grammar-correction models

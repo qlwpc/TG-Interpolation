@@ -10,36 +10,37 @@ are available. Full data and checkpoint downloads are still pending; see
 
 | Start here | Contents |
 |---|---|
-| [Reproduce the paper's training settings](docs/guides/historical_pretraining.md) | 29 frozen configuration sources, 27 default runs and historical data boundaries |
+| [Identify the paper's experiments](docs/results/paper.md) | Revised manuscript table, historical 100M/FineWeb recipes and dedup 500M configurations |
 | [Reproduce an experiment](docs/guides/pretraining.md) | Environment, data, configuration, training and validation |
-| [Understand the paper results](docs/results/paper.md) | Frozen paper values, clean-set reevaluation and limits on interpretation |
-| [Additional BBC dedup 500M experiments](docs/results/bbc_dedup_500m.md) | Ten trained models, completed evaluations and per-seed results |
+| [Understand the paper results](docs/results/paper.md) | Current revised values, completed NoONT/Compress reevaluation and historical snapshots |
+| [BBC dedup 500M results](docs/results/bbc_dedup_500m.md) | The revised paper's ten 500M models, completed evaluations and per-seed results |
 | [Run evaluation](docs/guides/evaluation.md) | Task entry points, model identity and scoring protocols |
 | [Get data and checkpoints](reproducibility/README.md) | Included evidence and external assets still awaiting release |
 
 ## Relationship to the paper
 
-The [paper results](docs/results/paper.md) retain the frozen manuscript values and
-link them to machine-readable evidence. The
-[configuration manifest](train_configs/paper_pretraining_manifest.json) identifies
-the historical model recipes and checkpoints. The current source also includes
-later repairs and experiments; a current checkout is not automatically the exact
-code used for every historical run.
+The [paper results](docs/results/paper.md) identify the revised manuscript updated
+2026-10-20 and distinguish it from the earlier frozen draft. The BBC main table
+now uses 15 historical 100M checkpoints evaluated on clean data and 10 dedup 500M
+checkpoints. The [historical configuration manifest](train_configs/paper_pretraining_manifest.json)
+and [dedup configuration manifest](reproducibility/configs/dedup500m/manifest.json)
+identify the corresponding recipes. A current checkout is not automatically the
+exact code used for every historical run.
 
 | Experiment scope | How to identify it |
 |---|---|
-| Historical paper experiments | Frozen configuration sources and paper tables; explicitly select historical data and scoring settings |
-| Clean reevaluation of historical checkpoints | Same weights, reserved-clean BBC test and revised scoring; no retraining |
-| Additional BBC dedup 500M experiments | New training data, budgets and checkpoints; reported separately from the frozen paper table |
+| Earlier frozen paper experiments | Archived configuration sources and 19-row BBC table; explicitly select historical data and scoring settings |
+| Clean reevaluation of historical checkpoints | Same weights, reserved-clean BBC test and revised scoring; the 100M rows appear in the revised paper |
+| BBC dedup 500M experiments | New training data, budgets and checkpoints; these ten models form the revised paper's 500M block |
 | October FineWeb data work | Bracket/internal-EOS repairs, diagnostics and a filtered paired 20B subset; not the paper's original training inputs |
 
 The [protocol comparison](docs/results/protocol_comparison.md) records differences
-that affect interpretation. In particular, historical NoONT/Compress DocPPL values
-lack the later projection-deduplication requirement and must not be used for
-current rankings. The [FineWeb data register](docs/protocols/fineweb_edu_data.md)
+that affect interpretation. NoONT/Compress DocPPL reevaluation with projection
+deduplication **completed on 2026-10-08** and the revised paper uses those values.
+Their BLiMP candidate-uniqueness checks remain pending and are marked separately.
+The [FineWeb data register](docs/protocols/fineweb_edu_data.md)
 also records confirmed, unrepaired ADJ-label leakage in the repaired source and
-20B training subset. Neither successful format validation nor these documentation
-updates establish that the affected data or results have been corrected.
+20B training subset. That data defect is outside the completed BBC DocPPL correction.
 
 **BBC data versions matter.** The historical BBC test has substantial overlap with
 the historical training set. New experiments use deduplicated training data and

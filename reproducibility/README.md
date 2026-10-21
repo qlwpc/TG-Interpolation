@@ -6,12 +6,13 @@ This directory contains only the fixed inputs, result snapshots and identity sum
 |---|---|
 | Historical paper models and 29 fixed configurations | [manifest](../train_configs/paper_pretraining_manifest.json), [generation guide](../docs/guides/historical_pretraining.md) |
 | BBC tokenizer validation reference | [reference JSON](tokenizer-reference.json) |
-| 19-row BBC results of the frozen draft | [machine-readable table](evidence/paper_bbc_table.json), [explanation](../docs/results/paper.md) |
-| Clean re-evaluation of old models | [22-model historical summary](evidence/old_checkpoint_clean.json); three incorrect grammar values have been replaced; NoONT/Compress still lack projection deduplication and the old PPL is no longer valid, see [current protocol](../docs/protocols/clean_document_ppl.md) |
+| Revised manuscript BBC main table | [25-row table](evidence/paper_bbc_table_revised.json), [explanation](../docs/results/paper.md); manuscript updated 2026-10-20, with completed NoONT/Compress DocPPL corrections |
+| Earlier frozen draft | [Archived 19-row table](evidence/paper_bbc_table.json); retained as historical evidence, not the current manuscript |
+| Clean reevaluation of old models | [22-model historical summary](evidence/old_checkpoint_clean.json), plus the [completed projection-deduplicated results](evidence/projected_docppl_20261007.json) superseding NoONT/Compress DocPPL on 2026-10-08 |
 | BBC overlap audit | [old data exact](evidence/historical_overlap.json), [clean fuzzy](evidence/clean_overlap.json) |
 | Subsequent FineWeb data repair and collection | [Selected audit fields](evidence/fineweb_data_audit.json), [known issues](../docs/protocols/fineweb_edu_data.md); includes confirmed, unrepaired ADJ leakage, separate from the paper experiments |
 | Extracted sources and content verification | [evidence manifest](evidence/manifest.json); `local_origin` only identifies the original source and is not a download link |
-| Evaluation of the ten new models | [results page](../docs/results/bbc_dedup_500m.md), [per-seed/sub-item JSON](results/dedup500m), [historical final-validation summary](results/dedup500m/final_status.json); the NoONT DocPPL among them must be re-tested under the projection deduplication protocol |
+| Evaluation of the ten dedup models | [results page](../docs/results/bbc_dedup_500m.md), [per-seed/sub-item JSON](results/dedup500m), [historical final-validation summary](results/dedup500m/final_status.json); NoONT DocPPL uses the completed October correction, while its BLiMP candidate-uniqueness check remains pending |
 
 <a id="dedup-configs"></a>
 ## New experiment configurations

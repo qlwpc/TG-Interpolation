@@ -1,5 +1,11 @@
 # Paper Pretraining Reproduction Details
 
+This guide covers the historical configuration inventory. The
+[revised manuscript](../results/paper.md) retains historical BBC 100M/FineWeb 1B
+checkpoint identities but uses the [ten dedup 500M configurations](../../reproducibility/configs/dedup500m/manifest.json)
+for its main BBC 500M block. The historical four-model BBC 500M group below is a
+separate supplementary comparison.
+
 > When starting a new pretraining task, first follow the [pretraining workflow](pretraining.md). The current BBC default uses
 > dedup train + new clean dev/test; the fixed-index and historical-configuration workflow in this document is used only for explicitly selected corresponding reproductions,
 > and does not override the data versions, evaluation frequency, W&B, and GPU probing requirements of the new workflow.

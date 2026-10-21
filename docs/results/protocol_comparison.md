@@ -2,6 +2,14 @@
 
 Verification date: 2026-10-02. Experimental completion status is based on original receipts through 2026-09-29; this check verifies local evidence, configs, paths, and values, and does not re-evaluate, query remote systems, or modify the paper. This report is a fixed-date description of differences, intended for subsequent revision of paper experimental data and selection of reproduction plans; per-model formal data continues to be maintained by the original result JSON.
 
+**Later results:** projected-unique DocPPL reevaluation completed on 2026-10-08
+for NoONT-100M (15.078992496103785), Compress-100M (14.748081113054113) and
+dedup NoONT-500M (13.954969500128307). The [revised manuscript table](paper.md)
+uses these corrected values and incorporates the ten dedup 500M models.
+Only their BLiMP candidate-uniqueness checks remain pending. Tables below retain
+the original comparison snapshot; see the [completed receipt extract](../../reproducibility/evidence/projected_docppl_20261007.json)
+for the superseding DocPPL results.
+
 **Three sets of evidence must be used separately: old paper results, clean re-test of old weights, and new dedup 500M retraining.**
 The latter two groups both use the full clean test, but only the third group retrains. From old paper to clean re-test, both the test set and the structural scoring protocol change; from clean re-test to new 500M, the training data volume, LR, batch, steps, and some model implementations also change. These differences support descriptive comparison and cannot alone quantify the "decontamination benefit" or causal effects of parameter scale.
 
@@ -183,7 +191,13 @@ The original protocol has checked full JSON equivalence, so one should write "by
 
 ## 6. Result Differences and Usable Conclusions
 
-2026-10-12 review note: the table below retains the verification-date snapshot. On 2026-10-07 it was confirmed that B's NoONT/Compress and C's NoONT DocPPL lack post-projection deduplication; these three old values must not be used for current conclusions, and the differences and rankings involving them are also invalid. The historical completion receipts in §7 cannot certify newly added requirements; see [current protocol](../protocols/clean_document_ppl.md). The public original JSONs retain historical identity and are not rewritten as new results.
+The tables below retain the verification-date snapshot. The three NoONT/Compress
+DocPPL values in that snapshot lack post-projection deduplication and are
+superseded by the completed 2026-10-08 reevaluation linked above. Differences and
+rankings using the superseded values must not be used for current conclusions.
+The earlier 2026-10-12 note identified the old protocol defect but omitted the
+completed replacement measurements. The original JSONs retain their historical
+identity; the replacement results have a separate receipt and scoring contract.
 
 The following is a fixed snapshot from the verification date. A uses the frozen-manuscript display precision, and B/C display six decimal places; A's rounded values must not be treated as exact original log values. `—` means that group has no corresponding model result, not zero, failure, or a pending task.
 
@@ -207,7 +221,11 @@ The following is a fixed snapshot from the verification date. A uses the frozen-
 | Pause-2 | 10.32 | 15.116468 | Single path |
 | Pushdown | 13.29 | 19.316305 | Independent protocol, background only |
 
-For 100M, Tree relative to Terminal changes from A's higher by 0.12 to B's lower by 0.633128; in B, the two Mix values are lower than Tree/TGTree. Among causal linearization variants, A's Compress is lowest and B's TGTree is lowest; NoONT relative to Tree changes from slightly lower in A to higher by 0.325036 in B. The erroneous-grammar clean results of old NoONT/Compress/TripleCNT did not enter this table and cannot be used for before/after ranking.
+For 100M, Tree relative to Terminal changes from A's higher by 0.12 to B's lower
+by 0.633128; the two Mix values are lower than Tree/TGTree. Comparisons involving
+NoONT or Compress must instead use the corrected results linked above. The
+earlier erroneous-grammar results were already excluded before this snapshot;
+the later projection-deduplication correction is a separate change.
 
 ### 6.2 500M: A, B, and C must be listed separately
 
@@ -250,7 +268,10 @@ The old fine-tuning configs of the three shared models and the new protocol both
 <a id="completion-status"></a>
 ## 7. Completion Status, Evidence Credibility, and Unresolved Items
 
-This section registers receipts under the protocol at that time. The new projection deduplication requirement for NoONT/Compress is in the §6 review note; "22 valid models" and "three batches completed" cannot be interpreted as the affected DocPPL having passed the current protocol.
+This section registers receipts under the protocol at that time. These earlier
+receipts do not certify the later projection-deduplication requirement. That
+requirement was satisfied for the three affected DocPPL models by the separate
+completed 2026-10-08 reevaluation, not by relabeling these older receipts.
 
 | Evidence | This verification | Scope that can be claimed |
 |---|---|---|

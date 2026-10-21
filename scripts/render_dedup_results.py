@@ -22,16 +22,24 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
     if set(summaries) != set(NAMES):
         raise ValueError('Expected the three registered campaign summaries')
     evidence = root / 'reproducibility/results/dedup500m'
-    lines = ['# Additional BBC dedup 500M experiments', '',
-             'These models were trained from scratch on the new deduplicated training set; they do not replace the [frozen paper table](paper.md).',
+    corrections = json.loads((root / 'reproducibility/evidence/projected_docppl_20261007.json').read_text())
+    corrected_noont = next(row for row in corrections['results']
+                           if row['model_id'] == 'bbc_dedup_500m_tree_noont')
+    if (corrections['status'] != 'complete' or corrected_noont['status'] != 'complete'
+            or (corrected_noont['documents'], corrected_noont['sentences'], corrected_noont['terminal_count'])
+            != (5000, 129085, 3068713)):
+        raise ValueError('NoONT correction requires a completed full-clean evaluation')
+    lines = ['# BBC dedup 500M results', '',
+             'These ten models were trained from scratch on the deduplicated BBC corpus and form the 500M block of the [revised paper table](paper.md).',
+             'They are distinct from the four historical 500M models in the earlier frozen manuscript.',
              'SG/BLiMP/BoolQ and XSum R-AVG are percentages; ± denotes the sample standard deviation across five fine-tuning seeds.',
              'Fine-tuning seeds: 42, 2026, 6198, 13171, 31723. These are not five pretraining seeds.',
              'DocPPL uses the full reserved-clean v1 test: 5,000 documents, 129,085 sentences and 3,068,713 scored tokens.',
              'Terminal/Pause use a single path; structural models sum valid top-300 joint probabilities and use model-best history.',
              'As of 2026-09-29, each of the ten models had completed 22/22 evaluation tasks.', '',
-             'The 2026-10-07 review found possible duplicate candidates after NoONT projection. Its historical DocPPL is marked † below',
-             'and must not be used for current rankings; reevaluation under the [projection-deduplication protocol](../protocols/clean_document_ppl.md) is required.',
-             'Original JSON and acceptance summaries retain their historical bytes and completion status; they do not certify the later deduplication requirement.', '',
+             'NoONT DocPPL reevaluation with projection deduplication completed on 2026-10-08; its corrected value below comes from the',
+             '[completed three-model reevaluation](../../reproducibility/evidence/projected_docppl_20261007.json). The original campaign JSON retains the earlier 13.938351 snapshot.',
+             '‡ marks the NoONT BLiMP score, whose candidate-uniqueness check remains pending. It does not mark DocPPL as incomplete.', '',
              '## Results', '',
              '| Evaluation site | Model | Completed tasks | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |',
              '|---|---|---:|---:|---:|---:|---:|---:|']
@@ -53,11 +61,14 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
             if 'DocPPL' in entry and entry['document_coverage'] != 5000:
                 raise ValueError(f'{name}/{model}: PPL without complete document coverage')
             doc = f"{entry['DocPPL']:.6f}" if 'DocPPL' in entry else f"{entry['document_coverage']}/5000 documents"
-            if model == 'tree_noont' and 'DocPPL' in entry:
-                doc += ' †'
+            blimp = single('blimp')
+            if model == 'tree_noont':
+                doc = f"{corrected_noont['docppl']:.6f}"
+                blimp += ' ‡'
             lines.append('| ' + ' | '.join([
-                'SIST' if name == NAMES[2] else 'RTX3090B', LABELS[model],
-                f"{entry['tasks_complete']}/{entry['tasks_total']}", single('SG'), single('blimp'), doc,
+                'RTX3090B; DocPPL retest: SIST' if model == 'tree_noont' else
+                ('SIST' if name == NAMES[2] else 'RTX3090B'), LABELS[model],
+                f"{entry['tasks_complete']}/{entry['tasks_total']}", single('SG'), blimp, doc,
                 multi('xsum_finetune', 'R-AVG'), multi('boolq', 'eval/downstream/boolq_acc__')]) + ' |')
     lines += ['', '## Evidence and scope', '',
               'The following JSON files contain per-seed values, SG/BLiMP submetrics, document coverage and original collection times.',
@@ -73,7 +84,9 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
               'The public dedup CLI covers eight recipes. Frozen configs for this campaign\'s Pause-1/2 and TGTree-Mix-TG are stored separately;',
               'TGNomask-Aug or similarly named recipes cannot substitute for them. Data, weights and full-log availability are listed in the',
               '[public asset inventory](../../reproducibility/README.md#assets).', '',
-              'This page is generated from the JSON above by `scripts/render_dedup_results.py`. All three batches, aggregation and local acceptance were completed;',
+              'This page is generated by `scripts/render_dedup_results.py` from the three historical summaries plus the completed NoONT DocPPL correction.',
+              'The correction is applied to the displayed DocPPL only; original campaign JSON files and historical acceptance records are preserved.',
+              'All three original batches, aggregation and local acceptance were completed;',
               'counts, result hashes and scope are recorded in the [acceptance summary](../../reproducibility/results/dedup500m/final_status.json).', '']
     # Validate all rows before replacing any public files.
     outputs = {root / 'docs/results/bbc_dedup_500m.md': '\n'.join(lines)}

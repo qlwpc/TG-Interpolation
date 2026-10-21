@@ -170,6 +170,11 @@ The old data/candidate-0 measurements retained there cannot be merged with curre
 
 ## 5. SG and BLiMP
 
+The revised manuscript flags BLiMP candidate-uniqueness checks for NoONT-100M,
+Compress-100M and NoONT-500M as pending. Their DocPPL projection-deduplication
+reevaluation is complete; see the [completed results](../results/paper.md#completed-noontcompress-docppl-reevaluation).
+The DocPPL receipt does not certify BLiMP candidate handling.
+
 SG uses 32 items and 6-category formulas, judging by target-region surprisal and aggregating the category average.
 Terminal/Pause/Tree-Shuffle/TreeReg use teacher-forced logits; Tree/TG use
 word-synchronous DFS beam=300, with sub-beam=300 and terminal fast-track=30 at scoring,

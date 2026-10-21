@@ -1,13 +1,80 @@
-# Explanation of Paper Results and Supplementary Experiments
+# Paper results and experiment identities
 
-This document distinguishes three types of results: frozen-manuscript original values, clean re-measurements of old checkpoints, and new dedup training. This document preserves the identity of the original values;
-revisions to the paper's experimental data are based on [R-08 discrepancy verification](protocol_comparison.md),
-and the paper was not modified this time. For training configuration identity, see the [configuration manifest](../../train_configs/paper_pretraining_manifest.json);
-for evaluation definitions, see [Evaluation](../guides/evaluation.md).
+The current revised manuscript is `camera_ready/revision_20261005/paper.tex`
+(author revision updated 2026-10-20). Its BBC main table contains 15 historical
+100M checkpoints evaluated on the clean test and 10 newly trained dedup 500M
+checkpoints. The [revised table JSON](../../reproducibility/evidence/paper_bbc_table_revised.json)
+records all 25 rows and the manuscript SHA-256. The earlier 19-row manuscript and
+its result snapshots remain archived below; they are not the current paper table.
 
-## Frozen-manuscript BBC main table and clean re-measurements
+## Completed NoONT/Compress DocPPL reevaluation
 
-The paper column is a direct transcription of the frozen manuscript's `tab:exp1-results`, not an old submission version. XSum/BoolQ are the
+Projection-deduplicated evaluation completed on **2026-10-08** for all three
+checkpoints. Each covers 5,000 documents, 129,085 sentences and 3,068,713 scored
+terminal/EOS tokens. The [public result and receipt extract](../../reproducibility/evidence/projected_docppl_20261007.json)
+records exact NLL, weights, scoring fingerprints, candidate counts, completed
+shard coverage and successful job exits. No new pretraining was performed.
+
+| Model | Superseded clean DocPPL | Corrected clean DocPPL | Revised paper display |
+|---|---:|---:|---:|
+| Tree-NoONT-100M | 15.061134 | 15.078992496103785 | 15.079 |
+| Tree-Compress-100M | 14.730862 | 14.748081113054113 | 14.748 |
+| Tree-NoONT-500M (dedup) | 13.938351 | 13.954969500128307 | 13.955 |
+
+**The remaining pending item is BLiMP candidate uniqueness, not DocPPL.**
+BLiMP was deferred in this reevaluation and its three values are marked ‡ in the
+revised manuscript. The statement that these DocPPL reevaluations were still
+pending in the initial English release was incorrect: it used the older public
+snapshots without incorporating the completed October receipt.
+
+## Revised BBC main table
+
+Values below follow manuscript display precision. XSum R-AVG, BoolQ, SG and BLiMP
+are percentages. XSum/BoolQ report mean ± sample SD over five fine-tuning seeds;
+other metrics are single evaluations. The 100M and 500M blocks use different
+training corpora and budgets and are not a controlled causal scaling comparison.
+Tree-Shuffle uses the same terminal-only PPL evaluation method as Terminal;
+Pushdown remains an architectural reference.
+
+| Model | XSum | BoolQ | SG | BLiMP | DocPPL |
+|---|---:|---:|---:|---:|---:|
+| Terminal-100M | 22.02 ± 0.06 | 66.70 ± 0.36 | 69.80 | 70.77 | 15.369 |
+| Tree-100M | 22.84 ± 0.03 | 68.07 ± 0.35 | 81.40 | 80.95 | 14.736 |
+| TGTree-100M | 23.03 ± 0.02 | 68.12 ± 0.62 | 79.47 | 81.46 | 14.709 |
+| TG-100M | 20.15 ± 0.04 | 64.50 ± 0.40 | 79.19 | 83.28 | 16.405 |
+| TGNomask-100M | 21.91 ± 0.04 | 66.66 ± 0.45 | 78.62 | 81.78 | 14.658 |
+| TGNomask-Aug-100M | 22.12 ± 0.02 | 67.01 ± 0.28 | 78.68 | 83.63 | 14.700 |
+| Tree-NoONT-100M | 22.41 ± 0.04 | 68.67 ± 0.32 | 85.38 | 81.00 ‡ | 15.079 |
+| Tree-Compress-100M | 22.70 ± 0.05 | 68.48 ± 0.49 | 78.27 | 81.40 ‡ | 14.748 |
+| Tree-TripleCNT-100M | 22.43 ± 0.04 | 68.09 ± 0.12 | 81.57 | 83.42 | 14.801 |
+| Tree-Shuffle-100M | 21.56 ± 0.09 | 68.08 ± 0.33 | 76.56 | 67.77 | 17.852 |
+| TGNomask-Mix-TG-100M | 21.87 ± 0.04 | 66.13 ± 0.54 | 75.77 | 83.14 | 14.573 |
+| TGTree-Mix-TG-100M | 22.16 ± 0.07 | 67.91 ± 0.36 | 78.84 | 82.75 | 14.482 |
+| Pause-1-100M | 22.38 ± 0.05 | 62.04 ± 0.19 | 75.11 | 70.85 | 14.916 |
+| Pause-2-100M | 22.25 ± 0.06 | 65.70 ± 3.45 | 76.97 | 72.59 | 15.116 |
+| Pushdown-100M | 21.06 ± 0.05 | 65.54 ± 0.29 | 74.86 | 74.97 | 19.316 |
+| Terminal-500M | 23.11 ± 0.07 | 70.54 ± 0.51 | 80.88 | 72.31 | 14.029 |
+| Tree-500M | 23.57 ± 0.06 | 70.05 ± 0.58 | 83.43 | 82.76 | 13.864 |
+| TGTree-500M | 23.59 ± 0.05 | 68.43 ± 0.26 | 80.68 | 83.72 | 13.947 |
+| Pause-1-500M | 23.42 ± 0.06 | 70.26 ± 0.41 | 79.00 | 70.85 | 14.019 |
+| Pause-2-500M | 23.38 ± 0.02 | 68.86 ± 0.32 | 78.18 | 72.69 | 14.030 |
+| Tree-NoONT-500M | 23.30 ± 0.03 | 70.24 ± 0.26 | 83.67 | 81.10 ‡ | 13.955 |
+| TG-500M | 20.67 ± 0.07 | 65.55 ± 0.30 | 79.55 | 83.32 | 15.465 |
+| TGNomask-500M | 22.14 ± 0.07 | 69.54 ± 0.61 | 81.58 | 83.21 | 13.995 |
+| TGTree-Mix-TG-500M | 23.31 ± 0.04 | 69.41 ± 0.33 | 79.76 | 83.37 | 13.785 |
+| TGNomask-Mix-TG-500M | 22.37 ± 0.06 | 69.06 ± 0.29 | 80.11 | 83.22 | 13.973 |
+
+The [100M/FineWeb historical configuration manifest](../../train_configs/paper_pretraining_manifest.json)
+and [ten-model dedup 500M configuration manifest](../../reproducibility/configs/dedup500m/manifest.json)
+identify the training recipes. The latter supplies the revised paper's 500M
+models; the four older 500M recipes are supplementary historical comparisons.
+The [500M results page](bbc_dedup_500m.md) provides full-precision results and
+per-seed sources. [Evaluation protocols](../guides/evaluation.md) define scoring.
+This documentation update does not change the manuscript or original result files.
+
+## Archived 19-row manuscript and pre-correction clean snapshot
+
+The archived paper column is a direct transcription of the earlier frozen manuscript's `tab:exp1-results`, not an old submission version. XSum/BoolQ are the
 mean ± sample standard deviation over five fine-tuning seeds; the rest are single evaluations. The main-text manuscript and the locally registered old rerun have the same values for this version; the old submission column differs.
 The machine-readable [paper table](../../reproducibility/evidence/paper_bbc_table.json) preserves the manuscript hash;
 the [clean results](../../reproducibility/evidence/old_checkpoint_clean.json) preserve exact NLL, coverage, and weight identity.
@@ -36,7 +103,7 @@ the [clean results](../../reproducibility/evidence/old_checkpoint_clean.json) pr
 
 † The clean values for NoONT/Compress are retained only as historical identity: on 2026-10-07 it was confirmed that projection-based deduplication is missing,
 so they do not satisfy the [current scoring protocol](../protocols/clean_document_ppl.md) and must not be used for current rankings or paper revisions.
-The public JSON remains a byte-for-byte snapshot of the original and does not indicate that these values have been re-validated; replacement values must come from a complete re-measurement in a new directory.
+The public historical JSON retains the original bytes. The completed 2026-10-08 reevaluation supersedes these two values; use the corrected results above.
 
 The erroneous grammar results for NoONT/Compress/TripleCNT in the original summary have been excluded; the table above preserves the
 corrected grammar values for the three models; the final verification at that time did not certify the projection deduplication requirement added later. Tree-Shuffle uses a masked checkpoint; Pause uses a dedicated SEP,
@@ -78,8 +145,8 @@ SG/BLiMP are independent tasks and are not part of the 11-task average. The mode
 The [dedup 500M results page](bbc_dedup_500m.md) covers ten models obtained with a new training set;
 the training token count, LR, global batch, and checkpoint all differ from the table above. The five seeds are fine-tuning
 seeds; a single pretraining seed cannot demonstrate pretraining stability. The ten-model evaluation tasks and full DocPPL coverage
-were both completed in the 2026-09-29 snapshot; among them, NoONT's DocPPL must be re-measured according to the projection deduplication protocol,
-and the old completion receipt cannot certify this new requirement. For the scope of the final verification of local input/weight identity after evaluation, see
+were both completed in the 2026-09-29 snapshot; NoONT's later projection-deduplicated DocPPL reevaluation completed on 2026-10-08, with its own receipt and result identity.
+Its BLiMP candidate-uniqueness check remains pending. For the scope of the final verification of local input/weight identity after evaluation, see
 the [final verification summary](../../reproducibility/results/dedup500m/final_status.json).
 
 The differences between the paper description and Pushdown's XSum reduce upper bound, BoolQ supplied-span scoring, and BLiMP token-only candidate scoring are preserved in [Evaluation §8](../guides/evaluation.md#pushdown-paper-discrepancies).
