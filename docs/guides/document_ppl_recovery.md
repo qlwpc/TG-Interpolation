@@ -1,22 +1,16 @@
-# Native DocPPL：续跑、缓存和严格合并
+# Native DocPPL: Resumption, Caching, and Strict Merging
 
-当前 Pushdown 历史策略为 [model-best](../protocols/document_history.md)；GPST-model
-自身的历史策略不由这项改动定义。数据版本选择见 [Evaluation](evaluation.md)。
+The current Pushdown history policy is [model-best](../protocols/document_history.md); the history policy of GPST-model itself is not defined by this change. For data version selection, see [Evaluation](evaluation.md).
 
-## 可复用行为
+## Reusable Behavior
 
-- Pushdown 缓存被选历史的 K/V、final hidden、tokens 和 sentence IDs；完整句滑窗后重建缓存。
-  `--no-kv-cache` 保留 full-prefix 正确性参考，v1/v2 normalization 各自不变。
-- 候选 batch 同时受 token/action 和二次 attention 预算限制。Pushdown OOM 时从同一候选区间
-  减半重试，最低为 1；不跳过候选，不复用失败批次的部分结果。
-- 完整文档原子写入独立 JSON；`--resume-document-results` 仅在 run fingerprint 相同才复用。
-  fingerprint 绑定 checkpoint、corpus、tokenizer、模型类型及计分设置；改变历史策略或 cache 等
-  设置使用新目录。`--max-sentences` 可能截断文档，不能与可恢复文档输出合用。
-- launcher 从 finalized manifest 读取文档/候选数，等待所有 worker；任何失败均不发布汇总。
-- merge 拒绝非有限 NLL、无效计数、重复 ID、文件名/ID 不符、协议或候选计数不符和覆盖缺口；
-  完成全部检查后原子发布 aggregate。相同文件名不是相同运行身份。
+- The Pushdown cache stores the selected history's K/V, final hidden, tokens, and sentence IDs; the cache is rebuilt after a full-sentence sliding window. `--no-kv-cache` retains the full-prefix correctness reference, and v1/v2 normalization remain unchanged for each.
+- The candidate batch is limited by both the token/action budget and the secondary attention budget. On Pushdown OOM, retry with the same candidate interval halved, down to a minimum of 1; do not skip candidates, and do not reuse partial results from failed batches.
+- Complete documents are written atomically to individual JSON files; `--resume-document-results` reuses them only when the run fingerprint is identical. The fingerprint is bound to the checkpoint, corpus, tokenizer, model type, and scoring settings; changing settings such as the history policy or cache uses a new directory. `--max-sentences` may truncate documents and cannot be used together with resumable document output.
+- The launcher reads the document/candidate counts from the finalized manifest and waits for all workers; if anything fails, no summary is published.
+- merge rejects non-finite NLL, invalid counts, duplicate IDs, filename/ID mismatches, protocol or candidate count mismatches, and coverage gaps; after all checks complete, the aggregate is published atomically. The same filename does not mean the same run identity.
 
-## 入口
+## Entry Point
 
 ```bash
 PYTHONPATH=. python scripts/evaluate_pushdown_document_ppl.py \
@@ -27,12 +21,9 @@ PYTHONPATH=. python scripts/evaluate_pushdown_document_ppl.py \
   --document-result-dir /path/to/new-run/documents --resume-document-results
 ```
 
-按设备预算分成完整文档区间。`scripts/run_native_document_ppl_shards.sh` 支持显式语料、
-checkpoint、输出目录及 `DOCUMENT_BOUNDS`；旧默认路径须核对后覆盖。
-GPST 实现已迁移到独立项目 `~/GPST`；其 `scripts/gpst/evaluate_document_ppl.py` 支持同名 document-result 参数。
-`scripts/merge_native_document_ppl.py --expected-documents N` 才要求精确全量覆盖；旧 shard
-总数在省略该选项时可汇总，不代表检查了逐文档完整性。clean campaign 使用其专用
-[输入审计/终验合同](../protocols/clean_document_ppl.md)。
+Divide into complete document intervals according to the device budget. `scripts/run_native_document_ppl_shards.sh` supports an explicit corpus, checkpoint, output directory, and `DOCUMENT_BOUNDS`; the old default paths must be verified before overriding them.
+The GPST implementation has been migrated to the separate project `~/GPST`; its `scripts/gpst/evaluate_document_ppl.py` supports a document-result argument of the same name.
+Only `scripts/merge_native_document_ppl.py --expected-documents N` requires exact full coverage; when that option is omitted, legacy shard totals can be aggregated, but this does not mean per-document completeness was checked. The clean campaign uses its dedicated [input audit/final validation contract](../protocols/clean_document_ppl.md).
 
-回归覆盖缓存/完整前缀等价、滑窗、OOM 重试、fingerprint 拒绝和严格合并。
-结果解释见[论文结果说明](../results/paper.md)。
+Regression coverage includes cache/full-prefix equivalence, sliding window, OOM retry, fingerprint rejection, and strict merging.
+For interpretation of results, see [paper results notes](../results/paper.md).

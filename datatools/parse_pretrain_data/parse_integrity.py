@@ -4,6 +4,7 @@ from pathlib import Path
 
 from nltk import Tree
 
+from datatools.ptb_brackets import normalize_ptb_brackets
 from datatools.parse_pretrain_data.pipeline_io import atomic_json, sha256_file
 
 
@@ -12,15 +13,8 @@ def checked_parse_trees(results, inputs):
     # list of candidates. Tree is itself list-like: blindly taking [0] loses
     # the sentence root (and often all but its first constituent).
     trees = []
-    brackets = {"-LRB-": "(", "-RRB-": ")", "-LCB-": "{", "-RCB-": "}",
-                "-LSB-": "[", "-RSB-": "]"}
     def normalize(words):
-        result = []
-        for word in words:
-            for escaped, literal in brackets.items():
-                word = word.replace(escaped, literal)
-            result.append(word)
-        return result
+        return [normalize_ptb_brackets(word) for word in words]
     for result in results:
         if isinstance(result, Tree):
             tree = result

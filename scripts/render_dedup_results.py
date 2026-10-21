@@ -22,18 +22,18 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
     if set(summaries) != set(NAMES):
         raise ValueError('Expected the three registered campaign summaries')
     evidence = root / 'reproducibility/results/dedup500m'
-    lines = ['# BBC dedup 500M 补充实验', '',
-             '这些模型使用新 dedup train 重新训练；不替换[冻结论文表](paper.md)。',
-             'SG/BLiMP/BoolQ 为百分数，XSum 为 R-AVG 百分数；± 为五个微调 seed 的样本标准差。',
-             '微调 seed：42、2026、6198、13171、31723；并非五个预训练 seed。',
-             'DocPPL 使用 reserved-clean v1 完整 test：5,000 篇、129,085 句、3,068,713 个计分 token。',
-             'Terminal/Pause 是单路径；结构模型是 valid top-300 joint sum、model-best 历史。',
-             '截至 2026-09-29，十模型各 22/22 项测试完成；五 seed 指微调重复，并非预训练重复。', '',
-             '2026-10-07 复核发现 NoONT 投影后可能有重复候选。下表 NoONT 的旧 DocPPL 标记为 †，',
-             '仅保留历史记录，不能用于当前排名；须按[投影去重协议](../protocols/clean_document_ppl.md)重测。',
-             '原 JSON 与终验摘要仍保存当时字节和完成状态，不能认证新增的去重要求。', '',
-             '## 结果', '',
-             '| 执行地 | 模型 | 完成任务 | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |',
+    lines = ['# Additional BBC dedup 500M experiments', '',
+             'These models were trained from scratch on the new deduplicated training set; they do not replace the [frozen paper table](paper.md).',
+             'SG/BLiMP/BoolQ and XSum R-AVG are percentages; ± denotes the sample standard deviation across five fine-tuning seeds.',
+             'Fine-tuning seeds: 42, 2026, 6198, 13171, 31723. These are not five pretraining seeds.',
+             'DocPPL uses the full reserved-clean v1 test: 5,000 documents, 129,085 sentences and 3,068,713 scored tokens.',
+             'Terminal/Pause use a single path; structural models sum valid top-300 joint probabilities and use model-best history.',
+             'As of 2026-09-29, each of the ten models had completed 22/22 evaluation tasks.', '',
+             'The 2026-10-07 review found possible duplicate candidates after NoONT projection. Its historical DocPPL is marked † below',
+             'and must not be used for current rankings; reevaluation under the [projection-deduplication protocol](../protocols/clean_document_ppl.md) is required.',
+             'Original JSON and acceptance summaries retain their historical bytes and completion status; they do not certify the later deduplication requirement.', '',
+             '## Results', '',
+             '| Evaluation site | Model | Completed tasks | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |',
              '|---|---|---:|---:|---:|---:|---:|---:|']
     for name in NAMES:
         result = summaries[name]
@@ -41,7 +41,7 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
             def single(key):
                 rows = entry[key]
                 metric = 'avg' if key == 'SG' else 'overall/overall'
-                return f"{rows[0]['metrics'][metric] * 100:.4f}" if len(rows) == 1 else '待完成'
+                return f"{rows[0]['metrics'][metric] * 100:.4f}" if len(rows) == 1 else 'pending'
 
             def multi(key, metric):
                 values = entry.get(key + '_mean_sd', {})
@@ -52,28 +52,29 @@ def render_report(summaries: dict, root: Path = ROOT, *, check: bool = False) ->
 
             if 'DocPPL' in entry and entry['document_coverage'] != 5000:
                 raise ValueError(f'{name}/{model}: PPL without complete document coverage')
-            doc = f"{entry['DocPPL']:.6f}" if 'DocPPL' in entry else f"{entry['document_coverage']}/5000 篇"
+            doc = f"{entry['DocPPL']:.6f}" if 'DocPPL' in entry else f"{entry['document_coverage']}/5000 documents"
             if model == 'tree_noont' and 'DocPPL' in entry:
                 doc += ' †'
             lines.append('| ' + ' | '.join([
                 'SIST' if name == NAMES[2] else 'RTX3090B', LABELS[model],
                 f"{entry['tasks_complete']}/{entry['tasks_total']}", single('SG'), single('blimp'), doc,
                 multi('xsum_finetune', 'R-AVG'), multi('boolq', 'eval/downstream/boolq_acc__')]) + ' |')
-    lines += ['', '## 可核对证据与范围', '',
-              '以下 JSON 包含逐 seed、SG/BLiMP 子项、文档覆盖和原收集时间。它们是原实验汇总的',
-              '公开副本；严格汇总已核对任务身份、成功退出、完整评测和 DocPPL 文档/句/token 覆盖。',
-              '评测后的输入和 checkpoint 文件 SHA-256 已按原 manifest 再次核对；',
-              'SIST 使用本地同步镜像，本次未重新扫描远端存储或重新评测。', '']
+    lines += ['', '## Evidence and scope', '',
+              'The following JSON files contain per-seed values, SG/BLiMP submetrics, document coverage and original collection times.',
+              'They are public copies of the original experiment summaries. Aggregation checked task identity, successful exits,',
+              'complete evaluation and DocPPL document/sentence/token coverage.',
+              'Post-evaluation input and checkpoint SHA-256 hashes were checked against the original manifests.',
+              'SIST checks used a local synchronized mirror; remote storage was not rescanned and evaluation was not rerun.', '']
     for name in NAMES:
         result = summaries[name]
-        lines.append(f"- [{name}](../../reproducibility/results/dedup500m/{name}/results.json)："
-                     f"`{result['status']}`，收集于 `{result.get('collected_at', '未记录')}`。")
-    lines += ['', '完整训练配置及身份见[补充实验配置](../../reproducibility/README.md#dedup-configs)。',
-              '公共 dedup CLI 覆盖八种配方；本批 Pause-1/2 与 TGTree-Mix-TG 的冻结配置另行保存，',
-              '不能用 TGNomask-Aug 或其他近名配方代替。数据、权重及完整日志的获取状态见',
-              '[公开资产清单](../../reproducibility/README.md#assets)。', '',
-              '本页由 `scripts/render_dedup_results.py` 从上述 JSON 生成。三批任务、汇总与本地终验均完成；',
-              '核对数量、结果哈希和范围见[终验摘要](../../reproducibility/results/dedup500m/final_status.json)。', '']
+        lines.append(f"- [{name}](../../reproducibility/results/dedup500m/{name}/results.json): "
+                     f"`{result['status']}`, collected at `{result.get('collected_at', 'not recorded')}`.")
+    lines += ['', 'Full training configurations and identities are in the [additional experiment configs](../../reproducibility/README.md#dedup-configs).',
+              'The public dedup CLI covers eight recipes. Frozen configs for this campaign\'s Pause-1/2 and TGTree-Mix-TG are stored separately;',
+              'TGNomask-Aug or similarly named recipes cannot substitute for them. Data, weights and full-log availability are listed in the',
+              '[public asset inventory](../../reproducibility/README.md#assets).', '',
+              'This page is generated from the JSON above by `scripts/render_dedup_results.py`. All three batches, aggregation and local acceptance were completed;',
+              'counts, result hashes and scope are recorded in the [acceptance summary](../../reproducibility/results/dedup500m/final_status.json).', '']
     # Validate all rows before replacing any public files.
     outputs = {root / 'docs/results/bbc_dedup_500m.md': '\n'.join(lines)}
     for name in NAMES:

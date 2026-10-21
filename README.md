@@ -10,11 +10,36 @@ are available. Full data and checkpoint downloads are still pending; see
 
 | Start here | Contents |
 |---|---|
+| [Reproduce the paper's training settings](docs/guides/historical_pretraining.md) | 29 frozen configuration sources, 27 default runs and historical data boundaries |
 | [Reproduce an experiment](docs/guides/pretraining.md) | Environment, data, configuration, training and validation |
 | [Understand the paper results](docs/results/paper.md) | Frozen paper values, clean-set reevaluation and limits on interpretation |
 | [Additional BBC dedup 500M experiments](docs/results/bbc_dedup_500m.md) | Ten trained models, completed evaluations and per-seed results |
 | [Run evaluation](docs/guides/evaluation.md) | Task entry points, model identity and scoring protocols |
 | [Get data and checkpoints](reproducibility/README.md) | Included evidence and external assets still awaiting release |
+
+## Relationship to the paper
+
+The [paper results](docs/results/paper.md) retain the frozen manuscript values and
+link them to machine-readable evidence. The
+[configuration manifest](train_configs/paper_pretraining_manifest.json) identifies
+the historical model recipes and checkpoints. The current source also includes
+later repairs and experiments; a current checkout is not automatically the exact
+code used for every historical run.
+
+| Experiment scope | How to identify it |
+|---|---|
+| Historical paper experiments | Frozen configuration sources and paper tables; explicitly select historical data and scoring settings |
+| Clean reevaluation of historical checkpoints | Same weights, reserved-clean BBC test and revised scoring; no retraining |
+| Additional BBC dedup 500M experiments | New training data, budgets and checkpoints; reported separately from the frozen paper table |
+| October FineWeb data work | Bracket/internal-EOS repairs, diagnostics and a filtered paired 20B subset; not the paper's original training inputs |
+
+The [protocol comparison](docs/results/protocol_comparison.md) records differences
+that affect interpretation. In particular, historical NoONT/Compress DocPPL values
+lack the later projection-deduplication requirement and must not be used for
+current rankings. The [FineWeb data register](docs/protocols/fineweb_edu_data.md)
+also records confirmed, unrepaired ADJ-label leakage in the repaired source and
+20B training subset. Neither successful format validation nor these documentation
+updates establish that the affected data or results have been corrected.
 
 **BBC data versions matter.** The historical BBC test has substantial overlap with
 the historical training set. New experiments use deduplicated training data and
@@ -72,8 +97,9 @@ For historical paper settings, use `python scripts/prepare_paper_pretraining.py 
 and the [historical reproduction guide](docs/guides/historical_pretraining.md).
 Both generators write new run directories; they do not submit jobs.
 
-GPST training and model code have moved to the independent `~/GPST` workspace.
-Shared candidate formats and Pushdown comparison evaluators remain here.
+GPST training and model code are maintained in a separate project and are not
+included in this release. Shared candidate formats and Pushdown comparison
+evaluators remain here.
 
 ## Repository layout
 

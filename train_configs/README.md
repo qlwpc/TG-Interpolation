@@ -1,19 +1,19 @@
-# 配置入口
+# Configuration Entry Points
 
-新运行从生成器开始，参数与验证流程见[预训练工作流](../docs/guides/pretraining.md)。
+New runs start from the generator; parameters and the validation procedure are described in [the pretraining workflow](../docs/guides/pretraining.md).
 
-| 实验 | 入口 |
+| Experiment | Entry point |
 |---|---|
-| BBC dedup + clean 500M | `scripts/prepare_bbc_dedup_500m.py`；[八种配方及参数](../docs/guides/bbc_dedup_500m.md) |
-| 历史论文设置 | `scripts/prepare_paper_pretraining.py`；默认 27 个 run，另有 2 个显式 repeat-token 对照 |
-| dedicated-SEP Pause | `scripts/submit_pause_sep_pretrain.py`；[模型身份和评测](../docs/models/pause.md) |
+| BBC dedup + clean 500M | `scripts/prepare_bbc_dedup_500m.py`; [eight recipes and parameters](../docs/guides/bbc_dedup_500m.md) |
+| Historical paper settings | `scripts/prepare_paper_pretraining.py`; 27 runs by default, plus 2 explicit repeat-token controls |
+| dedicated-SEP Pause | `scripts/submit_pause_sep_pretrain.py`; [model identity and evaluation](../docs/models/pause.md) |
 
-- `templates/`：生成器输入。模板中的路径、学习率、batch 和停止条件由生成器覆盖。
-- `paper_pretraining_manifest.json`：模型、语料、配置来源、checkpoint 身份和实测超参数。
-- `paper_sources/`：29 份原字节配置，每份均由 manifest 的 SHA-256 固定；生成历史配置不需要权重或本地 `saved_models/`。
-- `eval_per_metric/`、`*_eval.yaml`：评测配置；按 checkpoint、tokenizer 和协议选择。
-- `diagnostics/`：测试、smoke 和 profile 输入，不能直接当作论文训练入口。
+- `templates/`: generator inputs. Paths, learning rates, batch sizes and stopping conditions in the templates are overridden by the generator.
+- `paper_pretraining_manifest.json`: models, corpora, configuration sources, checkpoint identities and measured hyperparameters.
+- `paper_sources/`: 29 original-byte configurations, each pinned by a SHA-256 in the manifest; generating historical configs does not require weights or a local `saved_models/`.
+- `eval_per_metric/`, `*_eval.yaml`: evaluation configs; selected by checkpoint, tokenizer and protocol.
+- `diagnostics/`: test, smoke and profile inputs; these cannot be used directly as paper training entry points.
 
-历史生成器设置 `max_duration=1ep`、`stop_at=2000000000`、`stop_after=null`，
-避免旧停止步数截断从零训练。输出的 config、launcher 和 protocol 写入新目录；
-生成成功不代表输入齐全、GPU 验证通过或训练完成。
+The historical generator sets `max_duration=1ep`, `stop_at=2000000000`, `stop_after=null`
+to prevent old stopping steps from truncating training from scratch. The output config, launcher and protocol are written to a new directory;
+successful generation does not mean the inputs are complete, GPU validation has passed, or training has finished.

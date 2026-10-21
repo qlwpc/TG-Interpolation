@@ -62,6 +62,32 @@
           "sha256": "7fc243801e0d0551948380e59031976ed1eed89bd0efe867fd8a70cfadc19cff"
         }
       ]
+    },
+    {
+      "path": "reproducibility/evidence/fineweb_data_audit.json",
+      "sha256": "03d46c7736ebc3140d5950dda1d563a6835c88735ac536725ab096b44b9e681b",
+      "sources": [
+        {
+          "local_origin": "artifacts/analysis/fineweb_bracket_repair_20261013/acceptance_final.json",
+          "sha256": "e7158ca311665bb64cd3b8e49387e86d9f7446be60609931d9116ddf06db0dc5"
+        },
+        {
+          "local_origin": "artifacts/analysis/fineweb_clean_20b_20261013/receipt.json",
+          "sha256": "a6d14734c96315a1c241095cb0391ff20b060f2caa0e0caa725d02b4ad4dd56a"
+        },
+        {
+          "local_origin": "artifacts/analysis/fineweb_clean_20b_20261013/verification.json",
+          "sha256": "27d20405e19f3efa345f69086ef479d6a36cc72e42f272cbc239cccfd1224c49"
+        },
+        {
+          "local_origin": "artifacts/analysis/fineweb_edu_scope_20261012/quality_audit_20261012/adj_label_20261015/summary.json",
+          "sha256": "9725682685919c89bf99768ba79466726e2751122ea0d902b91ef8693506b9a3"
+        },
+        {
+          "local_origin": "artifacts/analysis/fineweb_edu_scope_20261012/quality_audit_20261012/adj_label_20261015/current_readback.json",
+          "sha256": "cc232859e8b857051b0109e0427f204fb6f80fd97338fc4deffe8716cde7be1f"
+        }
+      ]
     }
   ]
 }

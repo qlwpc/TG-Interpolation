@@ -1,23 +1,27 @@
-# 专题实验工具
+# Campaign Experiment Tools
 
-这些工具服务于特定实验和结果收集，部分含历史 campaign 路径或模型列表。
-新训练和通用评测从[上级入口](../README.md)开始；使用这里的工具前核对输入配置、
-checkpoint、数据协议和输出位置。
+These tools serve specific experiments and result collection, and some contain historical campaign paths or model lists.
+Start new training and general evaluation from the [parent entry](../README.md); before using the tools here, verify the input configuration,
+checkpoint, data protocol, and output location.
 
-| 工具 | 范围 |
+| Tool | Scope |
 |---|---|
-| `make_sg_*_eval_configs.py` | 按 100M / 500M / 1B 模型集合生成 SG 配置 |
-| `make_terminal_format_validation_configs.py`、`audit_terminal_format_validation.py` | FineWeb terminal/full 专题验证与输入审计 |
-| `summarize_terminal_format_validation*.py` | 上述专题结果汇总 |
-| `prepare_variant_grammar_retest.py`、`validate_variant_grammar_retest.py`、`finalize_variant_grammar_retest.py` | 变体 grammar 修正后的重测流程 |
-| `collect_finetune_campaign.py`、`collect_syntax_eval_results.py` | 已有微调、句法实验的结果收集 |
+| `make_sg_*_eval_configs.py` | Generate SG configs by 100M / 500M / 1B model set |
+| `make_terminal_format_validation_configs.py`, `audit_terminal_format_validation.py` | FineWeb terminal/full focused validation and input audit |
+| `summarize_terminal_format_validation*.py` | Summarize the results of the above focused runs |
+| `prepare_variant_grammar_retest.py`, `validate_variant_grammar_retest.py`, `finalize_variant_grammar_retest.py` | Retest workflow after variant grammar corrections |
+| `collect_finetune_campaign.py`, `collect_syntax_eval_results.py` | Result collection for existing fine-tuning and syntax experiments |
+| `fineweb_edu_topic_locator.py`, `fineweb_slice_quality_audit.py` | Source-bound samples and read-only quality annotations; [data identity and known issues](../../docs/protocols/fineweb_edu_data.md) |
+| `fineweb_formula_filter.py`, `fineweb_datatrove_check.py`, `fineweb_paired_backup.py` | Formula screening, sampled cleaning diagnostics and aligned backups; [scope and limitations](../../docs/protocols/fineweb_edu_cleaning.md) |
+| `fineweb_bracket_repair.py`, `fineweb_parquet_text_search.py` | Journaled paired repair and provenance lookup; [repair and recovery protocol](../../docs/protocols/fineweb_bracket_repair.md) |
+| `fineweb_collection_filter.py`, `fineweb_paired_collection.py`, `fineweb_collection_unpack.py` | Campaign-specific paired 20B collection and input conversion; [storage and split protocol](../../docs/protocols/fineweb_clean_20b.md) |
 
-命令从仓库根目录执行，例如：
+Run commands from the repository root, for example:
 
 ```bash
 PYTHONPATH=. python scripts/campaigns/collect_finetune_campaign.py --help
 ```
 
-部分历史生成器没有参数解析，直接运行会写入源码指定的 campaign；不能把 `--help`
-视为所有脚本都支持的预览方式。专题诊断不能替代论文主协议。
-评测身份及支持范围见[评测指南](../../docs/guides/evaluation.md)。
+Some historical generators have no argument parsing; running them directly writes to the campaign specified in the source; `--help`
+cannot be regarded as a preview method supported by all scripts. Focused diagnostics cannot replace the paper's main protocol.
+For evaluation identity and supported scope, see the [evaluation guide](../../docs/guides/evaluation.md).

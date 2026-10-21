@@ -1,72 +1,68 @@
-# 预训练复现工作流
+# Pretraining Reproduction Workflow
 
-新 BBC 实验默认 **dedup train + reserved-clean dev/test**。复现论文历史设置时明确选择
-历史生成器及对应语料；两者不是同一次实验。模型与结果说明见[论文结果](../results/paper.md)，
-外部资产状态见[公开材料](../../reproducibility/README.md)。
+New BBC experiments default to **dedup train + reserved-clean dev/test**. When reproducing the paper's historical settings, explicitly select the historical generator and the corresponding corpus; the two are not the same experiment. For model and result descriptions, see [Paper Results](../results/paper.md); for external asset status, see [Public Materials](../../reproducibility/README.md).
 
-## 1. 环境与源码
+## 1. Environment and Source Code
 
-按根目录 [README](../../README.md#environment) 创建 `LLM` 环境并构建扩展。
-使用目标 Python 构建 `tg_mask`、`cppbackend`；typed layout 还要求 C++17 编译器。
-保存源码 commit 及未提交 patch/新增源码、配置、依赖包版本、GPU/driver、Torch/CUDA/ABI、
-实际加载动态库和扩展的哈希。不能用包版本号替代实际动态库身份。
-公共环境由 [environment.yml](../../environment.yml) 定义；本地 5090 的专用安装和库修复
-不是公共安装前提。新硬件需要独立 kernel、NCCL collective 和 DDP 验证。
+Create the `LLM` environment and build the extensions according to the root [README](../../README.md#environment).
+Build `tg_mask` and `cppbackend` with the target Python; typed layout also requires a C++17 compiler.
+Record the source code commit and any uncommitted patches/newly added source files, configs, dependency package versions, GPU/driver, Torch/CUDA/ABI, and the hashes of the actually loaded dynamic libraries and extensions. Package version numbers cannot substitute for the actual dynamic library identity.
+The public environment is defined by [environment.yml](../../environment.yml); the dedicated installation and library fixes on the local 5090 are not prerequisites for the public installation. New hardware requires independent validation of kernels, NCCL collectives, and DDP.
 
-## 2. 先冻结数据与模型身份
+## 2. First Freeze Data and Model Identity
 
-| 数据 | 默认位置 | 文档数 |
+| Data | Default Location | Number of Documents |
 |---|---|---:|
 | dedup train | `dataset/bbc-news-parsed-dedup/{format}/train.npy` | 1,466,132 |
 | clean dev/test | `dataset/bbc-news-reserved-clean-v1/{format}/{dev,test}.npy` | 1,000 / 5,000 |
 | NoONT clean dev/test | `dataset/bbc-news-parsed-dedup/tree_noont/` | 1,000 / 5,000 |
 
-NoONT 必须由同版 clean Tree 删除 ONT 得到；不能因为路径在 dedup 目录就使用旧 dev/test。
-每种表示保留 manifest：来源、split、dtype、shape、tokens、bytes、文档数、SHA-256。
-NPY 必须读 header；BBC 为 `uint16`，Qwen3/FineWeb 为 `uint32`。dev/test offsets 为
-严格递增的 `uint64`，长度 N+1，首项 0、末项等于 token 数。
+NoONT must be obtained by removing ONT from the same version of clean Tree; do not use the old dev/test just because the path is under the dedup directory.
+For each representation, retain a manifest: source, split, dtype, shape, tokens, bytes, number of documents, SHA-256.
+NPY must be read from the header; BBC is `uint16`, Qwen3/FineWeb is `uint32`. dev/test offsets are
+strictly increasing `uint64`, length N+1, with the first entry 0 and the last entry equal to the token count.
 
-BBC tokenizer 词表为 50320，EOS/PAD/SEP=50256/50258/50261。公共生成器用
-[冻结 tokenizer reference](../../reproducibility/tokenizer-reference.json) 核验字节身份或完整
-JSON 等价性。词表大小相同不证明 token-ID 一致。新传输输入计算完整 hash；复用既有可信
-train hash 时记录本次未重算，dev/test 仍完整验证。
-数据污染结论的范围见[数据说明](../protocols/bbc_data.md)。
+The BBC tokenizer vocabulary size is 50320, and EOS/PAD/SEP=50256/50258/50261. The public generator uses the
+[frozen tokenizer reference](../../reproducibility/tokenizer-reference.json) to verify byte identity or full
+JSON equivalence. The same vocabulary size does not prove token-ID consistency. For newly transferred inputs, compute the full hash; when reusing an existing trusted
+train hash, record that it was not recomputed this time, and still fully verify dev/test.
+For the scope of data contamination conclusions, see [Data Description](../protocols/bbc_data.md).
 
 <a id="22-四模型的实际路由合同"></a>
-### TG 路由
+### TG Routing
 
-TGTree 是 LIN2 + causal；TG 是 LIN2 + STACK/COMPOSE。非 aug TGNomask 与 aug 是不同模型。
-公共生成器的 `tg/tgnomask/tgnomask_mix_tg` 使用 typed kernels：
-`tg_typed_attention=true`，Flash/Flex=false；train/dev/test 的
-`generate_attention_mask=false`、`generate_doc_lengths=false`，native layout、
-`cuda_prefetch=false`。Mix 为 8 TG + 8 TGNomask heads。NoONT 为独立 causal 模型。
-分别检查 train/dev/test 的 `use_typed_tg` 路由，并在真实数据上验证 mask、label 和梯度。
-详见 [TG 输入管线](../models/tg.md)。
+TGTree is LIN2 + causal; TG is LIN2 + STACK/COMPOSE. Non-aug TGNomask and aug are different models.
+The public generator's `tg/tgnomask/tgnomask_mix_tg` uses typed kernels:
+`tg_typed_attention=true`, Flash/Flex=false; for train/dev/test,
+`generate_attention_mask=false`, `generate_doc_lengths=false`, native layout,
+`cuda_prefetch=false`. Mix is 8 TG + 8 TGNomask heads. NoONT is an independent causal model.
+Check the `use_typed_tg` routing for train/dev/test separately, and validate masks, labels, and gradients on real data.
+For details, see [TG Input Pipeline](../models/tg.md).
 
-## 3. 参数
+## 3. Parameters
 
-500M：16 层、hidden 1408、16 heads、MLP ratio 8、RoPE、pre-RMSNorm、SwiGLU、
-共享 embedding、sequence length 2048、seed 6198、BF16、从零训练 1 epoch。
-AdamW betas=(0.9,0.95)、eps=1e-8、weight decay=0.1、梯度裁剪 1.0；cosine，
-2000 步 warmup、最低 LR=1e-5。
+500M: 16 layers, hidden 1408, 16 heads, MLP ratio 8, RoPE, pre-RMSNorm, SwiGLU,
+shared embedding, sequence length 2048, seed 6198, BF16, trained from scratch for 1 epoch.
+AdamW betas=(0.9,0.95), eps=1e-8, weight decay=0.1, gradient clipping 1.0; cosine,
+2000-step warmup, minimum LR=1e-5.
 
 ```text
 peak_lr = 1.79 × N^(-0.713) × D^(0.307)
 token_batch = 0.58 × D^(0.571)
 ```
 
-N 为非 embedding 参数量；500M 实测 N=507,896,576。D 为该表示含结构/special token 的
-实际 train 数组长度。global batch 按 sequence length 和 world size 舍入，详见
-[Step Law 实现](../../scripts/step_law.py)。microbatch 仅调整显存与梯度累积，不能静默改变
-数据、模型或 global batch；保存实际累积次数和末尾小 batch。
+N is the non-embedding parameter count; the measured N for 500M is 507,896,576. D is the
+actual train array length of that representation including structural/special tokens. The global batch is rounded according to sequence length and world size; see
+[Step Law implementation](../../scripts/step_law.py). Microbatch only adjusts memory and gradient accumulation and must not silently change
+data, model, or global batch; save the actual accumulation count and the trailing small batch.
 
-## 4. 选择生成器
+## 4. Select a Generator
 
-| 范围 | 命令 / 指南 |
+| Scope | Command / Guide |
 |---|---|
-| 新 BBC dedup 500M | [公共生成器参数](bbc_dedup_500m.md) |
-| 论文历史 27 个默认 run | `python scripts/prepare_paper_pretraining.py --campaign-dir artifacts/experiment/NEW_PAPER_RUN`；[细则](historical_pretraining.md) |
-| SEP Pause | `scripts/submit_pause_sep_pretrain.py`；[Pause 协议](../models/pause.md) |
+| New BBC dedup 500M | [Public generator parameters](bbc_dedup_500m.md) |
+| The paper's historical 27 default runs | `python scripts/prepare_paper_pretraining.py --campaign-dir artifacts/experiment/NEW_PAPER_RUN`; [details](historical_pretraining.md) |
+| SEP Pause | `scripts/submit_pause_sep_pretrain.py`; [Pause protocol](../models/pause.md) |
 
 ```bash
 python scripts/prepare_bbc_dedup_500m.py \
@@ -75,69 +71,69 @@ python scripts/prepare_bbc_dedup_500m.py \
   --output-dir artifacts/experiment/NEW_CAMPAIGN
 ```
 
-## 5. 检查生成配置
+## 5. Inspect the Generated Configuration
 
-输出必须是新目录。检查 base/config/smoke、protocol 和 launcher：路径可达，grammar、
-tokenizer、表示一致；正式运行每 3000 步完整 clean dev/test、W&B offline、独立 run/save
-目录。训练 LM loss 与 top-300 document PPL 不同。生成器的 probe 状态仍为 pending。
-用 `--runtime-root` 映射目标仓库时，远端仍需验证真实文件、链接目标、hash 和 schema。
-Pause-1/2、TGTree-Mix-TG 新增实验的独立冻结配方范围见[新增结果](../results/bbc_dedup_500m.md)；
-不要用相近模型的 CLI key 代替。
+The output must be a new directory. Inspect base/config/smoke, protocol, and launcher: paths are reachable, and grammar,
+tokenizer, and representation are consistent; the formal run performs a full clean dev/test every 3000 steps, W&B offline, and separate run/save
+directories. Training LM loss is different from top-300 document PPL. The generator's probe status remains pending.
+When using `--runtime-root` to map the target repository, real files, link targets, hashes, and schemas still need to be verified on the remote side.
+For the scope of the independent frozen recipes for Pause-1/2 and the new TGTree-Mix-TG experiments, see [New Results](../results/bbc_dedup_500m.md);
+do not substitute the CLI key of a similar model.
 
-## 6. 远端传输、环境验证与 Slurm 提交
+## 6. Remote Transfer, Environment Validation, and Slurm Submission
 
-先做文件/hash 检查，再构建扩展、导入/schema、真实 shape 的 kernel 前向/梯度，
-然后以正式 world size、BF16 autocast、batch 和 workers 做完整训练/短评估 smoke。
-单卡 kernel 成功不能替代真实多进程、多卡训练。验证 wrapper 必须传递失败退出码。
-GPU 和重型计算在 `sbatch` allocation 中执行；正文直接运行 Python/torchrun，不用
-`srun/salloc`，不在登录节点编译或试跑。account、partition、GPU/CPU、时限和日志路径
-根据目标集群设置，先 `sbatch --test-only` 再提交，保存 Job ID 与实际资源。
+First perform file/hash checks, then build extensions, import/schema checks, and kernel forward/gradient with real shapes,
+then run a full training/short-evaluation smoke with the formal world size, BF16 autocast, batch, and workers.
+Success with a single-GPU kernel cannot substitute for real multi-process, multi-GPU training. The validation wrapper must propagate failure exit codes.
+GPU and heavy computation run in an `sbatch` allocation; do not run Python/torchrun directly in the body, do not use
+`srun/salloc`, and do not compile or trial-run on the login node. Set account, partition, GPU/CPU, time limit, and log paths
+according to the target cluster, run `sbatch --test-only` first, then submit, and save the Job ID and actual resources.
 
-启动 Python 前设置短且独享的 TMPDIR，避免 DataLoader 的 pathname socket 超限：
+Before starting Python, set a short, exclusive TMPDIR to avoid DataLoader pathname socket length limits:
 
 ```bash
 set -euo pipefail
 export TMPDIR=$(mktemp -d /tmp/tg.XXXXXX)
 python scripts/pretraining/check_ipc.py --output "$record/ipc.json"
-# 然后运行本次生成的 smoke.sh / launch.sh；record 必须是本次新目录。
+# Then run the smoke.sh / launch.sh generated this time; record must be a new directory for this run.
 ```
 
-`check_ipc.py` 检查 filesystem socket、spawn worker 和张量传输，并拒绝覆盖旧凭据。
-缓存、日志可在长路径，IPC 临时目录不能复用长 campaign 路径。native builder 的缓存
-可能随 allocation 变化，训练节点也须具备编译器。不要并发修改运行任务的共享环境。
+`check_ipc.py` checks filesystem sockets, spawn workers, and tensor transfer, and refuses to overwrite old credentials.
+Caches and logs may use long paths, but the IPC temporary directory must not reuse the long campaign path. The native builder's cache
+may change with the allocation, and training nodes must also have a compiler. Do not concurrently modify the shared environment of a running job.
 
-## 7. microbatch 验证与正式训练
+## 7. Microbatch Validation and Formal Training
 
-- `search_max`：在保持 global batch 下搜索可用 microbatch；每候选从零做 3 个 optimizer
-  steps 和 dev/test 短评估，最大候选做 10 步确认。只有明确 CUDA OOM 才缩小 batch；
-  环境异常、超时和非有限值直接失败。
-- `fixed`：按明确指定值做真实训练验证，可有末尾小 batch。记录 `fixed_value_validated`，
-  不记作最大值。外层 timeout 和允许成本写入 protocol。
+- `search_max`: search for the usable microbatch while keeping the global batch; for each candidate, run 3 optimizer
+  steps and a short dev/test evaluation from scratch, and run 10 steps to confirm the largest candidate. Reduce the batch only on an explicit CUDA OOM;
+  environment errors, timeouts, and non-finite values fail directly.
+- `fixed`: run real training validation at the explicitly specified value, and a trailing small batch is allowed. Record `fixed_value_validated`,
+  and do not record it as the maximum. Write the outer timeout and allowed cost into the protocol.
 
-smoke 不保存正式 checkpoint，不继承其权重；通过后重新初始化正式训练，恢复完整评估、
-保存和停止策略。短 smoke 不能保证任意后续 batch 的容量；调整 microbatch 后记录原因，
-维持 global batch/LR/数据和进度。
+Smoke does not save formal checkpoints and does not inherit their weights; after passing, reinitialize formal training and restore the full evaluation,
+saving, and stopping policy. A short smoke cannot guarantee capacity for any subsequent batch; after adjusting the microbatch, record the reason,
+and maintain the global batch/LR/data and progress.
 
-## 8. 续训和完成
+## 8. Resuming and Completion
 
-队列消失后核验 `sacct`、退出码、日志、optimizer step 和 checkpoint。
-零步失败可以修复后新 attempt 从零重提，原证据本地保留；已有 checkpoint 的续训保持
-seed、LR、batch、scheduler、数据与进度，使用 `restore_dataloader=true`、
-`reset_optimizer_state=false`、`reset_trainer_state=false`，新 continuation 输出目录，
-不重走从零探测入口。不要用覆盖标志掩盖冲突。
+After the queue disappears, verify `sacct`, exit codes, logs, optimizer step, and checkpoint.
+A zero-step failure can be fixed and resubmitted from scratch as a new attempt, with the original evidence kept locally; resuming from an existing checkpoint keeps
+seed, LR, batch, scheduler, data, and progress, using `restore_dataloader=true`,
+`reset_optimizer_state=false`, `reset_trainer_state=false`, a new continuation output directory,
+and does not re-enter the from-scratch probing entry point. Do not use overwrite flags to mask conflicts.
 
-完成需要 epoch/步数证据、成功退出、可恢复 checkpoint 和最终评估。
-提交成功、probe 成功和时限到达都不是完成。成本累计包括 setup、失败、probe 和续训。
+Completion requires epoch/step evidence, a successful exit, a resumable checkpoint, and a final evaluation.
+Successful submission, a successful probe, and reaching the time limit are not completion. Cost accumulation includes setup, failures, probes, and resuming.
 
-## 9. 结果登记
+## 9. Result Registration
 
-本地原 campaign 保存配置、数据/源码/环境身份、各阶段回执、checkpoint 和日志。
-公开结果仅提取有效最终指标、必要配置/身份和完成范围；失败过程、排队状态留在本地。
-新结果回填现有结果页及其机器可读证据，避免第二份人工滚动表。
+The local original campaign saves configs, data/source/environment identity, phase receipts, checkpoints, and logs.
+Public results extract only valid final metrics, necessary configs/identity, and completion scope; failure processes and queue status remain local.
+New results are backfilled into existing result pages and their machine-readable evidence, avoiding a second manually maintained rolling table.
 
-## 10. 公开复现交付与验收
+## 10. Public Reproduction Deliverables and Acceptance
 
-[公开材料清单](../../reproducibility/README.md) 区分：已包含的源代码/配置/结果证据、
-仍需下载的数据/权重，以及实际执行过的验证。hash 不能替代下载或构建入口。
-在不含本地归档的公开文件副本中检查链接、配置来源和 CPU 测试；从外部新环境完成
-构建、GPU smoke 与完整重训是另一个验收层级，不能由上述检查推断。
+The [Public Materials Inventory](../../reproducibility/README.md) distinguishes: included source code/config/result evidence,
+data/weights that still need to be downloaded, and validation that has actually been executed. Hashes cannot substitute for download or build entry points.
+Check links, config sources, and CPU tests in a public file copy that does not contain the local archive; completing
+builds, GPU smoke, and full retraining from a new external environment is another acceptance level and cannot be inferred from the above checks.

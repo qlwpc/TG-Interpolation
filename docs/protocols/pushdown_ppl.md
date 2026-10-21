@@ -1,38 +1,38 @@
-# Pushdown fixed-word-atom：结构、概率与历史对照
+# Pushdown fixed-word-atom: Structure, Probabilities, and Historical Comparison
 
-当前历史选择为 [model-best](document_history.md)，输入/转换细则见
-[binary support 合同](gpst_binary_ppl.md)。历史 candidate-0 和当前 clean/model-best 为不同协议。
+The current history-selection policy is [model-best](document_history.md); for input/conversion details, see
+[binary support contract](gpst_binary_ppl.md). Historical candidate-0 and the current clean/model-best are different protocols.
 
-## 训练表示与候选空间
+## Training representation and candidate space
 
-`saved_models/pushdown_terminalonly/step34354-unsharded` 的输入为
-`dataset/bbc-news/parse_aligned/train_pushdown_unary_terminals`。
-`preprocessing.json`、`scripts/convert_treereg_to_pushdown_terminals.py` 与
-`olmo/data/parse_align.py` 一致表明：多 BPE 单词先保留固定右递归词内子树，词级树再
-unary collapse + deterministic right-CNF。转换仅删除 singleton spans，不把词内 BPE 拼进父节点。
-生成器把此合同记录为 `fixed-per-word-right-recursive-v1`。
+The input for `saved_models/pushdown_terminalonly/step34354-unsharded` is
+`dataset/bbc-news/parse_aligned/train_pushdown_unary_terminals`.
+`preprocessing.json`, `scripts/convert_treereg_to_pushdown_terminals.py`, and
+`olmo/data/parse_align.py` consistently indicate that multi-BPE words first retain a fixed right-recursive intra-word subtree, and the word-level tree is then
+unary collapse + deterministic right-CNF. The conversion only deletes singleton spans and does not merge intra-word BPE into the parent node.
+The generator records this contract as `fixed-per-word-right-recursive-v1`.
 
-| 候选轴 | 结构 |
+| Candidate axis | Structure |
 |---|---|
-| `gpst-strict-binary` | 词级 strict-binary CKY top-K，再展开固定 word atoms |
-| `pushdown-nary-word-atom-right-binary` | native n-ary top-K 在词级 right-CNF，再展开相同 word atoms |
-| native n-ary 原始评测 | 不补齐词内/人工 binary reductions；不是该 checkpoint 的 training-representation likelihood |
+| `gpst-strict-binary` | Word-level strict-binary CKY top-K, then expand fixed word atoms |
+| `pushdown-nary-word-atom-right-binary` | Native n-ary top-K at word-level right-CNF, then expand the same word atoms |
+| Native n-ary raw evaluation | Does not complete intra-word/manual binary reductions; it is not the training-representation likelihood of this checkpoint |
 
-n-ary 转换用 `word_starts` 把 constituent 映射到词区间，词级 `(l,s,r)` 转为
-`(start[l],end[s],end[r])`；每个多 BPE 词 `[a,b]` 添加 `(g,g,b)`（g=a..b−1），
-按 split gap 规范化并稳定去重。同拓扑只计一次。
-实现为 `right_binarize_native_nary_spans_with_word_atoms` / `NativeNaryWordAtomRightBinarizedPushdownCorpus`。
+The n-ary conversion uses `word_starts` to map constituents to word intervals, converting word-level `(l,s,r)` to
+`(start[l],end[s],end[r])`; for each multi-BPE word `[a,b]`, it adds `(g,g,b)` (g=a..b−1),
+normalizes by split gap, and stably deduplicates. The same topology is counted only once.
+The implementation is `right_binarize_native_nary_spans_with_word_atoms` / `NativeNaryWordAtomRightBinarizedPushdownCorpus`.
 
-## 概率
+## Probabilities
 
-`sentence_ll = logsumexp(token_ll + attachment_ll)`，不除以候选数、不乘 proposal 权重。
-v1 `stack_legal` 在 stack 合法位置归一化；v2 `sentence_causal` 在完整句内因果位置归一化，
-对应训练 attachment CE 的 support。固定路径 v2 NLL ≥ v1；二者须分别登记。
-均用实际计分 terminal/EOS 数作 PPL 分母；历史策略是另一个独立协议轴。
+`sentence_ll = logsumexp(token_ll + attachment_ll)`, without dividing by the number of candidates and without multiplying proposal weights.
+v1 `stack_legal` normalizes at stack-legal positions; v2 `sentence_causal` normalizes at causal positions within the complete sentence,
+corresponding to the support of the training attachment CE. For a fixed path, v2 NLL ≥ v1; the two must be registered separately.
+Both use the actual number of scored terminal/EOS tokens as the PPL denominator; the history-selection policy is another independent protocol axis.
 
-## 与论文结果的关系
+## Relationship to the paper's results
 
-论文的 native n-ary v1 测量没有补齐全部词内/人工 binary reductions；fixed-word-atom
-binary 测量计入这些 attachment 因子并改变 depth 轨迹。不能仅凭两者数值不同断定实现
-错误，也不能将 binary/v2 对照改贴为论文主值。旧数据/candidate-0 的逐案对照留在本地。
-有效 clean 结果及论文边界见[论文结果说明](../results/paper.md)。
+The paper's native n-ary v1 measurement does not complete all intra-word/manual binary reductions; the fixed-word-atom
+binary measurement includes these attachment factors and changes the depth trajectory. One cannot conclude from the difference in the two values alone that the implementation
+is wrong, nor can the binary/v2 comparison be relabeled as the paper's main value. The case-by-case comparison for the old data/candidate-0 is kept locally.
+For valid clean results and the paper boundary, see [Paper Results Notes](../results/paper.md).

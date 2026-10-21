@@ -1,7 +1,9 @@
 # Documentation
 
 Start with a task, then consult the corresponding model and scoring protocol.
-Commands run from the repository root. Detailed scientific notes are currently in Chinese.
+Commands run from the repository root. Public guides, model notes, protocols and
+result explanations are in English. Dated audits retain their original scope;
+they are not new evaluations performed for this documentation release.
 
 | Task | Read first |
 |---|---|
@@ -11,6 +13,14 @@ Commands run from the repository root. Detailed scientific notes are currently i
 | Resume or merge document-PPL evaluation | [Recovery guide](guides/document_ppl_recovery.md) |
 | Inspect paper results | [Frozen paper results](results/paper.md), [additional dedup experiments](results/bbc_dedup_500m.md), [protocol comparison](results/protocol_comparison.md) |
 | Obtain data, checkpoints and result evidence | [Asset availability](../reproducibility/README.md) |
+| Inspect or clean local FineWeb-Edu data | [Data identity and known issues](protocols/fineweb_edu_data.md), [cleaning and global deduplication](protocols/fineweb_edu_cleaning.md), [paired in-place bracket repair](protocols/fineweb_bracket_repair.md) |
+| Collect filtered FineWeb-Edu 20B with paired trees | [Collection, validation splits and storage protocol](protocols/fineweb_clean_20b.md) |
+
+Historical paper settings, later BBC experiments and October FineWeb data repairs
+are separate experiment scopes. Start with the [paper relationship](../README.md#relationship-to-the-paper)
+and retain each dataset/configuration identity when reproducing a result.
+FineWeb repair/collection validation does not resolve the
+[known ADJ-label leakage](protocols/fineweb_edu_data.md#adj-label-leak).
 
 ## Reference by topic
 

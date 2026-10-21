@@ -1,96 +1,94 @@
-# BBC 数据版本与结果解释
+# BBC Data Versions and Result Interpretation
 
-新实验默认 dedup train + reserved-clean dev/test。历史论文使用的训练集与旧 test
-存在大量全文重复，旧 DocPPL 不能作为独立 held-out 泛化证据。本文保留影响复现与解释的
-结论；逐次排错、源行追溯和旧任务记录仅在本地保存。
-新旧训练参数、部署路径、结果差异及后续修订使用规则见
-[R-08 核定报告](../results/protocol_comparison.md)。
+New experiments by default use dedup train + reserved-clean dev/test. The training set used in historical papers and the old test set share a large amount of full-text duplication, so the old DocPPL cannot serve as independent held-out generalization evidence. This document retains the conclusions that affect reproduction and interpretation; per-run troubleshooting, source-line tracing, and old task records are kept only locally.
+For the rules on old vs. new training parameters, deployment paths, result differences, and subsequent revisions, see
+[R-08 verification report](../results/protocol_comparison.md).
 
 <a id="versions"></a>
-## 数据身份
+## Data identity
 
-| 数据版本 | 文档数 | 句数 | 计分 terminal/EOS 数 | 用途 |
+| Data version | Document count | Sentence count | Scored terminal/EOS count | Purpose |
 |---|---:|---:|---:|---|
-| 历史索引 test | 5,025 | — | — | 原 split 索引，不等于旧 DocPPL 对齐数组 |
-| 历史 DocPPL 对齐 test | 4,966 | 148,836 | 3,284,061 | 冻结稿的旧 BBC DocPPL |
-| reserved-clean-v1 dev | 1,000 | — | — | 新训练验证 |
-| reserved-clean-v1 test | 5,000 | 129,085 | 3,068,713 | 旧模型 clean 重测及新增实验 |
-| dedup train | 1,466,132 | — | 按表示分别统计 | 新 500M 训练 |
+| Historical index test | 5,025 | — | — | Original split index, not equal to the old DocPPL aligned array |
+| Historical DocPPL aligned test | 4,966 | 148,836 | 3,284,061 | Old BBC DocPPL of the frozen draft |
+| reserved-clean-v1 dev | 1,000 | — | — | New training validation |
+| reserved-clean-v1 test | 5,000 | 129,085 | 3,068,713 | Clean re-evaluation of old models and new experiments |
+| dedup train | 1,466,132 | — | Counted separately by representation | New 500M training |
 
-clean test 基础数组包含 3,073,713 tokens；每篇 BOS 仅作上下文，EOS 计分。
-早期 test-1000 子集不能替代完整 5,000 篇。不同数据版本即使路径末尾同为 `test.npy`，
-也不能混合结果；绑定 manifest、tokenizer、候选与 checkpoint 身份。
+The clean test base array contains 3,073,713 tokens; each document's BOS serves only as context, and EOS is scored.
+The early test-1000 subset cannot replace the full 5,000 documents. Different data versions cannot have their results mixed even if their paths all end in `test.npy`;
+bind the manifest, tokenizer, candidate, and checkpoint identities.
 
 <a id="overlap"></a>
-## 历史训练重叠
+## Historical training overlap
 
-对实际旧 `terminal/train.npy` 全量扫描：15,187,326 篇、10,061,025,584 tokens。
-旧 DocPPL test 中 4,752/4,966 篇存在完整 token 相同的训练副本（95.6907%）；
-涉及 91,394 个训练文档实例和 91,631 个匹配对。按行分开 split 未消除跨分片同文。
-[公开摘要](../../reproducibility/evidence/historical_overlap.json)保留定义、训练哈希、计数与校验状态。
-这不是对全部下游任务的污染结论，也不单独解释所有模型间差异。
+A full scan of the actual old `terminal/train.npy`: 15,187,326 documents, 10,061,025,584 tokens.
+In the old DocPPL test, 4,752/4,966 documents have a training copy with identical full tokens (95.6907%);
+this involves 91,394 training document instances and 91,631 matching pairs. Splitting rows into separate splits did not eliminate cross-shard identical text.
+The [public summary](../../reproducibility/evidence/historical_overlap.json) retains the definition, training hash, counts, and verification status.
+This is not a contamination conclusion for all downstream tasks, nor does it alone explain all differences between models.
 
 <a id="raw-census"></a>
-## 训练组装和预留范围
+## Training assembly and reserved range
 
-历史下载/解析池为 94 分片，训练组装入口限定
-[89 个分片](../../datatools/parse_pretrain_data/bbc_train_shards.txt)，拒绝五个
-`CC-MAIN-2023-{06,14,23,40,50}` reserved 分片。整分片预留仍可能有同文副本，
-不能直接视为 clean。新训练还要使用去重数组；普通历史 `assemble` 不自动生成 dedup train。
-组装保护不会改变历史 checkpoint 的训练经历。
+The historical download/parse pool is 94 shards; the training assembly entry point is limited to
+[89 shards](../../datatools/parse_pretrain_data/bbc_train_shards.txt), rejecting five
+`CC-MAIN-2023-{06,14,23,40,50}` reserved shards. Whole-shard reservation may still contain identical-text copies,
+so it cannot be directly regarded as clean. New training also needs to use the deduplicated array; ordinary historical `assemble` does not automatically generate dedup train.
+The assembly protection does not change the training experience of historical checkpoints.
 
 <a id="clean-audit"></a>
-## clean 的筛选与审计范围
+## clean filtering and audit scope
 
-[构建程序与冻结规则](../../datatools/reserved_clean/README.md)使用 exact、5-gram near
-和 13-gram local reuse 筛选；计算表示做 NFKC/casefold/PTB/空白规范化，评分正文不改写。
-近重复采用 5-gram Jaccard 或合格包含率 ≥0.8；后者要求双方至少 50 tokens、20 个共享
-5-grams。共享 13-gram 位置并集覆盖 ≥30% 时隔离；此局部规则屏蔽冻结的高频模板。
+The [build program and freezing rules](../../datatools/reserved_clean/README.md) use exact, 5-gram near,
+and 13-gram local reuse filtering; the computation representation applies NFKC/casefold/PTB/whitespace normalization, and the scoring text is not rewritten.
+Near-duplicates use 5-gram Jaccard or qualified containment rate ≥0.8; the latter requires at least 50 tokens and 20 shared
+5-grams on both sides. When the union of shared 13-gram positions covers ≥30%, the document is quarantined; this local rule masks the frozen high-frequency templates.
 
-最终 5,000 篇对指定历史 train 的独立复核未发现完整文本重复，也未发现所检查的
-近重复（Jaccard/合格包含率 ≥0.6）。但存在共享片段：未屏蔽模板时 41 篇局部并集覆盖
-达到 30%；按冻结规则屏蔽模板并合并旧 dev/test 参考后该阈值命中为 0。
-不能据此声称“零文本重合”。[公开量化摘要](../../reproducibility/evidence/clean_overlap.json)
-保留完整/子集口径、训练 hash 和限制。
+An independent re-check of the final 5,000 documents against the specified historical train found no full-text duplication and no
+near-duplication among those checked (Jaccard/qualified containment rate ≥0.6). However, shared fragments exist: when templates are not masked, 41 documents have local union coverage
+reaching 30%; after masking templates per the freezing rules and merging old dev/test references, the threshold hit count is 0.
+This cannot be used to claim "zero text overlap". The [public quantitative summary](../../reproducibility/evidence/clean_overlap.json)
+retains the full/subset definitions, training hash, and limitations.
 
-上述近重复及片段审计相对于固定历史 train 及其阈值。2026-10-07 独立全量扫描了
-dedup train 的 1,466,132 篇 / 800,848,405 terminal tokens，与 clean test 5,000 篇、
-dev 1,000 篇的完整 token 文档精确重合均为 0。训练数组 SHA256 与 NoONT 500M
-预训练记录一致，完整 NoONT train 的 terminal 投影也与所扫描 terminal train 一致。
-证据见 `artifacts/evaluation/projected_docppl_20261007/training_exact_audit.json` 及
-`training_data_binding.json`。此项严格包含 BOS/EOS、空白及 token ID；不替代规范化
-文本、近重复和局部片段筛查，不能扩大为“零文本重合”。新 dedup train 的后几项仍待审计。
+The above near-duplication and fragment audits are relative to the fixed historical train and its thresholds. On 2026-10-07, an independent full scan was run on
+the dedup train's 1,466,132 documents / 800,848,405 terminal tokens; the exact overlap of full-token documents with clean test's 5,000 documents
+and dev's 1,000 documents was 0 in both cases. The training array SHA256 is consistent with the NoONT 500M
+pretraining record, and the terminal projection of the full NoONT train is also consistent with the scanned terminal train.
+Evidence is in `artifacts/evaluation/projected_docppl_20261007/training_exact_audit.json` and
+`training_data_binding.json`. This item strictly includes BOS/EOS, whitespace, and token IDs; it does not replace normalized
+text, near-duplication, and local fragment screening, and cannot be broadened to "zero text overlap". The remaining items for the new dedup train are still pending audit.
 
 <a id="provenance"></a>
-## 历史重建的限制
+## Limitations of historical reconstruction
 
-旧索引 5,025 篇与 DocPPL 4,966 篇的版本差异包括组装范围、边界及正文修订。
-历史字节重建需要固定配方，不能从今天重新下载/解析直接推断。91 篇的 403 个变化句
-包括 345 句成分区间变化、32 句仅标签变化、26 句 unary 层数变化；差异已存在于原始
-top300 文本及其分片数组。167 个旧树在候选 1–299 中存在（82 个在 candidate 1），
-236 个不在导出候选中，不能归因于统一的 top-1/top-2 交换。
+The differences between the old index's 5,025 documents and DocPPL's 4,966 documents include assembly range, boundaries, and body text revisions.
+Historical byte reconstruction requires a fixed recipe and cannot be directly inferred from re-downloading/re-parsing today. The 403 changed sentences of the 91 documents
+include 345 sentences with constituent span changes, 32 sentences with label-only changes, and 26 sentences with unary depth changes; the differences already exist in the original
+top300 text and its shard arrays. 167 old trees exist among candidates 1–299 (82 in candidate 1),
+and 236 are not among the exported candidates; this cannot be attributed to a uniform top-1/top-2 swap.
 
-2026-10-02 本地复核重现上述结构计数、历史阶段对照及全部 403 句的候选命中/最低排名。
-本地后处理数组有 4 句增加了重复命中槽位，不改变上述计数，不能与原始导出逐槽混同。
-当次 parser 权重身份、完整配置和候选分数仍无法确认，结构变化的解析原因保留为未知。
-按用户决定关闭 R-03，不再作为待修复项追查；关闭不表示原因已解决，也不改变历史
-数据或结果身份。后续新实验继续使用 dedup train + reserved-clean dev/test。
-历史 train 的一次重编码即使数量一致也未匹配字节 hash；不声称已精确重建旧训练数组。
+The 2026-10-02 local re-check reproduced the above structural counts, the historical stage comparison, and the candidate hit/minimum rank for all 403 sentences.
+The local post-processing array has 4 sentences with additional duplicate hit slots, which does not change the above counts and cannot be conflated slot-by-slot with the original export.
+The parser weight identity, full configuration, and candidate scores of that run still cannot be confirmed; the parsing cause of the structural changes remains unknown.
+Per the user's decision, R-03 is closed and no longer tracked as a pending fix item; closure does not mean the cause is resolved, nor does it change the historical
+data or result identities. Subsequent new experiments continue to use dedup train + reserved-clean dev/test.
+A single re-encoding of the historical train did not match the byte hash even though the counts were consistent; no claim is made that the old training array has been exactly reconstructed.
 
 <a id="paper-impact"></a>
-## 对论文结论的影响
+## Impact on paper conclusions
 
-[论文结果说明](../results/paper.md)并列冻结稿与旧模型 clean 重测，包含三项正确 grammar
-重测值。clean 下 Tree 优于 Terminal、混合注意力在 100M PPL 中领先等观察仅适用于
-对应 checkpoint、数据及评分协议；没有显著性检验，也不能把新旧差值全部归因于泄漏。
-新增 dedup 500M 是另一批训练实验，不能作为旧模型重测的同一行。
+The [paper result notes](../results/paper.md) present the frozen draft alongside clean re-evaluations of old models, including three correctly re-evaluated grammar
+values. Observations such as Tree outperforming Terminal under clean and mixed attention leading in 100M PPL apply only to
+the corresponding checkpoint, data, and scoring protocol; there is no significance test, and the old–new differences cannot all be attributed to leakage.
+The new dedup 500M is a separate batch of training experiments and cannot be placed in the same row as the old model re-evaluations.
 
 <a id="reproduction"></a>
-## 复现入口
+## Reproduction entry points
 
-- [历史数据构建](../guides/historical_pretraining.md)：下载、解析、89 分片组装与数据版本校验。
-- [clean 筛选](../../datatools/reserved_clean/README.md)、[候选生成](../../datatools/parse_test_docppl_data/README.md)。
-- [审计程序](../../diagnostics/README.md)：实际 train exact 扫描、raw census、fuzzy 扫描及回归。
-- [公开资产清单](../../reproducibility/README.md#assets)：数据数组、权重与完整日志的获取状态。
+- [Historical data construction](../guides/historical_pretraining.md): download, parsing, 89-shard assembly, and data version verification.
+- [clean filtering](../../datatools/reserved_clean/README.md), [candidate generation](../../datatools/parse_test_docppl_data/README.md).
+- [Audit programs](../../diagnostics/README.md): actual train exact scan, raw census, fuzzy scan, and regression.
+- [Public asset list](../../reproducibility/README.md#assets): acquisition status of data arrays, weights, and full logs.
 
-公开摘要足以复核本页列出的计数和口径；重跑全量数据审计仍需要原数据资产。
+The public summaries are sufficient to verify the counts and definitions listed on this page; re-running the full data audit still requires the original data assets.

@@ -1,46 +1,41 @@
-# 公开复现材料
+# Public Reproducibility Materials
 
-本目录只放复现所需的固定输入、结果快照和身份摘要。日常工作记录、失败尝试、队列状态、
-远端同步脚本及完整日志保留在本地，不作为读者的默认入口。
+This directory contains only the fixed inputs, result snapshots and identity summaries needed for reproducibility. Daily work records, failed attempts, queue status, remote synchronization scripts and full logs are kept locally and are not the default entry point for readers.
 
-| 内容 | 入口 |
+| Content | Entry point |
 |---|---|
-| 历史论文模型与 29 份固定配置 | [manifest](../train_configs/paper_pretraining_manifest.json)、[生成指南](../docs/guides/historical_pretraining.md) |
-| BBC tokenizer 校验参考 | [reference JSON](tokenizer-reference.json) |
-| 冻结稿 19 行 BBC 结果 | [机器可读表](evidence/paper_bbc_table.json)、[解释](../docs/results/paper.md) |
-| 旧模型 clean 重测 | [22 模型历史汇总](evidence/old_checkpoint_clean.json)，已替换三项错误 grammar 值；NoONT/Compress 仍缺投影去重，旧 PPL 不再有效，见[当前协议](../docs/protocols/clean_document_ppl.md) |
-| BBC 重叠审计 | [旧数据 exact](evidence/historical_overlap.json)、[clean fuzzy](evidence/clean_overlap.json) |
-| 提取来源及内容校验 | [证据 manifest](evidence/manifest.json)；`local_origin` 仅标识原始来源，不是下载链接 |
-| 新增十模型评测 | [结果页](../docs/results/bbc_dedup_500m.md)、[逐 seed/子项 JSON](results/dedup500m)、[历史终验摘要](results/dedup500m/final_status.json)；其中 NoONT DocPPL 须按投影去重协议重测 |
+| Historical paper models and 29 fixed configurations | [manifest](../train_configs/paper_pretraining_manifest.json), [generation guide](../docs/guides/historical_pretraining.md) |
+| BBC tokenizer validation reference | [reference JSON](tokenizer-reference.json) |
+| 19-row BBC results of the frozen draft | [machine-readable table](evidence/paper_bbc_table.json), [explanation](../docs/results/paper.md) |
+| Clean re-evaluation of old models | [22-model historical summary](evidence/old_checkpoint_clean.json); three incorrect grammar values have been replaced; NoONT/Compress still lack projection deduplication and the old PPL is no longer valid, see [current protocol](../docs/protocols/clean_document_ppl.md) |
+| BBC overlap audit | [old data exact](evidence/historical_overlap.json), [clean fuzzy](evidence/clean_overlap.json) |
+| Subsequent FineWeb data repair and collection | [Selected audit fields](evidence/fineweb_data_audit.json), [known issues](../docs/protocols/fineweb_edu_data.md); includes confirmed, unrepaired ADJ leakage, separate from the paper experiments |
+| Extracted sources and content verification | [evidence manifest](evidence/manifest.json); `local_origin` only identifies the original source and is not a download link |
+| Evaluation of the ten new models | [results page](../docs/results/bbc_dedup_500m.md), [per-seed/sub-item JSON](results/dedup500m), [historical final-validation summary](results/dedup500m/final_status.json); the NoONT DocPPL among them must be re-tested under the projection deduplication protocol |
 
 <a id="dedup-configs"></a>
-## 新增实验配置
+## New experiment configurations
 
-[十模型配置 manifest](configs/dedup500m/manifest.json)记录 checkpoint step、配置 SHA-256
-及原字节 YAML。配置是实际 checkpoint 的身份材料，保留当时的路径；新运行需要用生成器
-或适配到新目录，不能直接复用原保存目录。`tg/tgnomask/tgnomask_mix_tg/tree_noont`
-等八种配方使用[公共 CLI](../docs/guides/bbc_dedup_500m.md)；Pause 使用
-[SEP 入口](../docs/models/pause.md)。TGTree-Mix-TG 暂无统一 dedup CLI key，冻结配置
-提供具体配方，重新运行仍需完成[工作流](../docs/guides/pretraining.md)的身份和 GPU 验证。
+The [ten-model configuration manifest](configs/dedup500m/manifest.json) records checkpoint step, configuration SHA-256 and original-byte YAML. The configurations are identity materials for the actual checkpoints and retain the paths at the time; new runs must use the generator or be adapted to a new directory and cannot directly reuse the original save directories. Eight recipes including `tg/tgnomask/tgnomask_mix_tg/tree_noont` use the [common CLI](../docs/guides/bbc_dedup_500m.md); Pause uses the [SEP entry point](../docs/models/pause.md). TGTree-Mix-TG currently has no unified dedup CLI key; the frozen configuration provides the concrete recipe, and re-running still requires completing the identity and GPU verification in the [workflow](../docs/guides/pretraining.md).
 
 <a id="assets"></a>
-## 数据、权重和日志的可获取性
+## Availability of data, weights and logs
 
-| 资产 | 已包含内容 | 外部复现状态 |
+| Asset | Included content | External reproducibility status |
 |---|---|---|
-| 代码、C++/Triton 源码、配置与协议 | 当前源码树、构建命令、生成器 | 可审阅；需在目标环境验证扩展/GPU |
-| BBC 历史 split、来源与 tokenizer 参考 | split JSON、数据工具、配置 manifest | 完整历史训练字节重建尚未证实；不能承诺重新下载/解析得到同一数组 |
-| dedup train / clean dev/test / top-300 | 构建/筛选程序、版本和必要校验摘要 | 冻结数组及候选的公开下载位置待补 |
-| BBC/FineWeb tokenizer 运行资产 | 构建入口；BBC reference 是可加载的完整冻结 JSON | BBC 文件已包含，可复制到 `dataset/bbc-news/TG_GPT2_tokenizer.json`；Qwen3 冻结文件随数据发布 |
-| 下游处理后数据及 parse sidecars | 仓库已有部分 SG、OLMES 数据与任务定义 | 其余按 Evaluation 指定布局直接发布已处理文件；下载入口待补，不要求重新构造 pipeline |
-| 历史与新 dedup checkpoint | 固定配置；旧模型 clean 及十个新模型附权重 hash | 完整权重下载位置待补；配置不含权重 |
-| 逐文档结果、原始日志、历史运行源码快照 | 已选有效汇总、fingerprint 与来源 hash | 全量外部存档入口待补；当前工作树不自动等同于每次历史运行源码 |
-| FineWeb 11-task 逐样本结果 | 论文说明中的汇总 | 完整逐样本证据与 bootstrap 产物待发布 |
+| Code, C++/Triton sources, configurations and protocols | Current source tree, build commands, generators | Reviewable; extensions/GPU must be verified in the target environment |
+| BBC historical splits, sources and tokenizer reference | Split JSON, data tools, configuration manifest | Full byte-level reconstruction of historical training data has not yet been demonstrated; cannot promise that re-downloading/parsing yields the same arrays |
+| dedup train / clean dev/test / top-300 | Build/filter programs, versions and necessary verification summaries | Public download locations for the frozen arrays and candidates are to be added |
+| BBC/FineWeb tokenizer runtime assets | Build entry points; the BBC reference is a loadable complete frozen JSON | The BBC file is included and can be copied to `dataset/bbc-news/TG_GPT2_tokenizer.json`; public release of the frozen Qwen3 file with the data is pending |
+| Downstream processed data and parse sidecars | The repository already contains some SG and OLMES data and task definitions | The remaining processed files are released directly according to the layout specified in Evaluation; download entry points are to be added, and rebuilding the pipeline is not required |
+| Historical and new dedup checkpoints | Fixed configurations; weight hashes attached for old-model clean and ten new models | Full weight download locations are to be added; configurations do not contain weights |
+| Per-document results, raw logs, historical run source snapshots | Selected valid summaries, fingerprints and source hashes | Full external archive entry points are to be added; the current working tree is not automatically equivalent to the source code of each historical run |
+| FineWeb 11-task per-sample results | Summaries in the paper description | Complete per-sample evidence and bootstrap artifacts are to be released |
+| Repaired FineWeb source and filtered paired 20B subset | Repair/filter/collection tools, English protocols and selected receipt fields with source hashes | Full arrays, tokenizer, deltas, journals and diagnostic outputs remain external; public download locations are pending. FWE-014 remains unrepaired |
 
-hash 是校验身份，不能代替获取地址。上述缺口未关闭前，只声明源代码、配方和选定证据
-已整理，不声明外部读者已经可以完整重训或逐 bit 复现。未进行外部干净环境完整重训。
+Hashes verify identity and cannot substitute for acquisition addresses. Until the above gaps are closed, we only state that the source code, recipes and selected evidence have been organized; we do not state that external readers can already fully retrain or reproduce bit by bit. No complete retraining in an external clean environment has been performed.
 
-## 检查公开文件副本
+## Checking the public file copy
 
 ```bash
 python scripts/check_public_release.py
@@ -51,7 +46,4 @@ python scripts/prepare_paper_pretraining.py --list
 python scripts/render_dedup_results.py
 ```
 
-export 读取当前工作树中可发布的文件，包含未提交的修改，不等同于已提交 commit 的
-`git archive`。检查包括公开文件集合中的 Markdown 链接/锚点、配置与证据 hash；
-文件在本地存在但被忽略时不算通过。导出不包含本地工作记录或 `.git`。
-发布前还需提交所需文件并核对实际干净检出；本命令不会 commit、push 或上传资产。
+The export reads publishable files from the current working tree, including uncommitted modifications, and is not equivalent to a `git archive` of a committed commit. The checks cover Markdown links/anchors in the public file set and configuration and evidence hashes; files that exist locally but are ignored do not count as passing. The export does not include local work records or `.git`. Before release, the required files must also be committed and the actual clean checkout verified; this command does not commit, push or upload assets.

@@ -1,18 +1,18 @@
-# 去重 BBC 数据的 500M 预训练配置
+# 500M Pretraining Configuration for Deduplicated BBC Data
 
-正式开展预训练必须遵循 [预训练工作流](pretraining.md)。公共生成器
-`scripts/prepare_bbc_dedup_500m.py` 包含八种模型配方和工作流配置。
-默认仍选择 `terminal/tree/tgtree/tgnomask_aug`，新增模型须通过 `--models` 显式选择：
+Formal pretraining must follow the [pretraining workflow](pretraining.md). The public generator
+`scripts/prepare_bbc_dedup_500m.py` contains eight model recipes and workflow configurations.
+The default remains `terminal/tree/tgtree/tgnomask_aug`; newly added models must be explicitly selected via `--models`:
 
-| CLI 模型 | 数据表示 | grammar / attention |
+| CLI model | Data representation | grammar / attention |
 |---|---|---|
-| `terminal` / `tree` / `tgtree` | terminal / tree / tg | 同名 grammar，causal FlashAttention |
-| `tgnomask_aug` | tg | 保留原 aug + Flex 配方，区别于非 aug |
-| `tg` / `tgnomask` | tg | 同名 grammar，typed TG / TGNomask |
-| `tgnomask_mix_tg` | tg | `mixing`，8 TG + 8 TGNomask heads，typed |
-| `tree_noont` | tree_noont | `tree_noont`，causal FlashAttention |
+| `terminal` / `tree` / `tgtree` | terminal / tree / tg | Grammar of the same name, causal FlashAttention |
+| `tgnomask_aug` | tg | Keeps the original aug + Flex recipe, distinct from non-aug |
+| `tg` / `tgnomask` | tg | Grammar of the same name, typed TG / TGNomask |
+| `tgnomask_mix_tg` | tg | `mixing`, 8 TG + 8 TGNomask heads, typed |
+| `tree_noont` | tree_noont | `tree_noont`, causal FlashAttention |
 
-从仓库根目录、在训练环境中生成全新的 campaign：
+Generate a brand-new campaign from the repository root, in the training environment:
 
 ```bash
 python scripts/prepare_bbc_dedup_500m.py \
@@ -21,43 +21,42 @@ python scripts/prepare_bbc_dedup_500m.py \
   --output-dir artifacts/experiment/NEW_UNIQUE_CAMPAIGN
 ```
 
-训练默认读取 `dataset/bbc-news-parsed-dedup/{format}/train.npy`；dev/test 默认读取
-`dataset/bbc-news-reserved-clean-v1/{format}/` 的完整基础数组（1000/5000 篇）。
-Tree-NoONT 的 clean dev/test 默认在 `--data-dir/tree_noont/`，也可通过
-`--noont-eval-dir ROOT` 指定 `ROOT/tree_noont/`；不能替换为旧测试集。
-统一目录可同时传给 `--data-dir`、`--eval-dir`、`--noont-eval-dir`。
+Training reads `dataset/bbc-news-parsed-dedup/{format}/train.npy` by default; dev/test read the complete base arrays (1000/5000 documents) under `dataset/bbc-news-reserved-clean-v1/{format}/` by default.
+Tree-NoONT clean dev/test defaults to `--data-dir/tree_noont/`, and can also be specified via
+`--noont-eval-dir ROOT` as `ROOT/tree_noont/`; it cannot be replaced with the old test set.
+A unified directory can be passed to `--data-dir`, `--eval-dir`, and `--noont-eval-dir` at the same time.
 
-每模型输出 `base.yaml`、`config.yaml`、`smoke.yaml`、`protocol.json`、`launch.sh`、
-`smoke.sh`。正式配置包含每 3000 步完整 clean dev/test 评估、W&B offline、DDP/BF16、
-1 epoch、checkpoint 保留策略、44h Trainer 时间预算和独立的 run/save 路径；smoke 单独
-执行 3 步及短评估，`--smoke-timeout` 默认 1800 秒，不改正式训练预算。launcher 设置 `WANDB_MODE=offline` 和短 TMPDIR，
-使用真实 world size 的 torchrun；仅在已获分配的 GPU 作业内运行，不负责申请资源或提交。
+Each model outputs `base.yaml`, `config.yaml`, `smoke.yaml`, `protocol.json`, `launch.sh`,
+and `smoke.sh`. The formal configuration includes a full clean dev/test evaluation every 3000 steps, W&B offline, DDP/BF16,
+1 epoch, checkpoint retention policy, a 44h Trainer time budget, and independent run/save paths; smoke runs separately
+for 3 steps and a short evaluation, with `--smoke-timeout` defaulting to 1800 seconds and not changing the formal training budget. The launcher sets `WANDB_MODE=offline` and a short TMPDIR,
+uses torchrun with the real world size; it only runs within an already allocated GPU job and is not responsible for requesting resources or submitting.
 
-- `--max-microbatch` 默认 1，仅生成初始整除候选；protocol 标为 `search_max/pending_gpu_probe`。
-- `--fixed-microbatch N` 固定候选可不整除 local batch，记录实际 ceil 累积次数和末尾 batch；
-  不能改变 global batch，仍须在目标机器验证。两项均不是已通过显存探测的声明。
-- `--runtime-root /absolute/target/repo` 将仓库内输入、tokenizer、输出和 launcher 路径映射
-  到目标仓库；此模式要求这些本地路径位于仓库内。生成时检查本地资产，远端存在性另行验证。
-- `--campaign` 默认输出目录名，配合 `--hardware`、GPU 数生成 run 名和 W&B group；
-  `--wandb-entity` 可调整归属。输出目录必须全新。
-- `--tokenizer-reference` 默认使用已公开的冻结 JSON；字节哈希不同须通过参考哈希和完整
-  JSON 等价性校验，不再仅报警后继续生成。
-- 默认检查 train NPY header/payload 和 manifest，复用 manifest 中的 train SHA-256；
-  `--verify-train-hash` 可重新计算完整训练数组哈希。dev/test 重新计算完整哈希，检查
-  manifest、文档数和 uint64 offsets；兼容 clean 总 manifest 和逐 split manifest。
+- `--max-microbatch` defaults to 1 and only generates initially divisible candidates; the protocol marks it as `search_max/pending_gpu_probe`.
+- `--fixed-microbatch N` fixes the candidate even if it does not divide the local batch, and records the actual ceil accumulation count and the tail batch;
+  it cannot change the global batch and must still be verified on the target machine. Neither option is a claim that a GPU memory probe has passed.
+- `--runtime-root /absolute/target/repo` maps in-repository inputs, tokenizer, outputs, and launcher paths
+  to the target repository; this mode requires these local paths to be inside the repository. Local assets are checked at generation time; remote existence is verified separately.
+- `--campaign` defaults to the output directory name, and together with `--hardware` and the GPU count generates run names and the W&B group;
+  `--wandb-entity` can adjust ownership. The output directory must be brand new.
+- `--tokenizer-reference` defaults to the already public frozen JSON; if the byte hash differs, it must pass validation via the reference hash and full
+  JSON equivalence, and no longer merely warns and continues generation.
+- By default it checks the train NPY header/payload and the manifest, and reuses the train SHA-256 from the manifest;
+  `--verify-train-hash` can recompute the full training array hash. dev/test recompute the full hash, check
+  the manifest, document counts, and uint64 offsets; compatible with the clean total manifest and per-split manifests.
 
-生成器对所有模型执行 TrainConfig schema 检查，并逐一调用 `use_typed_tg` 核验 train、
-dev、test 路由；protocol 保存数据与配置身份、Step Law 推导、运行设置及待验证状态。
-生成后仍须完成工作流的远端路径、扩展/数值、IPC/DDP、microbatch 和提交回执验证。
-训练期间的 LM loss 评估不等同于 top-300 document PPL。
+The generator performs a TrainConfig schema check for all models, and calls `use_typed_tg` one by one to verify train,
+dev, and test routing; the protocol saves data and configuration identity, Step Law derivation, run settings, and pending-verification status.
+After generation, the workflow's remote path, extension/numerical, IPC/DDP, microbatch, and submission-receipt verifications must still be completed.
+LM loss evaluation during training is not equivalent to top-300 document PPL.
 
-协议依据 [论文训练设置](pretraining.md#3-参数)：16 层、hidden size 1408、
-16 heads、MLP ratio 8、sequence length 2048、seed 6198、从零训练 1 epoch，
-AdamW (0.9, 0.95)、weight decay 0.1、gradient clipping 1.0、cosine schedule、
-2000 步 warmup、最低 LR 1e-5。非 embedding 参数量从 meta 模型实际计算。
-学习率和 batch 根据各表示的新训练 token 数使用现有 Step Law 实现重算；global batch
-取最近 GPU 数倍数，microbatch 取上限以内能整除每卡 batch 的最大整数。
-`--fixed-microbatch` 则保留指定值和末尾小 batch；生成阶段没有验证 GPU 峰值显存。
+The protocol is based on the [paper training settings](pretraining.md#3-parameters): 16 layers, hidden size 1408,
+16 heads, MLP ratio 8, sequence length 2048, seed 6198, trained from scratch for 1 epoch,
+AdamW (0.9, 0.95), weight decay 0.1, gradient clipping 1.0, cosine schedule,
+2000-step warmup, minimum LR 1e-5. The non-embedding parameter count is actually computed from the meta model.
+The learning rate and batch are recomputed using the existing Step Law implementation based on the number of new training tokens for each representation; the global batch
+is taken as the nearest multiple of the GPU count, and the microbatch is the largest integer within the upper limit that divides the per-GPU batch.
+With `--fixed-microbatch`, the specified value and the tail small batch are retained; no GPU peak memory is verified at the generation stage.
 
-当前 clean manifest 的排除范围仍标记为历史训练集，本次没有重新进行新训练集与 clean
-dev/test 的完整重叠审计。配置生成和 CPU 校验不代表训练已运行或论文指标已复现。
+The exclusion scope of the current clean manifest is still marked as the historical training set; this time no complete overlap audit between the new training set and the clean
+dev/test was re-performed. Configuration generation and CPU validation do not mean that training has run or that paper metrics have been reproduced.

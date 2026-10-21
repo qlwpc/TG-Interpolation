@@ -1,48 +1,48 @@
-# 数据诊断入口
+# Data Diagnostics Entry
 
-当前 BBC 溯源与污染审计使用 `audit_bbc_*`、`diagnose_bbc_split_overlap.py`、
-`find_bbc_terminal_sources.py`、`read_bbc_structure_sources_remote.py`、`verify_bbc_*`、
-`audit_reserved_fuzzy.*` 及对应 `summarize_*`。固定输入、口径和证据见
-[BBC 数据溯源](../docs/protocols/bbc_data.md)。这些是审计程序，不是新数据生产入口。
+The current BBC traceability and contamination audits use `audit_bbc_*`, `diagnose_bbc_split_overlap.py`,
+`find_bbc_terminal_sources.py`, `read_bbc_structure_sources_remote.py`, `verify_bbc_*`,
+`audit_reserved_fuzzy.*`, and the corresponding `summarize_*`. Fixed inputs, definitions, and evidence are given in
+[BBC Data Traceability](../docs/protocols/bbc_data.md). These are audit procedures, not new data production entry points.
 
-[data/bbc_historical_shard_counts.json](data/bbc_historical_shard_counts.json) 保留旧 parsed 94 分片计数及来源哈希。
-raw 普查与 split 原因审计直接读该 JSON；不依赖历史采样脚本的执行或源码解析。
+[data/bbc_historical_shard_counts.json](data/bbc_historical_shard_counts.json) retains the old parsed 94-shard counts and source hashes.
+The raw census and split-cause audit read this JSON directly; they do not depend on executing or parsing the source of historical sampling scripts.
 
-新候选生成/独立检查见 [DocPPL 数据入口](../datatools/parse_test_docppl_data/README.md)。
-旧修补脚本和逐次诊断只在本地保留。公开计数证据见[数据版本说明](../docs/protocols/bbc_data.md)。
+For new candidate generation/independent checks, see [DocPPL Data Entry](../datatools/parse_test_docppl_data/README.md).
+The old patching scripts and per-run diagnostics are kept only locally. For public count evidence, see [Data Version Notes](../docs/protocols/bbc_data.md).
 
-`audit_dataset_versions.py` 对 BBC 小型 dev/test 流做全量结构检查，对 top-300 索引求和、
-候选正文和预计算缓存做确定性抽样；只读数据，JSON 写到 stdout：
+`audit_dataset_versions.py` performs a full structural check on the small BBC dev/test streams, sums the top-300 indices,
+and performs deterministic sampling on candidate text and precomputed caches; it reads data only and writes JSON to stdout:
 
 ```bash
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python diagnostics/audit_dataset_versions.py \
   --root dataset --host 3090B > /tmp/dataset-legality.json
 ```
 
-需要 NumPy；不调用 parser/GPU，不扫描整个训练集。抽样通过不证明整个大文件合法，
-也不替代完整 SHA 或污染审计。具体版本判断记录在本地
-`reports/dataset_migration_20261002.md`（未随公开源码发布）。
+Requires NumPy; it does not invoke the parser/GPU and does not scan the entire training set. Passing the sampling does not prove that the entire large file is legal,
+nor does it replace a full SHA or contamination audit. Specific version determinations are recorded locally in
+`reports/dataset_migration_20261002.md` (not released with the public source code).
 
-## 模型与性能工具
+## Model and Performance Tools
 
-除顶层 BBC 数据审计外，工具按检查对象组织。命令从仓库根目录运行，
-使用 README 指定的运行环境及 `PYTHONPATH=.`。
+Apart from the top-level BBC data audit, tools are organized by inspection target. Commands are run from the repository root,
+using the runtime environment specified in the README and `PYTHONPATH=.`.
 
-| 目录 | 用途 |
+| Directory | Purpose |
 |---|---|
-| `models/` | checkpoint 完整性、XSum/Pause 生成、Tree-Shuffle terminality、Pushdown/GPST scorer 和协议等价性 |
-| `candidates/` | GPST BPE、n-ary 与 word-atom binary 候选审计 |
-| `training/` | 训练数据 inspection 与 dataloader 检查 |
-| `performance/` | Pushdown/TreeReg profile 分析、depth 微基准、DocPPL profiler 与 stress runner |
-| `data/` | 固定历史分片计数；只放审计输入 |
+| `models/` | checkpoint integrity, XSum/Pause generation, Tree-Shuffle terminality, Pushdown/GPST scorer, and protocol equivalence |
+| `candidates/` | GPST BPE, n-ary, and word-atom binary candidate audits |
+| `training/` | training data inspection and dataloader checks |
+| `performance/` | Pushdown/TreeReg profile analysis, depth microbenchmarks, DocPPL profiler, and stress runner |
+| `data/` | fixed historical shard counts; contains audit inputs only |
 
-例如：
+For example:
 
 ```bash
 PYTHONPATH=. python diagnostics/models/check_checkpoint_health.py --help
 PYTHONPATH=. python diagnostics/candidates/audit_gpst_training_bpe_candidates.py --help
 ```
 
-性能与 stress 工具可能需要 GPU，部分旧工具包含专用输入或默认路径；先阅读参数和源码。
-GPU benchmark 不包含在轻量源码检查中。正式运行前的 clean 输入审计
-仍由 `scripts/audit_reserved_docppl_inputs.py` 提供。
+Performance and stress tools may require a GPU; some old tools contain specialized inputs or default paths; read the arguments and source first.
+GPU benchmarks are not included in the lightweight source check. The clean input audit before formal runs
+is still provided by `scripts/audit_reserved_docppl_inputs.py`.

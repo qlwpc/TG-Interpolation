@@ -21,6 +21,7 @@ from datatools.parse_pretrain_data.pipeline_io import load_index, sha256_file, v
 def tiny_tokenizer(tmp_path):
     tokenizer = Tokenizer(models.WordLevel({"<unk>": 0, "alpha": 1, "beta": 2, "gamma": 3, "delta": 4}, unk_token="<unk>"))
     tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
+    tokenizer.use_bracket_mapping = True  # explicit policy for this synthetic layout
     tokenizer.add_special_tokens(["<|beginoftext|>", "<|endoftext|>", "<|pad|>", "<(S>", "<(NP>", "<S)>", "<NP)>"])
     path = tmp_path / "tokenizer.json"
     tokenizer.save(str(path))
@@ -124,12 +125,13 @@ def test_tokenize_assemble_validate_end_to_end(tmp_path, tiny_tokenizer, monkeyp
     tokenizer, vocab, tokenizer_path = tiny_tokenizer
     root = tmp_path / "tokens"
     source = parsed_shard(tmp_path / "parsed/a.txt")
-    receipt = tokenize_shard(source, root, tokenizer, vocab, sha256_file(tokenizer_path))
+    receipt = tokenize_shard(source, root, tokenizer, vocab, sha256_file(tokenizer_path),
+                             use_bracket_mapping=False)
     assert receipt["documents"] == 4
     # Verify memory-bounded writer produces exactly the legacy transforms on
     # valid input, including explicit BOS/EOS and doubled closing NTs.
     from datatools.parse_pretrain_data.convert_TG_and_tokenize import convert_TG_format, encode_tree_document
-    trees = [encode_tree_document(convert_TG_format(row), tokenizer, vocab, "uint16")
+    trees = [encode_tree_document(convert_TG_format(row, use_bracket_mapping=False), tokenizer, vocab, "uint16")
              for row in source.read_text().splitlines()]
     np.testing.assert_array_equal(np.load(root / "tree/a.npy"), np.concatenate(trees))
     np.testing.assert_array_equal(np.load(root / "terminal/a.npy"), vocab.convert_treenpy_to_terminal(np.concatenate(trees)))

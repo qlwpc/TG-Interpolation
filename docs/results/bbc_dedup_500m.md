@@ -1,19 +1,19 @@
-# BBC dedup 500M 补充实验
+# Additional BBC dedup 500M experiments
 
-这些模型使用新 dedup train 重新训练；不替换[冻结论文表](paper.md)。
-SG/BLiMP/BoolQ 为百分数，XSum 为 R-AVG 百分数；± 为五个微调 seed 的样本标准差。
-微调 seed：42、2026、6198、13171、31723；并非五个预训练 seed。
-DocPPL 使用 reserved-clean v1 完整 test：5,000 篇、129,085 句、3,068,713 个计分 token。
-Terminal/Pause 是单路径；结构模型是 valid top-300 joint sum、model-best 历史。
-截至 2026-09-29，十模型各 22/22 项测试完成；五 seed 指微调重复，并非预训练重复。
+These models were trained from scratch on the new deduplicated training set; they do not replace the [frozen paper table](paper.md).
+SG/BLiMP/BoolQ and XSum R-AVG are percentages; ± denotes the sample standard deviation across five fine-tuning seeds.
+Fine-tuning seeds: 42, 2026, 6198, 13171, 31723. These are not five pretraining seeds.
+DocPPL uses the full reserved-clean v1 test: 5,000 documents, 129,085 sentences and 3,068,713 scored tokens.
+Terminal/Pause use a single path; structural models sum valid top-300 joint probabilities and use model-best history.
+As of 2026-09-29, each of the ten models had completed 22/22 evaluation tasks.
 
-2026-10-07 复核发现 NoONT 投影后可能有重复候选。下表 NoONT 的旧 DocPPL 标记为 †，
-仅保留历史记录，不能用于当前排名；须按[投影去重协议](../protocols/clean_document_ppl.md)重测。
-原 JSON 与终验摘要仍保存当时字节和完成状态，不能认证新增的去重要求。
+The 2026-10-07 review found possible duplicate candidates after NoONT projection. Its historical DocPPL is marked † below
+and must not be used for current rankings; reevaluation under the [projection-deduplication protocol](../protocols/clean_document_ppl.md) is required.
+Original JSON and acceptance summaries retain their historical bytes and completion status; they do not certify the later deduplication requirement.
 
-## 结果
+## Results
 
-| 执行地 | 模型 | 完成任务 | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |
+| Evaluation site | Model | Completed tasks | SG ↑ | BLiMP ↑ | clean DocPPL ↓ | XSum R-AVG ↑ | BoolQ ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|
 | RTX3090B | Terminal | 22/22 | 80.8848 | 72.3149 | 14.028763 | 23.1149 ± 0.0735 | 70.5382 ± 0.5065 |
 | RTX3090B | Tree | 22/22 | 83.4316 | 82.7552 | 13.863770 | 23.5731 ± 0.0649 | 70.0489 ± 0.5797 |
@@ -26,21 +26,22 @@ Terminal/Pause 是单路径；结构模型是 valid top-300 joint sum、model-be
 | SIST | TGTree-Mix-TG | 22/22 | 79.7618 | 83.3672 | 13.784714 | 23.3052 ± 0.0419 | 69.4067 ± 0.3255 |
 | SIST | TGNomask-Mix-TG | 22/22 | 80.1115 | 83.2224 | 13.972621 | 22.3746 ± 0.0556 | 69.0581 ± 0.2896 |
 
-## 可核对证据与范围
+## Evidence and scope
 
-以下 JSON 包含逐 seed、SG/BLiMP 子项、文档覆盖和原收集时间。它们是原实验汇总的
-公开副本；严格汇总已核对任务身份、成功退出、完整评测和 DocPPL 文档/句/token 覆盖。
-评测后的输入和 checkpoint 文件 SHA-256 已按原 manifest 再次核对；
-SIST 使用本地同步镜像，本次未重新扫描远端存储或重新评测。
+The following JSON files contain per-seed values, SG/BLiMP submetrics, document coverage and original collection times.
+They are public copies of the original experiment summaries. Aggregation checked task identity, successful exits,
+complete evaluation and DocPPL document/sentence/token coverage.
+Post-evaluation input and checkpoint SHA-256 hashes were checked against the original manifests.
+SIST checks used a local synchronized mirror; remote storage was not rescanned and evaluation was not rerun.
 
-- [bbc_dedup_500m_local_20260919](../../reproducibility/results/dedup500m/bbc_dedup_500m_local_20260919/results.json)：`complete`，收集于 `2026-09-29T05:45:17.155150+00:00`。
-- [bbc_dedup_500m_pause_noont_20260922](../../reproducibility/results/dedup500m/bbc_dedup_500m_pause_noont_20260922/results.json)：`complete`，收集于 `2026-09-29T05:45:18.561605+00:00`。
-- [bbc_dedup_500m_sist_20260922](../../reproducibility/results/dedup500m/bbc_dedup_500m_sist_20260922/results.json)：`complete`，收集于 `2026-09-29T05:45:20.429761+00:00`。
+- [bbc_dedup_500m_local_20260919](../../reproducibility/results/dedup500m/bbc_dedup_500m_local_20260919/results.json): `complete`, collected at `2026-09-29T05:45:17.155150+00:00`.
+- [bbc_dedup_500m_pause_noont_20260922](../../reproducibility/results/dedup500m/bbc_dedup_500m_pause_noont_20260922/results.json): `complete`, collected at `2026-09-29T05:45:18.561605+00:00`.
+- [bbc_dedup_500m_sist_20260922](../../reproducibility/results/dedup500m/bbc_dedup_500m_sist_20260922/results.json): `complete`, collected at `2026-09-29T05:45:20.429761+00:00`.
 
-完整训练配置及身份见[补充实验配置](../../reproducibility/README.md#dedup-configs)。
-公共 dedup CLI 覆盖八种配方；本批 Pause-1/2 与 TGTree-Mix-TG 的冻结配置另行保存，
-不能用 TGNomask-Aug 或其他近名配方代替。数据、权重及完整日志的获取状态见
-[公开资产清单](../../reproducibility/README.md#assets)。
+Full training configurations and identities are in the [additional experiment configs](../../reproducibility/README.md#dedup-configs).
+The public dedup CLI covers eight recipes. Frozen configs for this campaign's Pause-1/2 and TGTree-Mix-TG are stored separately;
+TGNomask-Aug or similarly named recipes cannot substitute for them. Data, weights and full-log availability are listed in the
+[public asset inventory](../../reproducibility/README.md#assets).
 
-本页由 `scripts/render_dedup_results.py` 从上述 JSON 生成。三批任务、汇总与本地终验均完成；
-核对数量、结果哈希和范围见[终验摘要](../../reproducibility/results/dedup500m/final_status.json)。
+This page is generated from the JSON above by `scripts/render_dedup_results.py`. All three batches, aggregation and local acceptance were completed;
+counts, result hashes and scope are recorded in the [acceptance summary](../../reproducibility/results/dedup500m/final_status.json).

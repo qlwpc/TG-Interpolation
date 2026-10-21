@@ -1,0 +1,239 @@
+{
+  "scope": "Selected fields from existing October 2026 local data receipts, not new validation or historical paper training inputs. Source hashes identify provenance, not public download locations.",
+  "bracket_repair": {
+    "status": "passed",
+    "full_repair_complete": true,
+    "all_246_source_pairs_full_sha_verified": true,
+    "all_246_backup_sha_verified": true,
+    "all_246_projection_typed_tree_residual_checks_authenticated_by_full_source_sha": true,
+    "all_original_reverse_sha_validation_recorded": true,
+    "token_totals": {
+      "tree": 233638120313,
+      "terminal": 98708787845
+    },
+    "record_end_segments": 93584610,
+    "backup_bytes": 1648859387,
+    "time": 1791902576.6896238,
+    "progress": {
+      "protocol": "fineweb-paired-native-brackets-inner-eos-delta-v2",
+      "total_shards": 246,
+      "completed_shards": 246,
+      "status": "complete",
+      "bracket_replacements": 59497383,
+      "embedded_eos_removed": 11,
+      "delta_backup_bytes": 1648859387
+    }
+  },
+  "collection": {
+    "status": "complete",
+    "protocol": "fineweb-filtered-paired-npz-v1",
+    "filter": "paired-collection-quality-v2",
+    "totals": {
+      "train": {
+        "bytes": 89355429262,
+        "documents": 19299617,
+        "lexical_tokens": 20000000517,
+        "terminal_tokens": 20019300134,
+        "tree_tokens": 47432346354
+      },
+      "validation_a": {
+        "bytes": 44741009,
+        "documents": 9512,
+        "lexical_tokens": 10002504,
+        "terminal_tokens": 10012016,
+        "tree_tokens": 23656428
+      },
+      "validation_b": {
+        "bytes": 44894598,
+        "documents": 9693,
+        "lexical_tokens": 10005600,
+        "terminal_tokens": 10015293,
+        "tree_tokens": 23763725
+      }
+    },
+    "source_modified": false,
+    "all_selected_pairs_project_exactly": true,
+    "all_selected_typed_trees_balanced": true,
+    "all_compressed_arrays_read_back_exactly": true,
+    "exact_text_dedup_and_split_disjointness_verified": true,
+    "protocol_sha256": "5e9f8d4e843cab48cdf019d85882c397cb2e660e720d52a56d1d99d4e7de3ce3",
+    "tokenizer_sha256": "827837c463999c3e647b1eeb1b7f056744c56ddf374247e9cf0bab9eb8afe9cb",
+    "source_shards": [
+      68,
+      243,
+      152,
+      84,
+      237,
+      233,
+      139,
+      149,
+      119,
+      200,
+      61,
+      234,
+      205,
+      227,
+      156,
+      137,
+      158,
+      30,
+      75,
+      33,
+      52,
+      32,
+      53,
+      228,
+      230,
+      80,
+      110,
+      197,
+      210,
+      144,
+      9,
+      21,
+      48,
+      35,
+      122,
+      24,
+      100,
+      63,
+      8,
+      112,
+      106,
+      65,
+      92,
+      22,
+      98,
+      212,
+      39,
+      81,
+      38,
+      198,
+      163,
+      127,
+      141,
+      232,
+      159,
+      2,
+      67,
+      113
+    ],
+    "compressed_array_bytes": 89445064869,
+    "raw_training_unpack_done": false,
+    "raw_unpacked_bytes_all_splits": 270076375800,
+    "completed": 1791910414.8673463
+  },
+  "collection_verification": {
+    "status": "passed",
+    "all_archive_sha256_verified": true,
+    "all_archive_coordinates_equal_selection": true,
+    "global_exact_normalized_text_dedup_passed": true,
+    "train_validation_exact_text_overlap": 0,
+    "files": 4916,
+    "unique_documents": 19318822,
+    "every_exported_source_has_independent_full_pair_sample": true
+  },
+  "adj_label_issue": {
+    "issue_id": "FWE-014",
+    "status": "confirmed_unrepaired",
+    "annotated_at": "2026-10-15T16:02:16.730053+00:00",
+    "historical_repair_commit": "8c24868644f185c78a60cf6d6120928e468878e1",
+    "source": "sample32_fast/samples.jsonl",
+    "source_sha256": "fbf9d8f6d80f008035a6194e0041a561e433199628c50d594a0ccf02a15eb88f",
+    "historical_formula_decisions": "quality_audit_20261012/scan_v3/index.tsv",
+    "historical_formula_decisions_sha256": "e9021a78d854765280c0d976059fed8492f4283eaadd68638d0aafcade7bbdc3",
+    "records_checked": 7872,
+    "hit_records": 47,
+    "hit_shards": 43,
+    "literal_adj_opens": 54,
+    "literal_adj_closes": 54,
+    "historical_formula_decisions_of_hits": {
+      "keep": 43,
+      "drop": 3,
+      "review": 1
+    },
+    "evidence_sha256": {
+      "hits.tsv": "8776bd3f23ddc130cbcbe82da4653bd3a9a076ecee59a81b5942bd6ec8c7aaa1",
+      "current_readback.json": "cc232859e8b857051b0109e0427f204fb6f80fd97338fc4deffe8716cde7be1f",
+      "read_current_sample.py": "ae7056d32638e1cd411c0fd35ffff1c785ce2e5671f0fab2c08e162627858007",
+      "scan_saved_samples.py": "e266ea1dcb67c0e104919b1411161a84d3406a3a765d7188555b91fc7cbf681e"
+    },
+    "current_source_and_20b_train_confirmed": true,
+    "full_corpus_scan": false,
+    "full_20b_scan": false,
+    "validation_splits_scanned": false,
+    "data_or_filter_decisions_modified": false,
+    "sampling_limit": "Historical token-stratified spans; no full-corpus document prevalence estimate.",
+    "previous_negative_signal_limit": "literal_tree_marker enumerated registered labels and omitted ADJ."
+  },
+  "adj_current_readback": {
+    "checked_at": "2026-10-15T15:57:37.414516+00:00",
+    "issue_id": "FWE-014",
+    "status": "confirmed_unrepaired",
+    "historical_sample_id": "139:385374804",
+    "historical_terminal_bounds": [
+      385374804,
+      385376135
+    ],
+    "current_terminal_bounds": [
+      384706045,
+      384707376
+    ],
+    "current_tree_bounds": [
+      909166181,
+      909169158
+    ],
+    "source_terminal_document_sha256": "86f8a9c714f75b04cf376e818097cd2cac75cad88d17dbafbfd7a04104098e32",
+    "source_tree_document_sha256": "1a6d1f2b1eb50be979671eb7b459d74346da908e560baafc5bddd2e3cd8ab23e",
+    "document_bytes_match_historical_sample": true,
+    "source_full_sha_not_recomputed": true,
+    "journal_current_terminal_sha256": "ea44b41a172be47013e96291f0825d220de834ffa39f690fa03ba716b1c87e43",
+    "tokenizer_sha256": "827837c463999c3e647b1eeb1b7f056744c56ddf374247e9cf0bab9eb8afe9cb",
+    "markers": {
+      "<(ADJ>": {
+        "registered_id": null,
+        "encoded_ids": [
+          28706,
+          1808,
+          41,
+          29
+        ]
+      },
+      "<ADJ)>": {
+        "registered_id": null,
+        "encoded_ids": [
+          27,
+          1808,
+          41,
+          16018
+        ]
+      },
+      "<(ADJP>": {
+        "registered_id": 151680,
+        "encoded_ids": [
+          151680
+        ]
+      },
+      "<ADJP)>": {
+        "registered_id": 151706,
+        "encoded_ids": [
+          151706
+        ]
+      }
+    },
+    "terminal_literal_adj_open_count": 1,
+    "terminal_literal_adj_close_count": 1,
+    "collection_split": "train",
+    "collection_record_index": 3033,
+    "collection_ordinal": 362814,
+    "collection_terminal_offset": 3365029,
+    "collection_tree_offset": 7878455,
+    "collection_terminal_and_tree_match_current_source_bytes": true,
+    "registered_typed_labels_balance_despite_adj_leak": true,
+    "tree_projection_matches_terminal_despite_adj_leak": true,
+    "full_corpus_scan": false,
+    "full_collection_scan": false,
+    "data_modified": false,
+    "collection_file_relative": "train/139-0086.npz"
+  }
+}

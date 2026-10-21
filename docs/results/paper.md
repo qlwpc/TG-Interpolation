@@ -1,18 +1,18 @@
-# 论文结果与补充实验的解释
+# Explanation of Paper Results and Supplementary Experiments
 
-本文区分冻结稿原值、旧 checkpoint 的 clean 重测、新 dedup 训练三类结果。本文保留原值身份；
-后续论文实验数据修订以 [R-08 差异核定](protocol_comparison.md)为依据，
-本次未修改论文。训练配置身份见[配置 manifest](../../train_configs/paper_pretraining_manifest.json)，
-评测定义见[Evaluation](../guides/evaluation.md)。
+This document distinguishes three types of results: frozen-manuscript original values, clean re-measurements of old checkpoints, and new dedup training. This document preserves the identity of the original values;
+revisions to the paper's experimental data are based on [R-08 discrepancy verification](protocol_comparison.md),
+and the paper was not modified this time. For training configuration identity, see the [configuration manifest](../../train_configs/paper_pretraining_manifest.json);
+for evaluation definitions, see [Evaluation](../guides/evaluation.md).
 
-## 冻结稿 BBC 主表与 clean 重测
+## Frozen-manuscript BBC main table and clean re-measurements
 
-论文列直接转录冻结稿 `tab:exp1-results`，不是旧投稿版本。XSum/BoolQ 为五个微调 seed 的
-均值 ± 样本标准差，其余为单次评测。正文稿与本地旧重跑登记的这一版数值相同；旧投稿列不同。
-机器可读[论文表](../../reproducibility/evidence/paper_bbc_table.json)保留稿件 hash；
-[clean 结果](../../reproducibility/evidence/old_checkpoint_clean.json)保留精确 NLL、覆盖与权重身份。
+The paper column is a direct transcription of the frozen manuscript's `tab:exp1-results`, not an old submission version. XSum/BoolQ are the
+mean ± sample standard deviation over five fine-tuning seeds; the rest are single evaluations. The main-text manuscript and the locally registered old rerun have the same values for this version; the old submission column differs.
+The machine-readable [paper table](../../reproducibility/evidence/paper_bbc_table.json) preserves the manuscript hash;
+the [clean results](../../reproducibility/evidence/old_checkpoint_clean.json) preserve exact NLL, coverage, and weight identity.
 
-| 模型 | 论文 XSum | 论文 BoolQ | 论文 SG | 论文 BLiMP | 论文旧 DocPPL | 旧模型 clean DocPPL |
+| Model | Paper XSum | Paper BoolQ | Paper SG | Paper BLiMP | Paper old DocPPL | Old-model clean DocPPL |
 |---|---:|---:|---:|---:|---:|---:|
 | Terminal-100M | 22.02 ± 0.06 | 66.70 ± 0.36 | 69.80 | 70.77 | 9.89 | 15.369225 |
 | Tree-100M | 22.84 ± 0.03 | 68.07 ± 0.35 | 81.40 | 80.95 | 10.01 | 14.736097 |
@@ -34,36 +34,36 @@
 | TGTree-500M | 22.01 ± 0.08 | 70.63 ± 0.32 | 65.95 | 77.65 | 3.28 | 15.894648 |
 | TGNomask-Aug-500M | 21.77 ± 0.06 | 70.78 ± 0.74 | 57.58 | 75.97 | 3.19 | 15.483865 |
 
-† NoONT/Compress 的 clean 值仅保留历史身份：2026-10-07 确认缺少投影后去重，
-不满足[当前评分协议](../protocols/clean_document_ppl.md)，不得用于当前排名或论文修订。
-公开 JSON 仍为原字节快照，不表示这些值已重新验证；替代值须来自新目录中的完整重测。
+† The clean values for NoONT/Compress are retained only as historical identity: on 2026-10-07 it was confirmed that projection-based deduplication is missing,
+so they do not satisfy the [current scoring protocol](../protocols/clean_document_ppl.md) and must not be used for current rankings or paper revisions.
+The public JSON remains a byte-for-byte snapshot of the original and does not indicate that these values have been re-validated; replacement values must come from a complete re-measurement in a new directory.
 
-原始汇总中 NoONT/Compress/TripleCNT 的错误 grammar 结果已排除，上表保存三模型的
-grammar 修正值；当时的终验没有认证后来增加的投影去重要求。Tree-Shuffle 使用 masked checkpoint；Pause 使用 dedicated SEP，
-不能换成 repeat-token 对照。TreeReg 及 BBC 1B 附加模型保存在 clean JSON 中，未混入论文主表。
-原 22 模型总终验回执仍为 `failed`，后续成功总回执的范围是三个 grammar 修正模型；
-有效逐行汇总与验收范围的区别见 [R-08 §7](protocol_comparison.md#7-完成状态证据可信度与未解决项)。
+The erroneous grammar results for NoONT/Compress/TripleCNT in the original summary have been excluded; the table above preserves the
+corrected grammar values for the three models; the final verification at that time did not certify the projection deduplication requirement added later. Tree-Shuffle uses a masked checkpoint; Pause uses a dedicated SEP,
+which cannot be replaced by a repeat-token control. TreeReg and the BBC 1B additional models are preserved in the clean JSON and are not mixed into the paper main table.
+The receipt of the original 22-model final verification remains `failed`, and the scope of the subsequent successful final receipt is the three grammar-corrected models;
+for the distinction between the valid per-row summary and the acceptance scope, see [R-08 §7](protocol_comparison.md#completion-status).
 
-## 如何解释差异
+## How to interpret the differences
 
-历史 BBC DocPPL test 的 4,966 篇中，有 4,752 篇在实际旧 train 中有完整 token 副本
-（95.6907%）。clean test 是另一套 5,000 篇数据，结构评分还改用有效候选和 model-best
-历史。因此上表是数据与评分协议均有变化的描述性比较，不能把全部差值归因于去污染。
-完整边界及可核对数量见[数据说明](../protocols/bbc_data.md)。
+Of the 4,966 documents in the historical BBC DocPPL test, 4,752 have complete token copies in the actual old train
+(95.6907%). The clean test is a different set of 5,000 documents, and structural scoring also uses valid candidates and the model-best
+history. The table above is therefore a descriptive comparison in which both the data and the scoring protocol changed, and the entire difference cannot be attributed to decontamination.
+For the complete boundaries and verifiable counts, see [Data description](../protocols/bbc_data.md).
 
-在这些旧 checkpoint 的 clean 测量中，Tree-100M/500M 的 DocPPL 均低于 Terminal；
-100M 两个混合注意力模型最低，500M 的 TGNomask-Aug 最低。原稿“少量 LM cost”、
-混合注意力“没有收益”的表述不能推广到此协议。接近数值的排名未经显著性检验。
-旧 500M 的 clean PPL 高于对应旧 100M，也不能推出参数规模普遍损害泛化，或代替下游
-任务的 scaling 证据。Pushdown/Tree-Shuffle 使用各自协议，不纳入同一受控家族排名。
+In the clean measurements of these old checkpoints, Tree-100M/500M have lower DocPPL than Terminal;
+for 100M, the two mixed-attention models are the lowest, and for 500M, TGNomask-Aug is the lowest. The original manuscript's statements of "small LM cost" and
+that mixed attention "provides no benefit" cannot be generalized to this protocol. Rankings of close values have not been tested for significance.
+The clean PPL of old 500M being higher than the corresponding old 100M also cannot be used to infer that parameter scale generally harms generalization, or to replace downstream
+task scaling evidence. Pushdown/Tree-Shuffle use their own protocols and are not included in the same controlled-family ranking.
 
 ## FineWeb-Edu 1B
 
-当前稿件采用 Qwen3 tokenizer、OLMES completion/cloze 的 11-task 平均，Tree/TGTree
-主值为 `tree_eval_type=terminal`。以下为已登记并与冻结稿核对的汇总；完整逐样本日志
-仍是待发布外部资产，不将本次文档整理写成新的评测验收。
+The current manuscript uses the Qwen3 tokenizer and the 11-task average of OLMES completion/cloze; the Tree/TGTree
+main values use `tree_eval_type=terminal`. The following is a summary that has been registered and checked against the frozen manuscript; the complete per-sample logs
+remain an external asset pending release, and this document organization is not written as a new evaluation acceptance.
 
-| 模型 | BoolQ (%) | 11-task AVG (%) |
+| Model | BoolQ (%) | 11-task AVG (%) |
 |---|---:|---:|
 | Terminal | 58.65 | 53.20 |
 | Tree | 63.85 | 53.56 |
@@ -71,21 +71,20 @@ grammar 修正值；当时的终验没有认证后来增加的投影去重要求
 | Pause-1 | 65.41 | 55.17 |
 | Pause-2 | 63.39 | 55.80 |
 
-SG/BLiMP 是独立任务，不属于 11-task 平均。BBC 1B 的同名模型不能代替 FineWeb-Edu 权重。
+SG/BLiMP are independent tasks and are not part of the 11-task average. The models with the same names in BBC 1B cannot substitute for the FineWeb-Edu weights.
 
-## 新增实验与复现范围
+## New experiments and reproduction scope
 
-[dedup 500M 结果页](bbc_dedup_500m.md)是使用新训练集得到的
-十个模型，训练 token 数、LR、global batch 和 checkpoint 均不同于上表。五 seed 是微调
-seed；单个预训练 seed 不能证明预训练稳定性。十模型评测任务与 DocPPL 全量覆盖
-在 2026-09-29 快照中均已完成；其中 NoONT 的 DocPPL 须按投影去重协议重测，
-旧完成回执不能认证该新要求。评测后的本地输入/权重身份终验范围见
-[终验摘要](../../reproducibility/results/dedup500m/final_status.json)。
+The [dedup 500M results page](bbc_dedup_500m.md) covers ten models obtained with a new training set;
+the training token count, LR, global batch, and checkpoint all differ from the table above. The five seeds are fine-tuning
+seeds; a single pretraining seed cannot demonstrate pretraining stability. The ten-model evaluation tasks and full DocPPL coverage
+were both completed in the 2026-09-29 snapshot; among them, NoONT's DocPPL must be re-measured according to the projection deduplication protocol,
+and the old completion receipt cannot certify this new requirement. For the scope of the final verification of local input/weight identity after evaluation, see
+the [final verification summary](../../reproducibility/results/dedup500m/final_status.json).
 
-Pushdown 的 XSum reduce 上限、BoolQ supplied-span 评分、BLiMP token-only 候选得分与
-论文描述的区别保留在 [Evaluation §8](../guides/evaluation.md#pushdown-paper-discrepancies)。
-旧 91 篇结构差异的解析原因仍未知，不能归因于统一的 top-1/top-2 交换；
-2026-10-02 复核后按用户决定关闭 R-03，保留[历史重建限制](../protocols/bbc_data.md#provenance)。
-这些影响解释的限制公开保留，逐次排错经过留在本地。
+The differences between the paper description and Pushdown's XSum reduce upper bound, BoolQ supplied-span scoring, and BLiMP token-only candidate scoring are preserved in [Evaluation §8](../guides/evaluation.md#pushdown-paper-discrepancies).
+The cause of the parsing of the old 91 structural differences remains unknown and cannot be attributed to a uniform top-1/top-2 swap;
+after review on 2026-10-02, R-03 was closed by user decision, retaining the [historical reconstruction limitations](../protocols/bbc_data.md#provenance).
+These limitations affecting interpretation are publicly retained; the step-by-step troubleshooting process remains local.
 
-数据/权重的下载入口尚未补齐，也未从外部干净环境完成完整重训；见[资产状态](../../reproducibility/README.md)。
+The download entries for data/weights have not yet been completed, and a complete retraining has not been completed from an external clean environment; see [Asset status](../../reproducibility/README.md).

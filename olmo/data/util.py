@@ -7,6 +7,7 @@ import re
 
 import torch.distributed as dist
 from torch.utils.data import Sampler
+from datatools.ptb_brackets import normalize_ptb_brackets
 
 
 def find_end_first_consecutive_true(arr: np.ndarray) -> int:
@@ -159,18 +160,7 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False,
             childstrs.append("/".join(child))
         elif isinstance(child, str) and not quotes:
             if use_bracket_mapping:
-                mapping = {
-                    "-LRB-": "(",
-                    "-RRB-": ")",
-                    "-LCB-": "{",
-                    "-RCB-": "}",
-                    "-LSB-": "[",
-                    "-RSB-": "]",
-                    "Ċ": "\n",
-                }
-                out = mapping[child] if child in mapping else child
-                for old, new in mapping.items():
-                    out = out.replace(old, " " + new)
+                out = "\n" if child == "Ċ" else normalize_ptb_brackets(child)
             else:
                 out = child
             return " " + out

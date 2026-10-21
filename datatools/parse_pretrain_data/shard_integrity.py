@@ -10,14 +10,15 @@ import numpy as np
 from datatools.parse_pretrain_data.pipeline_io import sha256_file
 
 FORMATS = ("terminal", "tree", "tg")
-TOKENIZATION_PROTOCOL = "explicit-bos-eos-ptb-mapping-v1"
+TOKENIZATION_PROTOCOL = "explicit-bos-eos-atomic-tree-ptb-v2"
 
 
 def receipt_path(root: Path, stem: str) -> Path:
     return root / "manifests" / f"{stem}.json"
 
 
-def verify_receipt(root: Path, stem: str, tokenizer_sha256: str, source_sha256=None) -> dict:
+def verify_receipt(root: Path, stem: str, tokenizer_sha256: str, source_sha256=None,
+                   *, bracket_policy=None) -> dict:
     path = receipt_path(root, stem)
     if not path.is_file():
         raise ValueError(f"missing tokenization receipt: {path}; rebuild with --overwrite")
@@ -26,6 +27,8 @@ def verify_receipt(root: Path, stem: str, tokenizer_sha256: str, source_sha256=N
         raise ValueError(f"incompatible tokenization receipt: {path}")
     if record.get("tokenizer_sha256") != tokenizer_sha256:
         raise ValueError(f"tokenizer fingerprint changed: {path}")
+    if bracket_policy is not None and record.get("bracket_policy") != bracket_policy:
+        raise ValueError(f"bracket normalization policy missing or changed: {path}; rebuild with --overwrite")
     if source_sha256 is not None and record.get("source_sha256") != source_sha256:
         raise ValueError(f"parsed source fingerprint changed: {path}")
     if not isinstance(record.get("documents"), int) or record["documents"] <= 0:

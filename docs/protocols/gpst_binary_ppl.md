@@ -1,52 +1,46 @@
-# GPST strict-binary 候选的 Pushdown DocPPL 合同
+# Pushdown DocPPL Contract for GPST Strict-Binary Candidates
 
-这里的输入 v2 指 `native_model_topk_300_v2` 存储格式，与 attachment normalization 的
-v1/v2 是两个版本轴。当前历史选择为 **model-best**，见 [历史策略](document_history.md)。
-旧 candidate-0 测量集中在 [word-atom 协议](pushdown_ppl.md)。
+Input v2 here refers to the `native_model_topk_300_v2` storage format, which is a separate version axis from v1/v2 in attachment normalization. The current history-selection policy is **model-best**; see [history selection](document_history.md). Older candidate-0 measurements are collected in the [word-atom protocol](pushdown_ppl.md).
 
-## 输入和结构
+## Inputs and structure
 
-实现：`olmo/eval/gpst_binary_pushdown_document_ppl.py`；运行/合并：
-`scripts/evaluate_gpst_binary_pushdown_document_ppl.py`、`scripts/merge_gpst_binary_pushdown_document_ppl.py`。
+Implementation: `olmo/eval/gpst_binary_pushdown_document_ppl.py`; run/merge:
+`scripts/evaluate_gpst_binary_pushdown_document_ppl.py`, `scripts/merge_gpst_binary_pushdown_document_ppl.py`.
 
-- GPST 轴读取 `terminal_tokens`、`content_bounds`、`document_ids`、`gpst_valid_counts`、
-  `gpst_merge_orders`；不读取 Pushdown 轴，不把 proposal score 当模型概率权重。
-- 只消费前 K 个有效候选；300 是物理容量，padding 不进入 forward、求和或计数。
-- T 个内容 token 的 merge order 必须是 gap `0..T-2` 的排列。维护活动区间左右边界，
-  每次合并 gap 两侧 constituent，输出原 terminal 坐标的 `(left, split, right)`。
-  每棵树恰有 T−1 个 spans，最后覆盖全部内容；转换复杂度 O(KT)。
-- 用 closing counts 恢复 literal stack actions。合法位置依次是当前 token、stack top 至 bottom
-  的 right endpoint；gold target 由本 token 的 reduce 次数确定。句末只剩一个 root。
-  `sentence_ids=-1` 的控制位置没有 attachment target，但仍可能需要 LM 计分。
-- multi-BPE word 保持固定右递归词内子树，与该 checkpoint 训练表示一致；不得改为 BPE-spliced。
+- The GPST axis reads `terminal_tokens`, `content_bounds`, `document_ids`, `gpst_valid_counts`,
+  `gpst_merge_orders`; it does not read the Pushdown axis and does not treat proposal scores as model probability weights.
+- Only the first K valid candidates are consumed; 300 is the physical capacity, and padding does not enter the forward pass, summation, or counting.
+- The merge order of the T content tokens must be a permutation of gaps `0..T-2`. Maintain the left and right boundaries of the active interval and merge the constituents on both sides of the gap each time, outputting `(left, split, right)` in original terminal coordinates.
+  Each tree has exactly T−1 spans and finally covers all content; conversion complexity is O(KT).
+- Recover literal stack actions using closing counts. Valid positions are, in order, the current token, then the right endpoints from stack top to bottom; the gold target is determined by the number of reduces for this token. At the end of the sentence, only one root remains.
+  Control positions with `sentence_ids=-1` have no attachment target but may still require LM scoring.
+- Multi-BPE words keep a fixed right-recursive intra-word subtree, consistent with the training representation of that checkpoint; they must not be changed to BPE-spliced.
 
-## 计分、历史与计数
+## Scoring, history, and counts
 
-对同一句所有有效候选使用同一历史，计算 `joint_nll = token_nll + attachment_nll`，
-`sentence_ll = logsumexp(-joint_nll)`，不除以 K、不乘 proposal 权重。
+Use the same history for all valid candidates of the same sentence, compute `joint_nll = token_nll + attachment_nll`,
+`sentence_ll = logsumexp(-joint_nll)`, without dividing by K and without multiplying by proposal weights.
 
-| 概率轴 | 定义 |
+| Probability axis | Definition |
 |---|---|
-| v1 `stack_legal` | attachment softmax 只在当前 stack 合法位置归一化 |
-| v2 `sentence_causal` | 在完整句内因果位置归一化；与 attachment 训练 CE 的 support 一致 |
+| v1 `stack_legal` | attachment softmax is normalized only over positions currently legal on the stack |
+| v2 `sentence_causal` | normalized over causal positions within the complete sentence; consistent with the support of attachment training CE |
 
-固定路径下 v2 NLL ≥ v1，但不能据此比较不同搜索 support。选本句 joint NLL 最小的候选
-提交历史，平局取最早者；文档边界清空状态。上下文仅丢弃完整历史句，滑窗后重建 KV/hidden
-与坐标；当前单句超过模型长度时报错。非首句记录级 BOS 去除时同步平移结构坐标。
+Under a fixed path, v2 NLL ≥ v1, but this cannot be used to compare different search supports. The candidate with the smallest joint NLL for this sentence is selected to commit the history, with ties going to the earliest; document boundaries clear the state. For context, only complete historical sentences are dropped, and KV/hidden and coordinates are rebuilt after the sliding window; an error is raised if the current single sentence exceeds the model length. When record-level BOS removal is applied to non-first sentences, structural coordinates are shifted accordingly.
 
-`joint_document_perplexity_v1` 等历史命名字段必须连同 normalization 元数据解释。
-`candidate0_structured_terminal_perplexity` 只累计**当前句 candidate 0** 的 token NLL，
-其条件历史仍为 model-best；它受树结构影响，不是 flat terminal baseline。
-两指标分母相同：BOS 不计，ordinary terminals/EOS 计分。
+Historically named fields such as `joint_document_perplexity_v1` must be interpreted together with their normalization metadata.
+`candidate0_structured_terminal_perplexity` accumulates only the token NLL of **candidate 0 of the current sentence**,
+whose conditioning history is still model-best; it is affected by tree structure and is not a flat terminal baseline.
+Both metrics share the same denominator: BOS is not counted, and ordinary terminals/EOS are scored.
 
-合并必须验证：协议/历史策略/数据/tokenizer/checkpoint 哈希相同；整文档范围连续无重复无缺口；
-NLL 有限；`model_candidate_forwards == valid_candidate_count`；
-`candidate_slots == sentence_count × max_candidates_per_sentence`。`--max-sentences` 只用于 smoke，
-不将部分文档结果合并成全量。候选 batch/OOM 重试不得跳过或重复计数。
+Merging must verify: identical protocol/history policy/data/tokenizer/checkpoint hashes; full-document ranges are contiguous with no duplicates and no gaps;
+NLL is finite; `model_candidate_forwards == valid_candidate_count`;
+`candidate_slots == sentence_count × max_candidates_per_sentence`. `--max-sentences` is for smoke testing only
+and does not merge partial-document results into a full run. Candidate batch/OOM retries must not skip or double-count.
 
-## 运行边界
+## Run boundaries
 
-从仓库根目录，显式设置 checkpoint、语料和新输出路径。例如 clean 语料：
+From the repository root, explicitly set the checkpoint, corpus, and new output path. For example, the clean corpus:
 
 ```bash
 python scripts/evaluate_gpst_binary_pushdown_document_ppl.py \
@@ -57,15 +51,15 @@ python scripts/evaluate_gpst_binary_pushdown_document_ppl.py \
   --max-sequence-length 2048 --output /path/to/new-result.json
 ```
 
-脚本的旧 BBC 默认路径不代表当前 clean 入口；分片按完整文档的 `[start,end)` 划分。
-`--disable-kv-cache` 是 full-prefix 参考路径。合并器的 `--require-full-bbc` **专指旧 4,966 篇**，
-不能拿它验证 clean 5,000 篇。clean 的数据、汇总与完成门禁见
-[运行记录](clean_document_ppl.md)。
+The script's old BBC default paths do not represent the current clean entry point; shards are partitioned by complete-document `[start,end)`.
+`--disable-kv-cache` is the full-prefix reference path. The merger's `--require-full-bbc` **specifically refers to the old 4,966 articles**
+and cannot be used to validate the clean 5,000 articles. For clean data, summaries, and completion gates, see
+[clean evaluation protocol](clean_document_ppl.md).
 
-旧 GPST 轴完整不变量为 4,966 文档、148,836 句、3,284,061 计分 tokens、37,227,054 个有效候选、
-44,650,800 物理槽位。K=1/2/5/14/42/132/300 的句数分别为
-9,517 / 2,740 / 3,575 / 3,916 / 3,673 / 3,806 / 121,609；不套用到其他语料。
+The old GPST-axis full invariants are 4,966 documents, 148,836 sentences, 3,284,061 scored tokens, 37,227,054 valid candidates,
+and 44,650,800 physical slots. For K=1/2/5/14/42/132/300, the sentence counts are
+9,517 / 2,740 / 3,575 / 3,916 / 3,673 / 3,806 / 121,609 respectively; do not apply these to other corpora.
 
-回归入口 `tests/test_gpst_binary_pushdown_document_ppl.py` 覆盖转换/literal-stack 对照、
-v1 稀疏/dense 等价、poison padding、双指标、KV/full-prefix、滑窗、microbatch、预取顺序及严格合并。
-这些门禁不证明已完成新的全量运行；所有结果仍按实际 run 身份登记。
+The regression entry point `tests/test_gpst_binary_pushdown_document_ppl.py` covers conversion/literal-stack cross-checks,
+v1 sparse/dense equivalence, poison padding, dual metrics, KV/full-prefix, sliding window, microbatch, prefetch order, and strict merging.
+These gates do not prove that a new full run has been completed; all results are still registered according to the actual run identity.

@@ -313,6 +313,7 @@ def validate_tokens(corpus: str, tokenized: Path, tokenizer_path: Path) -> dict[
     from datatools.parse_pretrain_data.assemble_streams import document_bounds, FORMATS
     from datatools.parse_pretrain_data.get_TG_tokenizer import validate_paper_layout
     from datatools.parse_pretrain_data.shard_integrity import verify_receipt
+    from datatools.ptb_brackets import NATIVE_BRACKET_POLICY, PRESERVED_BRACKET_POLICY
 
     tokenizer = Tokenizer.from_file(str(tokenizer_path))
     validate_paper_layout("gpt2" if corpus == "bbc" else "qwen3", tokenizer)
@@ -333,7 +334,8 @@ def validate_tokens(corpus: str, tokenized: Path, tokenizer_path: Path) -> dict[
         check_shard_names(tokenized / fmt, stems, ".npy")
         result["formats"][fmt] = {"shards": len(stems), "tokens": 0, "documents": 0}
     for stem in stems:
-        receipt = verify_receipt(tokenized, stem, result["tokenizer_sha256"])
+        receipt = verify_receipt(tokenized, stem, result["tokenizer_sha256"],
+                                bracket_policy=PRESERVED_BRACKET_POLICY if corpus == "bbc" else NATIVE_BRACKET_POLICY)
         for input_format in FORMATS:
             path = tokenized / input_format / f"{stem}.npy"
             array = np.load(path, mmap_mode="r")
@@ -529,6 +531,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--tokenizer", str(paths["tokenizer"]),
                 "--output_dir", str(paths["tokenized"]),
                 "--jobs", str(args.jobs),
+                "--bracket-policy", "ptb" if args.corpus == "bbc" else "native",
             ] + (["--overwrite"] if args.overwrite else [])
         )
         return 0

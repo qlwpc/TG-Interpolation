@@ -9,6 +9,9 @@ import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 
+from datatools.ptb_brackets import (
+    NATIVE_BRACKET_POLICY, PRESERVED_BRACKET_POLICY, normalize_ptb_brackets,
+)
 from datatools.parse_pretrain_data.pipeline_io import atomic_json, sha256_file
 from datatools.parse_pretrain_data.shard_integrity import (
     FORMATS, TOKENIZATION_PROTOCOL, receipt_path, verify_receipt,
@@ -25,6 +28,28 @@ def _is_qwen3_style_tokenizer(tokenizer) -> bool:
     return False
 
 
+def resolve_bracket_mapping(tokenizer, policy: str = "auto") -> bool:
+    """Use explicit policy or the registered TG tokenizer layout.
+
+    A bare tokenizers.Tokenizer loaded from JSON has no Python config flag.
+    Looking for PTB tokens is insufficient: both families reserve bracket IDs.
+    """
+    if policy == "native":
+        return True
+    if policy == "ptb":
+        return False
+    if policy != "auto":
+        raise ValueError(f"unknown bracket policy: {policy}")
+    if hasattr(tokenizer, "use_bracket_mapping"):
+        return bool(tokenizer.use_bracket_mapping)
+    layout = (tokenizer.get_vocab_size(), tokenizer.token_to_id("<|SEP|>"))
+    if layout == (151732, 151673):
+        return True
+    if layout == (50320, 50261):
+        return False
+    raise ValueError("unregistered tokenizer layout; specify --bracket-policy native or ptb")
+
+
 def pformat_flat(self, nodesep="", parens="()", quotes=False,
                  use_bracket_mapping=True):
     childstrs = []
@@ -36,16 +61,7 @@ def pformat_flat(self, nodesep="", parens="()", quotes=False,
             childstrs.append("/".join(child))
         elif isinstance(child, str) and not quotes:
             if use_bracket_mapping:
-                mapping = {
-                    "-LRB-": "(",
-                    "-RRB-": ")",
-                    "-LCB-": "{",
-                    "-RCB-": "}",
-                    "-LSB-": "[",
-                    "-RSB-": "]",
-                    "Ċ": "\n",
-                }
-                out = mapping[child] if child in mapping else child
+                out = "\n" if child == "Ċ" else normalize_ptb_brackets(child)
             else:
                 out = child
             return " " + out
@@ -84,24 +100,46 @@ def convert_TG_format(input: str, use_bracket_mapping: bool = True, *, strict: b
     return outputstr
 
 def encode_tree_document(text, tokenizer, vocab, dtype):
-    """Encode one parsed document with explicit, format-stable boundaries."""
-    token_ids = [vocab.bos, *tokenizer.encode(text).ids, vocab.eos]
+    """Encode leaves and insert structural IDs independently of word boundaries.
+
+    Released tokenizer JSONs can mark structural AddedTokens single_word=True:
+    ``A<NP)>`` then encodes the closing label as ordinary text. Insert each tree
+    marker by its registered ID so terminal extraction cannot leak those labels.
+    For single_word=False layouts this matches encoding the complete string.
+    """
+    token_ids = [vocab.bos]
+    for part in re.split(r"(<\([^<>\s]+>|<[^<>\s]+\)>)", text):
+        if not part:
+            continue
+        if part.startswith("<(") or (part.startswith("<") and part.endswith(")>")):
+            structural_id = tokenizer.token_to_id(part)
+            if structural_id is None:
+                raise ValueError(f"unregistered tree marker: {part}")
+            token_ids.append(structural_id)
+        else:
+            token_ids.extend(tokenizer.encode(part).ids)
+    token_ids.append(vocab.eos)
     return np.asarray(token_ids, dtype=dtype)
 
 def tokenize_shard(source: Path, output_root: Path, tokenizer, vocab,
-                   tokenizer_sha256: str, *, overwrite: bool = False) -> dict:
+                   tokenizer_sha256: str, *, overwrite: bool = False,
+                   use_bracket_mapping: bool | None = None) -> dict:
     """Stream one document at a time, then publish three arrays and a receipt.
 
     A receipt is the completion marker. Interrupted or legacy outputs without
     one are never silently reused. Scratch space is bounded by one shard, not
     by corpus size; RAM is bounded by a single document plus the copy buffer.
     """
+    if use_bracket_mapping is None:
+        use_bracket_mapping = resolve_bracket_mapping(tokenizer)
     dtype = np.dtype("uint16" if tokenizer.get_vocab_size() < 65536 else "uint32")
     source_hash = sha256_file(source)
     outputs = {fmt: output_root / fmt / f"{source.stem}.npy" for fmt in FORMATS}
     receipt = receipt_path(output_root, source.stem)
+    bracket_policy = NATIVE_BRACKET_POLICY if use_bracket_mapping else PRESERVED_BRACKET_POLICY
     if not overwrite and (receipt.exists() or any(p.exists() for p in outputs.values())):
-        result = verify_receipt(output_root, source.stem, tokenizer_sha256, source_hash)
+        result = verify_receipt(output_root, source.stem, tokenizer_sha256, source_hash,
+                                bracket_policy=bracket_policy)
         print(f"verified existing shard: {source.stem}", flush=True)
         return result
     for path in outputs.values():
@@ -117,7 +155,7 @@ def tokenize_shard(source: Path, output_root: Path, tokenizer, vocab,
                     try:
                         if not line.endswith("\n"):
                             raise ValueError("unterminated parsed row (possibly interrupted parser)")
-                        text = convert_TG_format(line, strict=True)
+                        text = convert_TG_format(line, use_bracket_mapping=use_bracket_mapping, strict=True)
                         tree = encode_tree_document(text, tokenizer, vocab, dtype)
                         arrays = {"tree": tree,
                                   "terminal": vocab.convert_treenpy_to_terminal(tree),
@@ -139,6 +177,7 @@ def tokenize_shard(source: Path, output_root: Path, tokenizer, vocab,
         result = {"schema_version": 1, "protocol": TOKENIZATION_PROTOCOL,
                   "source": str(source.resolve()), "source_sha256": source_hash,
                   "tokenizer_sha256": tokenizer_sha256, "dtype": str(dtype),
+                  "bracket_policy": bracket_policy,
                   "documents": documents, "formats": {}}
         # Stage all three standard NPY files before replacing any final output.
         for fmt in FORMATS:
@@ -160,12 +199,15 @@ def tokenize_shard(source: Path, output_root: Path, tokenizer, vocab,
     return result
 
 
-def _tokenize_worker(source: Path, output: Path, tokenizer_path: Path, overwrite: bool):
+def _tokenize_worker(source: Path, output: Path, tokenizer_path: Path, overwrite: bool,
+                     bracket_policy: str):
     from olmo.data.tg_mask import SentencepieceVocab
 
     tokenizer = Tokenizer.from_file(str(tokenizer_path))
     vocab = SentencepieceVocab.from_vocab_file(str(tokenizer_path))
-    return tokenize_shard(source, output, tokenizer, vocab, sha256_file(tokenizer_path), overwrite=overwrite)
+    return tokenize_shard(source, output, tokenizer, vocab, sha256_file(tokenizer_path),
+                          overwrite=overwrite,
+                          use_bracket_mapping=resolve_bracket_mapping(tokenizer, bracket_policy))
 
 
 def main(argv=None):
@@ -175,13 +217,16 @@ def main(argv=None):
     parser.add_argument("--output_dir", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=1, help="parallel shards; each worker needs scratch disk for one shard")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--bracket-policy", choices=("auto", "native", "ptb"), default="auto",
+                        help="Qwen TG: native brackets; legacy BBC/GPT-2: preserve PTB escapes")
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     sources = sorted(args.input_dir.glob("*.txt"))
     if not sources:
         raise FileNotFoundError(f"no parsed .txt shards in {args.input_dir}")
-    Parallel(n_jobs=args.jobs)(delayed(_tokenize_worker)(source, args.output_dir, args.tokenizer, args.overwrite)
+    Parallel(n_jobs=args.jobs)(delayed(_tokenize_worker)(source, args.output_dir, args.tokenizer, args.overwrite,
+                                                       args.bracket_policy)
                               for source in sources)
     return 0
 

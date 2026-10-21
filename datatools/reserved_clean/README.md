@@ -97,9 +97,8 @@ python -m datatools.reserved_clean.validate \
 ```
 
 The train array named above has the same full file SHA-256 locally and on
-RTX3090. Automatic review initially rejected corpus transfers; the user then
-explicitly authorized them ("我允许传递语料"). The workflow keeps local old
-dev/test auditing local and downloads the candidate/evidence artifacts.
+RTX3090. Historical dev/test auditing was performed locally; candidate and
+evidence artifacts were downloaded separately.
 
 ## Native candidate generation
 

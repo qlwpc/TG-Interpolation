@@ -1,23 +1,19 @@
-# Pushdown document PPL：本仓库协议与原仓库的稳定对照
+# Pushdown document PPL: A Stable Comparison Between This Repository's Protocol and the Original Repository
 
 > [!NOTE]
-> 本文只说明原仓库与本仓库评测语义的差异，不作为结果总表。2026-08-31 的 checkpoint
-> 预处理审计确认训练表示保留 fixed right-recursive multi-BPE word atom；当前完整
-> v1/v2 数值和解释以
-> [`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](../protocols/pushdown_ppl.md)
-> 为准。v1 与 v2 是两种定义明确但不可混合的概率协议。
+> This document only explains the differences in evaluation semantics between the original repository and this repository, and is not a summary of results. The 2026-08-31 checkpoint preprocessing audit confirmed that the training representation retains the fixed right-recursive multi-BPE word atom; the current complete v1/v2 numbers and interpretation are governed by
+> [`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](../protocols/pushdown_ppl.md).
+> v1 and v2 are two well-defined but mutually incompatible probability protocols.
 
-## 1. 结论与适用范围
+## 1. Conclusion and Scope
 
-本仓库的 Pushdown document PPL 是在本地 OLMo Pushdown checkpoint 上定义的
-**文档级、外部 top-K 结构截断边缘化指标**，不是原作者
-`MurtyShikhar/Pushdown-Layers` 的评测脚本复现。
+The Pushdown document PPL in this repository is a **document-level, externally top-K structurally truncated marginal metric** defined on local OLMo Pushdown checkpoints. It is not a reproduction of the evaluation script from the original authors' `MurtyShikhar/Pushdown-Layers`.
 
-本文对照的原仓库版本固定为
-[`MurtyShikhar/Pushdown-Layers@6a4c543`](https://github.com/MurtyShikhar/Pushdown-Layers/tree/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30)，
-本仓库实现过 v1 `stack_legal` 与 v2 `sentence_causal` 两种概率协议；对应实现提交为
-[`47564d9`](https://github.com/qlwpc/TG-Interpolation/commit/47564d9bb91dffab3f45b8c3b7012ce1e77f6c4b)。
-训练表示对齐的当前评测入口是：
+The original repository version compared here is fixed at
+[`MurtyShikhar/Pushdown-Layers@6a4c543`](https://github.com/MurtyShikhar/Pushdown-Layers/tree/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30).
+This repository has implemented two probability protocols: v1 `stack_legal` and v2 `sentence_causal`; the corresponding implementation commit is
+[`47564d9`](https://github.com/qlwpc/TG-Interpolation/commit/47564d9bb91dffab3f45b8c3b7012ce1e77f6c4b).
+The current evaluation entry point aligned with the training representation is:
 
 ```text
 checkpoint: saved_models/pushdown_terminalonly/step34354-unsharded
@@ -28,169 +24,144 @@ attachment_normalization: stack_legal (v1) or sentence_causal (v2)
 prefix_policy: candidate0
 ```
 
-因此，结果应命名为“本地 Pushdown fixed-word-atom strict-binary top-K
-truncated-marginal document PPL（并标明 v1/v2）”，不能直接称为“原仓库 Pushdown
-PPL”或“原仓库 gold-300 复现”。
+Therefore, results should be named "local Pushdown fixed-word-atom strict-binary top-K truncated-marginal document PPL (with v1/v2 indicated)", and must not be directly called "original repository Pushdown PPL" or "original repository gold-300 reproduction".
 
-## 2. 原仓库实际存在的三条概率路径
+## 2. The Three Probability Paths That Actually Exist in the Original Repository
 
-讨论 attachment 概率时，必须把原仓库的训练、给定树评测和 beam 解码分开。
+When discussing attachment probabilities, the original repository's training, given-tree evaluation, and beam decoding must be kept separate.
 
-### 2.1 训练
+### 2.1 Training
 
-原仓库直接将 attachment head 输出交给交叉熵，只屏蔽 padding／无目标 query；
-没有在 CE 前按当前 stack 的合法 action 集合重新归一化。也就是说，训练目标是
-当前 causal support 上的 gold attachment 概率。
+The original repository feeds the attachment head output directly into cross-entropy, masking only padding / queries with no target; it does not renormalize over the current stack's legal action set before CE. In other words, the training target is the gold attachment probability over the current causal support.
 
-证据：原仓库
-[`interfaces/lm_interface.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/interfaces/lm_interface.py#L120-L162)。
+Evidence: original repository
+[`interfaces/lm_interface.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/interfaces/lm_interface.py#L120-L162).
 
-### 2.2 给定 gold tree 的 teacher-forced 评测
+### 2.2 Teacher-forced evaluation given a gold tree
 
-原仓库的 `gold` 模式对每个 query 先在 causal attachment logits 上执行
-`log_softmax`，再读取 gold target。它同样没有先移除已经归约的位置，也没有进行
-stack-legal 条件化。
+In the original repository's `gold` mode, for each query it first performs `log_softmax` over the causal attachment logits, then reads the gold target. It likewise does not first remove already-reduced positions, nor does it perform stack-legal conditioning.
 
-证据：原仓库
+Evidence: original repository
 [`pushdown_util.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/pushdown_util.py#L16-L34)
-和
-[`eval_utils/eval_pushdown_model.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/eval_utils/eval_pushdown_model.py#L176-L197)。
+and
+[`eval_utils/eval_pushdown_model.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/eval_utils/eval_pushdown_model.py#L176-L197).
 
-### 2.3 Beam 解码
+### 2.3 Beam decoding
 
-beam 路径先对全部当前 causal attachment logits 做 `log_softmax`，之后才把已经归约
-的位置改成 `-inf`。这一步用于禁止非法 beam 扩展，但不会重新归一化剩余 action。
-所以它保留的是训练分布中的原始 log probability，而不是
-`p(action | action is stack-legal)`。
+The beam path first performs `log_softmax` over all current causal attachment logits, and only afterward sets already-reduced positions to `-inf`. This step is used to prohibit illegal beam expansions, but it does not renormalize the remaining actions. So it retains the original log probability from the training distribution, not
+`p(action | action is stack-legal)`.
 
-证据：原仓库
-[`models/pushdown_transformer_lm.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/models/pushdown_transformer_lm.py#L326-L336)。
+Evidence: original repository
+[`models/pushdown_transformer_lm.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/models/pushdown_transformer_lm.py#L326-L336).
 
-结论：原仓库确实是“训练用 teacher forcing、部分测试用 beam”，但两者都没有把
-attachment 概率重新定义为 stack-legal 集合内的条件概率。训练与 gold-tree 打分用
-完整 causal support；beam 只在 softmax 之后禁止非法扩展。
+Conclusion: the original repository indeed uses "teacher forcing for training, beam for some tests", but neither redefines attachment probability as a conditional probability within the stack-legal set. Training and gold-tree scoring use the full causal support; beam only prohibits illegal expansions after softmax.
 
-## 3. 本地 v1/v2 概率协议
+## 3. Local v1/v2 Probability Protocols
 
-### 3.1 protocol v1：历史 Table-4 evaluator 口径
+### 3.1 protocol v1: historical Table-4 evaluator convention
 
-本地旧 evaluator 曾在 CE 前屏蔽非 stack-legal action，再对剩余 action 归一化：
+The local old evaluator used to mask non-stack-legal actions before CE and then normalize over the remaining actions:
 
 ```text
 p_v1(r_k) = p(r_k | r_k is stack-legal)
 ```
 
-这与本地 checkpoint 的训练目标和原仓库给定树打分不是同一个概率，但它是论文
-Table-4 的历史 evaluator 口径。历史 native n-ary v1 只按这一旧结构协议保留；当前
-fixed-word-atom v1 已独立完整运行，可用于同归一化口径比较。两种结构表示都不能与
-v2 数值混写或合并。
+This is not the same probability as the local checkpoint's training target or the original repository's given-tree scoring, but it is the historical evaluator convention for the paper's Table 4. Historical native n-ary v1 is retained only under this old structure protocol; the current fixed-word-atom v1 has been independently run in full and can be used for comparisons under the same normalization convention. Neither structure representation may be mixed or merged with v2 numbers.
 
-### 3.2 protocol v2：训练 CE 口径
+### 3.2 protocol v2: training CE convention
 
-当前 evaluator 直接在 attachment head 已有的 causal、padding、sentence-local mask
-之后做 CE：
+The current evaluator performs CE directly after the attachment head's existing causal, padding, and sentence-local masks:
 
 ```text
 p_v2(r_k) = softmax(sentence-causal attachment logits)[r_k]
 ```
 
-stack legality 仅用于：
+Stack legality is used only to:
 
-- 验证给定 gold／候选 target 是否表示合法的 stack transition；
-- beam search 时阻止非法扩展。
+- verify whether a given gold/candidate target represents a legal stack transition;
+- prevent illegal expansions during beam search.
 
-它不参与 teacher-forced likelihood 的再次归一化。实现见
-[`olmo/eval/pushdown_document_ppl.py`](../../olmo/eval/pushdown_document_ppl.py)；
-协议元数据固定为：
+It does not participate in renormalizing the teacher-forced likelihood. See the implementation at
+[`olmo/eval/pushdown_document_ppl.py`](../../olmo/eval/pushdown_document_ppl.py);
+the protocol metadata is fixed as:
 
 ```text
 protocol_version=2
 attachment_normalization=sentence_causal
 ```
 
-断点续跑和结果合并会检查这些字段，从而拒绝缺少协议元数据的旧结果。v1/v2 的完整
-数值见当前协议文档，本对照不复制第二套结果表。
+Resume-from-checkpoint and result merging check these fields, thereby rejecting old results that lack protocol metadata. The complete v1/v2 numbers are in the current protocol document; this comparison does not duplicate a second set of result tables.
 
-## 4. 评测协议逐项对照
+## 4. Item-by-Item Comparison of Evaluation Protocols
 
-| 维度 | 原仓库 | 本仓库 fixed-word-atom document PPL |
+| Dimension | Original repository | This repository's fixed-word-atom document PPL |
 |---|---|---|
-| 主要目的 | 句子 PPL、解析、BLiMP、SyntaxGym surprisal | BBC-News 的 document-level PPL |
-| 模型与 checkpoint | 原作者 16-layer Pushdown LM／BLLIP-LG checkpoint | 本地 OLMo Pushdown／`saved_models/pushdown_terminalonly/step34354-unsharded` |
-| attachment head | `StackPredictor`：基于 `PushdownAttention`，含 depth embedding/composer、q/k MLP 和相对位置项 | 论文公式启发的两层 MLP＋单个 bilinear `W`；不是原仓库 `StackPredictor` 模块，见 [`olmo/attachment.py`](../../olmo/attachment.py) |
-| 基本评测单位 | 独立句子，显式 SOS/EOS | 按文档顺序的句子，跨句保留 token 和结构上下文 |
-| 结构来源 | 给定单棵 gold tree，或模型自身 beam | 外部 parser 产生并排序的最多 300 个候选；不运行 Pushdown beam |
-| 结构表示 | GPT-2 tokenization 后的无标签二叉树 | unary-collapse、word-level right-CNF、multi-BPE word 使用 fixed right-recursive atom |
-| attachment 归一化 | causal support；beam 在 softmax 后禁非法 action | v1=stack-legal 条件化；v2=sentence-local causal support |
-| 候选聚合 | gold 模式不聚合；beam 可对保留 beam 做 `logsumexp` | 对外部 top-K 唯一候选的模型联合概率做 `logsumexp` |
-| 候选权重 | beam 分数来自模型自身联合概率 | parser proposal 分数只负责选择和排序，不乘入模型概率 |
-| 跨句前缀 | 无 | 所有候选共享历史；每句 candidate 0 更新后续前缀 |
-| 长上下文 | 原仓库句子级路径不需要文档裁剪 | 超长时从左侧按完整历史句裁剪，最大长度 2048 |
-| 加速 | 原仓库增量 beam state | candidate 0 K/V cache 和 final-hidden cache |
-| 分母 | 原仓库按其句子 token／attachment 步数定义 | terminal token 数；文档 BOS 不计，普通空白／换行 token 计入 |
-| 输出含义 | gold-tree joint PPL 或模型 beam 近似 | 给定外部 top-K support 的截断结构边缘化 document PPL |
+| Main purpose | Sentence PPL, parsing, BLiMP, SyntaxGym surprisal | Document-level PPL for BBC-News |
+| Model and checkpoint | Original authors' 16-layer Pushdown LM / BLLIP-LG checkpoint | Local OLMo Pushdown / `saved_models/pushdown_terminalonly/step34354-unsharded` |
+| attachment head | `StackPredictor`: based on `PushdownAttention`, with depth embedding/composer, q/k MLP, and relative position term | Two-layer MLP inspired by the paper's formula + a single bilinear `W`; not the original repository's `StackPredictor` module, see [`olmo/attachment.py`](../../olmo/attachment.py) |
+| Basic evaluation unit | Independent sentences, explicit SOS/EOS | Sentences in document order, retaining token and structure context across sentences |
+| Structure source | A given single gold tree, or the model's own beam | Up to 300 candidates produced and ranked by an external parser; no Pushdown beam is run |
+| Structure representation | Unlabeled binary tree after GPT-2 tokenization | unary-collapse, word-level right-CNF, multi-BPE words use fixed right-recursive atom |
+| attachment normalization | causal support; beam prohibits illegal actions after softmax | v1=stack-legal conditioning; v2=sentence-local causal support |
+| Candidate aggregation | No aggregation in gold mode; beam may apply `logsumexp` over retained beams | `logsumexp` over the model joint probabilities of unique external top-K candidates |
+| Candidate weights | Beam scores come from the model's own joint probability | Parser proposal scores are used only for selection and ranking, not multiplied into model probabilities |
+| Cross-sentence prefix | None | All candidates share history; each sentence's candidate 0 updates the subsequent prefix |
+| Long context | The original repository's sentence-level path requires no document truncation | When too long, truncate from the left by complete history sentences, maximum length 2048 |
+| Acceleration | Original repository's incremental beam state | candidate 0 K/V cache and final-hidden cache |
+| Denominator | Defined by the original repository according to its sentence tokens / attachment steps | Number of terminal tokens; document BOS not counted, ordinary whitespace/newline tokens counted |
+| Output meaning | gold-tree joint PPL or model beam approximation | Truncated structurally marginalized document PPL given external top-K support |
 
-原仓库入口及公开评测说明见
+The original repository's entry point and public evaluation description are in
 [`eval_utils/eval_pushdown_model.py`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/eval_utils/eval_pushdown_model.py)
-和原仓库
-[`README.md`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/README.md)。
+and the original repository's
+[`README.md`](https://github.com/MurtyShikhar/Pushdown-Layers/blob/6a4c543d105ab6f5df77f9e86bfd5650d1ed3f30/README.md).
 
-## 5. 当前仍然存在的关键可比性限制
+## 5. Key Comparability Limitations That Still Exist
 
-### 5.1 本地模型不是原作者 checkpoint 的直接移植
+### 5.1 The local model is not a direct port of the original authors' checkpoint
 
-本仓库使用 OLMo 主干和本地 attachment head；网络结构、训练实现及 checkpoint 均与
-原仓库不同。因此，protocol v2 只能说明 attachment 的概率归一化语义与训练目标／
-原作者 likelihood 路径一致，不能说明整个模型实现复现了原仓库。
+This repository uses the OLMo backbone and a local attachment head; the network structure, training implementation, and checkpoint all differ from the original repository. Therefore, protocol v2 only shows that the attachment's probability normalization semantics are consistent with the training target / the original authors' likelihood path; it does not show that the entire model implementation reproduces the original repository.
 
-### 5.2 已关闭：候选结构与 checkpoint 训练表示不一致
+### 5.2 Closed: candidate structure inconsistent with the checkpoint training representation
 
-旧 native n-ary 路径没有补回 checkpoint 训练时的人工二叉节点和 multi-BPE word atom，
-因此只保留为不同结构协议的历史/消融。当前生产协议将 direct strict-binary proposal，
-或 native n-ary proposal 的 word-level right-CNF 转换，统一映射到训练使用的
-fixed-word-atom 表示。转换与支持集审计见当前协议文档。
+The old native n-ary path did not restore the artificial binary nodes and multi-BPE word atoms used during checkpoint training, so it is retained only as a historical/ablation result under a different structure protocol. The current production protocol maps direct strict-binary proposals, or word-level right-CNF conversion of native n-ary proposals, uniformly to the fixed-word-atom representation used in training. See the current protocol document for conversion and support-set audits.
 
-### 5.3 top-K `logsumexp` 是截断和，不是完整句子概率
+### 5.3 top-K `logsumexp` is a truncated sum, not a complete sentence probability
 
-当前主值为：
+The current main value is:
 
 ```text
 log p_topK(x) = logsumexp_y_in_external_topK log p_model(x, y)
 ```
 
-它只覆盖外部 proposal 给出的有效唯一候选，不保证穷尽模型结构空间。不同句子的
-有效 `K` 可以小于 300。当前同时报告减去 `log(K)` 的 uniform-mixture 结果，但该值
-只是诊断口径，不是原仓库定义。
+It covers only the valid unique candidates given by the external proposal and does not guarantee exhaustion of the model's structural space. The valid `K` for different sentences can be less than 300. The current results also report the uniform-mixture result after subtracting `log(K)`, but that value is only a diagnostic convention, not the original repository's definition.
 
-### 5.4 candidate 0 文档前缀是本地扩展
+### 5.4 The candidate 0 document prefix is a local extension
 
-当前每句的所有候选共享相同历史，并固定用 candidate 0 的结构更新下一句上下文。
-这是为了与本仓库其他 document-PPL evaluator 对齐而作的确定性定义，不来自原仓库
-的句子级测试标准。
+Currently all candidates for each sentence share the same history, and the next sentence's context is always updated using candidate 0's structure. This is a deterministic definition made to align with this repository's other document-PPL evaluators, and does not come from the original repository's sentence-level test standard.
 
-## 6. 可以和不可以据此声称的结论
+## 6. Conclusions That Can and Cannot Be Claimed
 
-可以声称：
+Can be claimed:
 
-- protocol v2 的 attachment CE 不再做 stack-legal 条件化；
-- 该归一化与本地训练 objective 以及原仓库给定树 likelihood 的语义一致；
-- 当前结果是在外部 fixed-word-atom strict-binary top-K support 上得到的本地文档级截断边缘化指标。
+- protocol v2's attachment CE no longer performs stack-legal conditioning;
+- this normalization is semantically consistent with the local training objective and the original repository's given-tree likelihood;
+- the current results are local document-level truncated marginal metrics obtained on external fixed-word-atom strict-binary top-K support.
 
-不可以声称：
+Cannot be claimed:
 
-- 当前 native document PPL 是原仓库评测的逐项复现；
-- 外部 top-K 候选等价于原仓库模型 beam；
-- 外部 top-K support 穷尽了模型的全部合法结构；
-- protocol v1 的历史结果可与 protocol v2 直接比较或合并。
+- the current native document PPL is an item-by-item reproduction of the original repository's evaluation;
+- external top-K candidates are equivalent to the original repository's model beam;
+- external top-K support exhausts all legal structures of the model;
+- protocol v1 historical results can be directly compared with or merged with protocol v2.
 
-若目标是复现原仓库，应使用原仓库代码、checkpoint、tokenizer／二叉树预处理及其
-`gold` 或 `beam` 入口。若目标是本仓库的训练表示对齐 top-K 指标，应使用
-[`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](../protocols/pushdown_ppl.md)；
-它仍然是本地 OLMo Pushdown 指标，而不是原作者 checkpoint 复现。
+If the goal is to reproduce the original repository, use the original repository's code, checkpoint, tokenizer / binary-tree preprocessing, and its `gold` or `beam` entry points. If the goal is this repository's training-representation-aligned top-K metric, use
+[`pushdown_word_atom_strict_binary_document_ppl_protocol.md`](../protocols/pushdown_ppl.md);
+it is still a local OLMo Pushdown metric, not a reproduction of the original authors' checkpoint.
 
-## 7. 本仓库实现入口
+## 7. This Repository's Implementation Entry Points
 
-- evaluator：[`olmo/eval/pushdown_document_ppl.py`](../../olmo/eval/pushdown_document_ppl.py)
-- attachment head：[`olmo/attachment.py`](../../olmo/attachment.py)
-- CLI：[`scripts/evaluate_gpst_binary_pushdown_document_ppl.py`](../../scripts/evaluate_gpst_binary_pushdown_document_ppl.py)
-- merge/protocol 检查：[`scripts/merge_gpst_binary_pushdown_document_ppl.py`](../../scripts/merge_gpst_binary_pushdown_document_ppl.py)
+- evaluator: [`olmo/eval/pushdown_document_ppl.py`](../../olmo/eval/pushdown_document_ppl.py)
+- attachment head: [`olmo/attachment.py`](../../olmo/attachment.py)
+- CLI: [`scripts/evaluate_gpst_binary_pushdown_document_ppl.py`](../../scripts/evaluate_gpst_binary_pushdown_document_ppl.py)
+- merge/protocol check: [`scripts/merge_gpst_binary_pushdown_document_ppl.py`](../../scripts/merge_gpst_binary_pushdown_document_ppl.py)
